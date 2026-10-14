@@ -60,6 +60,10 @@ def register_fake_engine():
     """Inject the fake engine into the registry and return its class."""
     import noesis_ebook_translator.engines as engines
     from noesis_ebook_translator.lib import translation as translation_mod
+    from noesis_ebook_translator.lib import utils as utils_mod
+
+    # Keep test output readable: the engine logs every paragraph at INFO.
+    utils_mod.log.level = utils_mod.log.ERROR
 
     fake = make_fake_engine()
     extended = tuple(engines.builtin_engines) + (fake,)

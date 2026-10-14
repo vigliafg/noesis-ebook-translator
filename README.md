@@ -125,6 +125,22 @@ I test girano **headless** (`QT_QPA_PLATFORM=offscreen`) e usano un motore di
 traduzione fittizio offline: non serve la rete. In CI sono eseguiti su
 `ubuntu-latest` (Python 3.12) da `.github/workflows/tests.yml`.
 
+### Corpus Darwin (fixture reali)
+
+I test end-to-end girano su tre libri veri di **Charles Darwin** da Project
+Gutenberg (pubblico dominio), in `tests/data/darwin/`:
+
+| File | Project Gutenberg |
+| --- | --- |
+| `origin_of_species.epub` | [#1228 — On the Origin of Species](https://www.gutenberg.org/ebooks/1228) |
+| `voyage_of_the_beagle.epub` | [#944 — The Voyage of the Beagle](https://www.gutenberg.org/ebooks/944) |
+| `descent_of_man.epub` | [#2300 — The Descent of Man](https://www.gutenberg.org/ebooks/2300) |
+
+```bash
+python tools/fetch_darwin_fixtures.py          # (ri)scarica le fixture
+NOESIS_ONLINE_TESTS=1 python -m unittest tests.test_darwin_corpus -v   # + test Google reale
+```
+
 ## Build delle release (GitHub Actions)
 
 Le release standalone sono compilate con **PyInstaller** su quattro runner nativi
