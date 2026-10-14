@@ -27,7 +27,7 @@ BOOKS = {
     "descent_of_man.epub": 2300,
 }
 
-URL = "https://www.gutenberg.org/ebooks/{id}.epub.noimages"
+URL = "https://www.gutenberg.org/ebooks/{id}.epub.images"
 USER_AGENT = "noesis-ebook-translator/fixtures (+https://github.com/vigliafg)"
 
 

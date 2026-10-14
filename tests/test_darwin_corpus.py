@@ -40,6 +40,19 @@ def _xhtml_text(path):
     return "\n".join(chunks)
 
 
+def _image_stats(path):
+    """Return ``(image_file_count, img_tag_count)`` for an EPUB."""
+    files = tags = 0
+    with zipfile.ZipFile(path) as archive:
+        for name in archive.namelist():
+            lower = name.lower()
+            if lower.endswith((".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp")):
+                files += 1
+            if lower.endswith((".xhtml", ".html", ".htm")):
+                tags += archive.read(name).decode("utf-8", "replace").lower().count("<img")
+    return files, tags
+
+
 @unittest.skipUnless(CORPUS.is_dir(), "Darwin corpus not present")
 class TestDarwinCorpus(unittest.TestCase):
     outputs: dict = {}
@@ -77,6 +90,22 @@ class TestDarwinCorpus(unittest.TestCase):
                 self.assertIn("href=", body)
                 # Content actually changed: the marker is absent from the source.
                 self.assertNotIn("IT&lt;", _xhtml_text(CORPUS / name))
+
+    def test_illustrations_are_preserved(self):
+        for name in BOOKS:
+            with self.subTest(book=name):
+                src_files, src_tags = _image_stats(CORPUS / name)
+                out_files, out_tags = _image_stats(self.outputs[name])
+                # Same pictures (files) and same <img> references after translation.
+                self.assertEqual(src_files, out_files)
+                self.assertEqual(src_tags, out_tags)
+
+    def test_corpus_has_an_illustrated_book(self):
+        # Guard: at least one fixture must carry real inline illustrations, so
+        # the image-preservation test above is meaningful.
+        files, tags = _image_stats(CORPUS / "voyage_of_the_beagle.epub")
+        self.assertGreaterEqual(files, 10)
+        self.assertGreaterEqual(tags, 20)
 
 
 @unittest.skipUnless(os.environ.get("NOESIS_ONLINE_TESTS"), "online tests disabled")

@@ -78,11 +78,12 @@ I test girano **headless** (`QT_QPA_PLATFORM=offscreen`, impostato in
 ### Corpus Darwin
 
 `tests/data/darwin/` contiene tre EPUB reali di **Charles Darwin** (Project
-Gutenberg, pubblico dominio), usati dai test end-to-end
-(`tests/test_darwin_corpus.py`) con il motore fittizio. Vedi
-`tests/data/darwin/SOURCE.md`. Per (ri)scaricarli:
-`python tools/fetch_darwin_fixtures.py`. I test online opzionali
-(`NOESIS_ONLINE_TESTS=1`) traducono davvero con Google. Questo corpus è
+Gutenberg, pubblico dominio, edizione **`.epub.images`**), usati dai test
+end-to-end (`tests/test_darwin_corpus.py`) con il motore fittizio. Il *Voyage of
+the Beagle* è **illustrato** (15 immagini, 40 `<img>`): serve a verificare che le
+illustrazioni sopravvivano alla traduzione. Vedi `tests/data/darwin/SOURCE.md`.
+Per (ri)scaricarli: `python tools/fetch_darwin_fixtures.py`. I test online
+opzionali (`NOESIS_ONLINE_TESTS=1`) traducono davvero con Google. Questo corpus è
 **condiviso** col repo engine gemello (copiato dal suo `tools/sync_from_desktop.py`).
 
 ## File da NON toccare senza motivo
