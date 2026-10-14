@@ -46,6 +46,27 @@ Crediti e ringraziamenti:
 - Repository upstream: <https://github.com/bookfere/Ebook-Translator-Calibre-Plugin>
 - Licenza upstream: **GNU GPL v3.0**.
 
+
+## Lettore EPUB integrato
+
+La GUI include un **lettore** con indice multilivello, navigazione, zoom, temi
+(chiaro/sepia/scuro), ricerca nel capitolo e **vista parallela** (originale vs
+tradotto). Esiste in due flavor:
+
+- **lite** (default): `QTextBrowser`, solo EPUB, nessuna dipendenza extra;
+- **full** (opt-in): [`foliate-js`](https://github.com/johnfactotum/foliate-js)
+  (MIT) in `QWebEngineView` — EPUB, **MOBI/AZW3, FB2, CBZ, PDF**, due pagine
+  (spread), stampa/export in PDF. Si attiva con `NOESIS_READER_BACKEND=full`
+  (richiede `requirements-full.txt`).
+
+## Capitoli, figure, tabelle, export
+
+- Traduci/ed esporta **l'intero libro o capitoli selezionati** dall'indice
+  (EPUB di soli capitoli scelti, oppure HTML/Markdown/TXT).
+- **Figure** (con didascalie `Fig./Plate/Table` e numerazione) e **tabelle**
+  (con `caption`) esportabili in immagini/HTML/MD e CSV/HTML/MD.
+- Anteprima traduzione **in memoria** di un capitolo.
+
 ## Motori supportati
 
 L'app espone tutti i motori ripristinati in `engines/__init__.py`:
