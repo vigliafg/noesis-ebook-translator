@@ -142,8 +142,7 @@ class ReaderWidget(QWidget):
             try:
                 if self.second.current_href() != href:
                     self.second.show_chapter(href)
-                self.second._pending_fraction = fraction  # noqa: SLF001
-                self.second._apply_pending_fraction()  # noqa: SLF001
+                self.second.set_fraction(fraction)
             finally:
                 self._syncing = False
 
@@ -152,8 +151,7 @@ class ReaderWidget(QWidget):
             return
         self._syncing = True
         try:
-            self.backend._pending_fraction = fraction  # noqa: SLF001
-            self.backend._apply_pending_fraction()  # noqa: SLF001
+            self.backend.set_fraction(fraction)
         finally:
             self._syncing = False
 

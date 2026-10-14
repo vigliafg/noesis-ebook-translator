@@ -323,6 +323,13 @@ class MainWindow(QMainWindow):
 
 def main(argv: list[str] | None = None) -> int:
     appconfig.ensure_defaults()
+    # The full reader (foliate-js) needs QtWebEngine imported and the private
+    # ``app://`` scheme registered *before* the QApplication is created.
+    try:
+        from noesis_ebook_translator.reader import prepare_full
+        prepare_full()
+    except Exception:  # noqa: BLE001
+        pass
     app = QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)

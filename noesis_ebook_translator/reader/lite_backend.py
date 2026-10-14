@@ -130,6 +130,10 @@ class LiteBackend(QWidget):
         bar = self.view.verticalScrollBar()
         return (bar.value() / bar.maximum()) if bar.maximum() else 0.0
 
+    def set_fraction(self, fraction: float) -> None:
+        self._pending_fraction = float(fraction or 0.0)
+        self._apply_pending_fraction()
+
     def plain_text(self) -> str:
         return self.view.toPlainText()
 

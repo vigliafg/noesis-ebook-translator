@@ -7,3 +7,5 @@ import tempfile
 _TMP = tempfile.mkdtemp(prefix="noesis-et-tests-")
 os.environ.setdefault("NOESIS_CONFIG_DIR", _TMP)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Tests exercise the lite reader (deterministic, no WebEngine subprocess).
+os.environ.setdefault("NOESIS_READER_BACKEND", "lite")
