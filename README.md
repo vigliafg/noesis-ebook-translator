@@ -10,8 +10,10 @@ lingue, traduci.
 ## Cosa fa
 
 - Apre un file **EPUB** e lo traduce nella lingua di destinazione scelta.
-- Preserva **markup inline** (corsivi, link, ecc.), i **blocchi di codice** e
-  l'**indice** (TOC), tradotto insieme al testo.
+- Preserva i **link/ancore** e i **blocchi di codice**, e traduce l'**indice**
+  (TOC) insieme al testo. Il testo in corsivo/grassetto viene tradotto (il tag
+  `em`/`i`/`b`… viene sostituito dal testo tradotto): puoi riservare altri
+  elementi con l'impostazione `reserve_rules`.
 - Mostra una **barra a nastro (ribbon)** con gruppi *Home · Motore · Lingua ·
   Opzioni · Info*: apri file, avvia/annulla la traduzione, apri la cartella di
   output.
