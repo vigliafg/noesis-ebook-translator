@@ -83,6 +83,15 @@ class ReaderWidget(QWidget):
 
     # --------------------------------------------------------------- open
     def open_path(self, path: str) -> None:
+        if not path.lower().endswith(".epub") and hasattr(self.backend, "open_file") \
+                and self.backend.supports(path):
+            # Non-EPUB formats are handled natively by the full (foliate-js) backend.
+            self.document = None
+            self.toc.clear()
+            self.backend.open_file(path)
+            self.session.add_recent(path, path.rsplit("/", 1)[-1])
+            self.statusMessage.emit(f"Formato nativo: {path.rsplit('/', 1)[-1]}")
+            return
         self.document = EpubDocument(path)
         self._populate_toc()
         resume = self.session.get_position(path)

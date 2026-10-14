@@ -115,6 +115,19 @@ class WebEngineBackend(QWidget):
         if self._ready:
             self._js(f"api.open({json.dumps(self._book_url)})")
 
+    def open_file(self, path: str) -> None:
+        """Open any foliate-js supported format directly (no ebooklib parse)."""
+        self._doc = None
+        self._handler.book_dir = os.path.dirname(os.path.abspath(path))
+        self._book_url = f"app://book/{os.path.basename(path)}"
+        self._href = None
+        if self._ready:
+            self._js(f"api.open({json.dumps(self._book_url)})")
+
+    @staticmethod
+    def supports(path: str) -> bool:
+        return os.path.splitext(path)[1].lower() in _SUPPORTED
+
     def show_chapter(self, href: str, restore: float = 0.0) -> None:
         self._href = href.split("#", 1)[0]
         self._js(f"api.goTo({json.dumps(href)})")

@@ -23,7 +23,7 @@ class TestGui(unittest.TestCase):
 
         window = main.MainWindow()
         try:
-            self.assertEqual(len(window.ribbon.categories()), 6)
+            self.assertEqual(len(window.ribbon.categories()), 7)
             self.assertGreater(window.cmb_engine.count(), 10)
             self.assertGreater(window.cmb_target.count(), 100)
         finally:
@@ -56,7 +56,7 @@ class TestGui(unittest.TestCase):
         path = build_sample_epub(os.path.join(tempfile.mkdtemp(), "s.epub"))
         window = main.MainWindow()
         try:
-            self.assertEqual(window.tabs.count(), 2)
+            self.assertEqual(window.tabs.count(), 6)
             window.reader.open_path(path)
             self.assertGreater(window.reader.toc.topLevelItemCount(), 0)
             first = window.reader.backend.current_href()

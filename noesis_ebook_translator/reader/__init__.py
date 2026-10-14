@@ -34,14 +34,15 @@ def _preferred_mode() -> str:
 
 def prepare_full() -> bool:
     """Import QtWebEngine and register the scheme *before* QApplication."""
-    if _preferred_mode() == "lite":
-        return False
     try:
         import PyQt6.QtWebEngineWidgets  # noqa: F401  (must precede QApplication)
     except Exception:  # noqa: BLE001
         return False
-    from .scheme import ensure_scheme
-    ensure_scheme()
+    try:
+        from .scheme import ensure_scheme
+        ensure_scheme()
+    except Exception:  # noqa: BLE001
+        pass
     return True
 
 

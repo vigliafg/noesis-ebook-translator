@@ -25,6 +25,8 @@ from pyqtribbon import RibbonBar
 from noesis_ebook_translator import APP_NAME, __version__, appconfig, book, theme
 from noesis_ebook_translator.i18n import T, get_language, set_language
 from noesis_ebook_translator.reader import ReaderWidget
+from noesis_ebook_translator.reader.panels import (
+    FiguresWidget, LibraryWidget, PreviewWidget, TablesWidget)
 from noesis_ebook_translator.engines.languages import google as GOOGLE_LANGUAGES
 
 
@@ -144,6 +146,18 @@ class MainWindow(QMainWindow):
         self.btn_parallel = panel_zoom.addLargeButton(
             "Parallelo", slot=lambda: self.reader.btn_parallel.toggle())
 
+        tools_cat = self.ribbon.addCategory("Strumenti")
+        panel_lib = tools_cat.addPanel("Libreria")
+        panel_lib.addLargeButton(
+            "Libreria", slot=lambda: self.tabs.setCurrentWidget(self.library))
+        panel_fig = tools_cat.addPanel("Figure")
+        panel_fig.addLargeButton("Carica figure", slot=self._load_figures)
+        panel_tab = tools_cat.addPanel("Tabelle")
+        panel_tab.addLargeButton("Carica tabelle", slot=self._load_tables)
+        panel_prev = tools_cat.addPanel("Anteprima")
+        panel_prev.addLargeButton(
+            "Anteprima", slot=lambda: self.tabs.setCurrentWidget(self.preview))
+
         info_cat = self.ribbon.addCategory(T("tab.info"))
         panel_about = info_cat.addPanel(T("tab.info"))
         panel_about.addLargeButton("About", slot=self.on_about)
@@ -173,15 +187,52 @@ class MainWindow(QMainWindow):
 
         self.reader = ReaderWidget()
         self.reader.statusMessage.connect(self.status.setText)
+        self.library = LibraryWidget(self.reader.session)
+        self.figures = FiguresWidget()
+        self.tables = TablesWidget()
+        self.preview = PreviewWidget(self._preview_options)
+        self.library.openRequested.connect(self._apply_source)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(central, "Traduzione")
         self.tabs.addTab(self.reader, "Lettura")
+        self.tabs.addTab(self.library, "Libreria")
+        self.tabs.addTab(self.figures, "Figure")
+        self.tabs.addTab(self.tables, "Tabelle")
+        self.tabs.addTab(self.preview, "Anteprima")
 
         self.setCentralWidget(self.tabs)
         self.resize(1024, 700)
         self._input_path: str | None = None
         self._output_path: str | None = None
+
+    # ------------------------------------------------------------- helpers
+    def _preview_options(self) -> dict:
+        return {
+            "engine": self.cmb_engine.currentText(),
+            "source": self.cmb_source.currentText(),
+            "target": self.cmb_target.currentText(),
+            "settings": {
+                "translation_position": "only",
+                "cache_enabled": self.chk_cache.isChecked(),
+                "online_batching": self.chk_batch.isChecked(),
+            },
+        }
+
+    def _apply_source(self, path: str) -> None:
+        self._input_path = path
+        self._output_path = book.default_output_path(path, self.cmb_target.currentText())
+        self.lbl_input.setText(path)
+        self.lbl_output.setText(self._output_path)
+        self.status.setText(T("status.ready"))
+        for panel in (self.figures, self.tables, self.preview):
+            panel.set_source(path)
+        self.library.add_book(path)
+        try:
+            self.reader.open_path(path)
+            self.tabs.setCurrentWidget(self.reader)
+        except Exception as exc:  # noqa: BLE001 - reader is best effort
+            self.log.appendPlainText(f"[reader] {exc}")
 
     # ------------------------------------------------------------ settings
     def _load_settings(self) -> None:
@@ -222,16 +273,7 @@ class MainWindow(QMainWindow):
             self, T("action.open"), "", "EPUB (*.epub);;All files (*)")
         if not path:
             return
-        self._input_path = path
-        self._output_path = book.default_output_path(path, self.cmb_target.currentText())
-        self.lbl_input.setText(path)
-        self.lbl_output.setText(self._output_path)
-        self.status.setText(T("status.ready"))
-        try:
-            self.reader.open_path(path)
-            self.tabs.setCurrentWidget(self.reader)
-        except Exception as exc:  # noqa: BLE001 - reader is best effort
-            self.log.appendPlainText(f"[reader] {exc}")
+        self._apply_source(path)
 
     def on_open_output(self) -> None:
         if not self._output_path:
@@ -244,6 +286,18 @@ class MainWindow(QMainWindow):
     def on_about(self) -> None:
         QMessageBox.information(self, T("app.title"),
                                 f"{T('about.text')}\n\n{__version__}")
+
+    def _load_figures(self) -> None:
+        if self._input_path:
+            self.figures.set_source(self._input_path)
+            self.figures.load_current()
+        self.tabs.setCurrentWidget(self.figures)
+
+    def _load_tables(self) -> None:
+        if self._input_path:
+            self.tables.set_source(self._input_path)
+            self.tables.load_current()
+        self.tabs.setCurrentWidget(self.tables)
 
     def on_cancel(self) -> None:
         if self.worker is not None:

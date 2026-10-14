@@ -164,6 +164,21 @@ python tools/fetch_corpus_fixtures.py            # (ri)scarica corpus + MANIFEST
 NOESIS_ONLINE_TESTS=1 python -m unittest tests.test_corpus -v   # + test Google reale
 ```
 
+
+### Harness del lettore (lite + full)
+
+`tests/harness.py` esegue lo stesso scenario su entrambi i backend e produce un
+report; `tests/test_reader_backends.py` lo usa per i test automatici, mentre
+`tools/reader_harness.py` è il runner da riga di comando (utile per validare il
+backend **full** su un desktop reale):
+
+```bash
+python tools/reader_harness.py --mode both --wait 15 libri/*.epub
+```
+
+Il backend **full** richiede un WebEngine funzionante (GPU/display); su macchina
+headless il report riporta `ready=False` (warning, non errore).
+
 ## Build delle release (GitHub Actions)
 
 Le release standalone sono compilate con **PyInstaller** su quattro runner nativi
