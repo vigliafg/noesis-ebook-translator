@@ -94,3 +94,17 @@ opzionali (`NOESIS_ONLINE_TESTS=1`) traducono davvero con Google. Questo corpus 
   motore verbatim. Le modifiche al motore devono passare da
   `tools/import_core_from_fork.py` (che produce copie identiche al fork).
 - `.venv/` — ambiente virtuale locale.
+
+## Lettore (GUI) e harness
+
+- `noesis_ebook_translator/reader/` — lettore: `document.py`, `lite_backend.py`
+  (QTextBrowser), `webengine_backend.py` (foliate-js in QWebEngineView),
+  `scheme.py` (scheme `app://`), `widget.py`, `session.py`, `panels.py`.
+- `reader_web/` — bundle foliate-js **vendorizzato** (MIT) + wrapper QWebChannel.
+  NON è un submodule: aggiornalo a mano e annota il commit in `reader_web/README.md`.
+- Il backend **full** è opt-in: `NOESIS_READER_BACKEND=full`. Default = `lite`.
+- Harness: `tests/harness.py` (scenario comune), `tests/test_reader_backends.py`
+  (lite/full; il full gira in **sottoprocesso**), `tools/reader_harness.py` (CLI).
+- In test/CI `NOESIS_READER_BACKEND=lite` (impostato in `tests/__init__.py`).
+- NON importare `PyQt6.QtWebEngineWidgets` a livello di modulo nei test (blocca il
+  processo): usa `importlib.util.find_spec` e i sottoprocessi.
