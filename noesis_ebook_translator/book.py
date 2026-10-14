@@ -17,6 +17,9 @@ from lxml import etree
 
 from . import EbookTranslator
 from .appconfig import ensure_defaults
+from .chapters import (
+    chapter_files, chapters_from_book, load_chapters, resolve_selection)
+from .exporter import restrict_book
 from .lib.cache import get_cache
 from .lib.config import get_config
 from .lib.element import (
@@ -24,7 +27,10 @@ from .lib.element import (
 from .lib.translation import get_engine_class, get_translation, get_translator
 from .lib.utils import log, uid
 
-__all__ = ["translate_epub", "list_engine_names", "default_output_path"]
+__all__ = [
+    "translate_epub", "preview_translation", "list_engine_names",
+    "default_output_path",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +146,7 @@ def translate_epub(
     target_lang: str = "Italian",
     direction: str = "auto",
     settings: dict[str, Any] | None = None,
+    chapters: Any = None,
     cache_only: bool = False,
     on_progress: Callable[[float, str], None] | None = None,
     on_log: Callable[[str, bool], None] | None = None,
@@ -164,6 +171,10 @@ def translate_epub(
     direction = direction or config.get("target_direction") or "auto"
 
     book = epub.read_epub(input_path)
+    if chapters:
+        all_chapters = chapters_from_book(book)
+        selected = resolve_selection(all_chapters, chapters)
+        restrict_book(book, chapter_files(selected))
     pages = _parse_pages(book)
     toc_nodes = _parse_toc(book.toc)
 
@@ -223,3 +234,50 @@ def _persist_paragraph(cache, paragraph, on_paragraph) -> None:
     cache.update_paragraph(paragraph)
     if on_paragraph is not None:
         on_paragraph(paragraph)
+
+
+def preview_translation(
+    input_path: str,
+    *,
+    engine: str | None = None,
+    source_lang: str = "English",
+    target_lang: str = "Italian",
+    chapters: Any = None,
+    limit: int = 20,
+    direction: str = "auto",
+    settings: dict[str, Any] | None = None,
+) -> list[tuple[str, str]]:
+    """Translate a few segments and return ``[(original, translation), ...]``.
+
+    Nothing is written to disk: this powers the GUI/CLI *preview*.
+    """
+    ensure_defaults()
+    _apply_settings(settings)
+    translator = get_translator(get_engine_class(engine))
+    translator.set_source_lang(source_lang)
+    translator.set_target_lang(target_lang)
+
+    book = epub.read_epub(input_path)
+    if chapters:
+        selected = resolve_selection(chapters_from_book(book), chapters)
+        restrict_book(book, chapter_files(selected))
+    pages = _parse_pages(book)
+
+    handler = get_element_handler(
+        translator.placeholder, translator.separator,
+        direction or get_config().get("target_direction") or "auto")
+    originals = handler.prepare_original(get_page_elements(pages))
+
+    preview: list[tuple[str, str]] = []
+    for entry in originals:
+        content = entry[3]
+        if entry[4] or not content.strip():
+            continue
+        try:
+            translation = translator.translate(content)
+        except Exception as exc:  # noqa: BLE001 - preview must not crash
+            translation = f"[error: {exc}]"
+        preview.append((content, str(translation).strip()))
+        if len(preview) >= limit:
+            break
+    return preview
