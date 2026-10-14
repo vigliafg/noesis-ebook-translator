@@ -1,0 +1,221 @@
+name: build-releases
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows-x64
+          - os: macos-15-intel
+            name: macos-x64
+          - os: macos-15
+            name: macos-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          set -e
+          # Icon is optional so a build without the real asset still works;
+          # assets/noesis-ebook-translator.{ico,icns} are added before release.
+          ICON=()
+          if [ "$RUNNER_OS" = "Windows" ] && [ -f assets/noesis-ebook-translator.ico ]; then
+            ICON=(--icon assets/noesis-ebook-translator.ico)
+          elif [ "$RUNNER_OS" = "macOS" ] && [ -f assets/noesis-ebook-translator.icns ]; then
+            ICON=(--icon assets/noesis-ebook-translator.icns)
+          fi
+          # PyInstaller uses ';' as the source:dest separator on Windows and
+          # ':' on Linux/macOS.
+          case "$RUNNER_OS" in
+            Windows) SEP=';' ;;
+            *)       SEP=':' ;;
+          esac
+          # `main.py` imports both the app package `noesis_ebook_translator` and
+          # the `calibre` compatibility shim: collect them explicitly (their
+          # submodules are not always discovered automatically).
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --clean \
+            --noconfirm \
+            --name NoesisEbookTranslator \
+            --paths . \
+            "${ICON[@]}" \
+            --collect-all pyqtribbon \
+            --collect-submodules noesis_ebook_translator \
+            --collect-submodules calibre \
+            --hidden-import calibre \
+            --add-data "assets/noesis-ebook-translator.png${SEP}assets" \
+            main.py
+
+      - name: Build NSIS installer (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -e
+          choco install nsis -y --no-progress
+          # Extract version from the git tag (strip leading 'v')
+          V="${GITHUB_REF#refs/tags/v}"
+          # Fallback for manual runs / non-tag pushes
+          [[ "$V" == "$GITHUB_REF" ]] && V="0.0.0-dev"
+          echo "NSIS VERSION=$V"
+          export PATH="/c/Program Files (x86)/NSIS:$PATH"
+          MSYS_NO_PATHCONV=1 makensis "/DVERSION=$V" installer.nsi
+          ls -la NoesisEbookTranslator-*-setup.exe
+
+      - name: Package artifact
+        shell: bash
+        env:
+          BASE: NoesisEbookTranslator-${{ matrix.name }}
+        run: |
+          set -e
+          case "$RUNNER_OS" in
+            Windows)
+              mv "dist/NoesisEbookTranslator.exe" "$BASE.exe"
+              # Rename the NSIS installer to include the platform in the name.
+              SETUP=$(echo NoesisEbookTranslator-*-setup.exe)
+              if [ -f "$SETUP" ]; then
+                mv "$SETUP" "$BASE-setup.exe"
+              fi
+              ;;
+            macOS)
+              # .app is a directory bundle → wrap it in a .dmg
+              hdiutil create -volname "NoesisEbookTranslator" \
+                -srcfolder "dist/NoesisEbookTranslator.app" \
+                -ov -format UDZO "$BASE.dmg"
+              ;;
+          esac
+          ls -la
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoesisEbookTranslator-${{ matrix.name }}
+          path: NoesisEbookTranslator-${{ matrix.name }}*
+          if-no-files-found: error
+
+  linux-appimage:
+    name: linux-x86_64-appimage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: |
+          set -e
+          pyinstaller \
+            --onefile \
+            --windowed \
+            --clean \
+            --noconfirm \
+            --name NoesisEbookTranslator \
+            --paths . \
+            --collect-all pyqtribbon \
+            --collect-submodules noesis_ebook_translator \
+            --collect-submodules calibre \
+            --hidden-import calibre \
+            --add-data "assets/noesis-ebook-translator.png:assets" \
+            main.py
+
+      - name: Package AppImage
+        shell: bash
+        run: |
+          set -e
+          APPDIR=AppDir
+          mkdir -p "$APPDIR/usr/bin"
+
+          # self-contained binary
+          cp "dist/NoesisEbookTranslator" "$APPDIR/usr/bin/NoesisEbookTranslator"
+          chmod +x "$APPDIR/usr/bin/NoesisEbookTranslator"
+
+          # icon (256x256 PNG)
+          cp assets/noesis-ebook-translator.png "$APPDIR/NoesisEbookTranslator.png"
+
+          # desktop entry
+          cat > "$APPDIR/NoesisEbookTranslator.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=Noesis Ebook Translator
+          Exec=NoesisEbookTranslator
+          Icon=NoesisEbookTranslator
+          Categories=Office;Utility;
+          Comment=Translate EPUB ebooks with the Ebook Translator engine
+          Terminal=false
+          EOF
+
+          # AppRun launcher
+          cat > "$APPDIR/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          exec "${HERE}/usr/bin/NoesisEbookTranslator" "$@"
+          EOF
+          chmod +x "$APPDIR/AppRun"
+
+          # appimagetool (run without FUSE via --appimage-extract-and-run)
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool.AppImage
+          chmod +x appimagetool.AppImage
+          ./appimagetool.AppImage --appimage-extract-and-run \
+            "$APPDIR" "NoesisEbookTranslator-x86_64.AppImage"
+          ls -la
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoesisEbookTranslator-linux-x86_64-appimage
+          path: NoesisEbookTranslator-x86_64.AppImage
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build, linux-appimage]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

@@ -1,0 +1,17 @@
+# Core GUI framework (ribbon interface)
+PyQt6>=6.6
+
+# Ribbon widget used for the main toolbar
+pyqtribbon>=0.7.8
+
+# Qt binding abstraction (PyQt6/PySide6) required by pyqtribbon
+qtpy
+
+# EPUB reading/writing (the translation pipeline core)
+ebooklib
+
+# XHTML parsing/rewriting that preserves inline markup
+lxml
+
+# HTTP stack used by the verbatim Calibre-plugin translation engines
+mechanize

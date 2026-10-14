@@ -1,0 +1,65 @@
+# Packaging metadata for Noesis Ebook Translator.
+#
+# NOTE: this project is NOT distributed through PyPI. The desktop app ships as a
+# native bundle (Windows NSIS installer, Linux AppImage, macOS .dmg) built with
+# PyInstaller by `.github/workflows/release.yml`. The `calibre/` directory is a
+# runtime compatibility shim for the verbatim Ebook Translator engine and must
+# never be treated as (or published as) a package named "calibre".
+#
+# The block below exists so tools (editors, `pip install -e .` for developers,
+# CI introspection) can read the metadata and the dependency list.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noesis-ebook-translator"
+version = "2.4.2"
+description = "Desktop GUI to translate EPUB ebooks using the Ebook Translator engine (verbatim from bookfere's Calibre plugin)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "vigliafg" }]
+keywords = ["epub", "ebook", "translation", "translate", "calibre", "pyqt6"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Natural Language :: Italian",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Linguistic",
+]
+dependencies = [
+    "PyQt6>=6.6",
+    "pyqtribbon>=0.7.8",
+    "qtpy",
+    "ebooklib",
+    "lxml",
+    "mechanize",
+]
+
+[project.urls]
+Homepage = "https://github.com/vigliafg/noesis-ebook-translator"
+Source = "https://github.com/vigliafg/noesis-ebook-translator"
+"Upstream engine" = "https://github.com/bookfere/Ebook-Translator-Calibre-Plugin"
+
+# Developer convenience only: the app is normally launched with `python main.py`.
+[project.scripts]
+noesis-ebook-translator = "main:main"
+
+[tool.setuptools]
+# `main.py` is the GUI entry point; the rest of the code lives in the
+# `noesis_ebook_translator` package (the `calibre/` shim is intentionally NOT a
+# distributable package).
+py-modules = ["main"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["noesis_ebook_translator*"]
+exclude = ["calibre*", "tests*", "tools*"]
