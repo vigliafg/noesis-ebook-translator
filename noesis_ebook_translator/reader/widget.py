@@ -115,6 +115,8 @@ class ReaderWidget(QWidget):
             item = QTreeWidgetItem([chapter.name or chapter.file or "(section)"])
             if chapter.file:
                 item.setData(0, Qt.ItemDataRole.UserRole, chapter.file)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Unchecked)
             if parent_item is None:
                 self.toc.addTopLevelItem(item)
             else:
@@ -126,6 +128,23 @@ class ReaderWidget(QWidget):
         for chapter in self.document.chapters:
             add(chapter)
         self.toc.expandAll()
+
+    def selected_files(self) -> list[str]:
+        """Files of the checked chapters (a checked parent selects its subtree)."""
+        result: list[str] = []
+
+        def collect(item: QTreeWidgetItem, inherit: bool) -> None:
+            checked = inherit or item.checkState(0) == Qt.CheckState.Checked
+            if checked:
+                file_name = item.data(0, Qt.ItemDataRole.UserRole)
+                if file_name and file_name not in result:
+                    result.append(file_name)
+            for i in range(item.childCount()):
+                collect(item.child(i), checked)
+
+        for i in range(self.toc.topLevelItemCount()):
+            collect(self.toc.topLevelItem(i), False)
+        return result
 
     # ---------------------------------------------------------- callbacks
     def _on_toc_click(self, item: QTreeWidgetItem, _column: int) -> None:

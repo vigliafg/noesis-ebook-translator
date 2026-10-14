@@ -44,7 +44,8 @@ class TranslationWorker(QThread):
     finished_ok = pyqtSignal(str)
     failed = pyqtSignal(str)
 
-    def __init__(self, input_path, output_path, engine, source, target, settings):
+    def __init__(self, input_path, output_path, engine, source, target, settings,
+                 chapters=None):
         super().__init__()
         self.input_path = input_path
         self.output_path = output_path
@@ -52,6 +53,7 @@ class TranslationWorker(QThread):
         self.source = source
         self.target = target
         self.settings = settings
+        self.chapters = chapters
         self._cancel = threading.Event()
 
     def cancel(self) -> None:
@@ -65,6 +67,7 @@ class TranslationWorker(QThread):
                 engine=self.engine,
                 source_lang=self.source,
                 target_lang=self.target,
+                chapters=self.chapters,
                 settings=self.settings,
                 on_progress=lambda frac, msg: self.progressed.emit(frac, msg),
                 on_log=lambda text, error=False: self.logged.emit(text, error),
@@ -314,7 +317,13 @@ class MainWindow(QMainWindow):
         engine = self.cmb_engine.currentText()
         source = self.cmb_source.currentText()
         target = self.cmb_target.currentText()
-        self._output_path = book.default_output_path(self._input_path, target)
+        chapters = self.reader.selected_files() or None
+        if chapters:
+            self._output_path = book.default_output_path(
+                self._input_path, target).replace(
+                ".epub", f"_sel-{len(chapters)}.epub")
+        else:
+            self._output_path = book.default_output_path(self._input_path, target)
         self.lbl_output.setText(self._output_path)
 
         api_keys = [k for k in [self.edt_api_key.text().strip()] if k]
@@ -333,7 +342,8 @@ class MainWindow(QMainWindow):
         appconfig.save_settings(settings)
 
         self.worker = TranslationWorker(
-            self._input_path, self._output_path, engine, source, target, settings)
+            self._input_path, self._output_path, engine, source, target, settings,
+            chapters=chapters)
         self.worker.progressed.connect(self._on_progress)
         self.worker.logged.connect(self._on_log)
         self.worker.finished_ok.connect(self._on_finished)

@@ -43,6 +43,42 @@ class TestGui(unittest.TestCase):
         finally:
             window.close()
 
+    def test_reader_chapter_selection(self):
+        import os
+        import tempfile
+
+        from PyQt6.QtCore import Qt
+
+        from noesis_ebook_translator import appconfig
+        from tests.fixtures import build_rich_epub
+
+        appconfig.ensure_defaults()
+        import main
+
+        path = build_rich_epub(os.path.join(tempfile.mkdtemp(), "r.epub"))
+        window = main.MainWindow()
+        try:
+            window._apply_source(path)
+            self.assertEqual(window.reader.selected_files(), [])
+
+            def walk(item):
+                yield item
+                for i in range(item.childCount()):
+                    yield from walk(item.child(i))
+
+            for i in range(window.reader.toc.topLevelItemCount()):
+                for item in walk(window.reader.toc.topLevelItem(i)):
+                    if item.data(0, Qt.ItemDataRole.UserRole) == "c3.xhtml":
+                        item.setCheckState(0, Qt.CheckState.Checked)
+            self.assertEqual(window.reader.selected_files(), ["c3.xhtml"])
+
+            worker = main.TranslationWorker(
+                path, "/tmp/x.epub", "Fake", "English", "Italian", {},
+                chapters=["c3.xhtml"])
+            self.assertEqual(worker.chapters, ["c3.xhtml"])
+        finally:
+            window.close()
+
     def test_reader_opens_and_navigates(self):
         import os
         import tempfile
