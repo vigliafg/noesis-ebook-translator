@@ -125,24 +125,22 @@ I test girano **headless** (`QT_QPA_PLATFORM=offscreen`) e usano un motore di
 traduzione fittizio offline: non serve la rete. In CI sono eseguiti su
 `ubuntu-latest` (Python 3.12) da `.github/workflows/tests.yml`.
 
-### Corpus Darwin (fixture reali)
+### Corpus Project Gutenberg (fixture reali)
 
-I test end-to-end girano su tre libri veri di **Charles Darwin** da Project
-Gutenberg (pubblico dominio), in `tests/data/darwin/`, scaricati nell'edizione
-**`.epub.images`** (illustrazioni incluse):
+I test end-to-end girano su **13 libri veri** di Project Gutenberg (pubblico
+dominio), in `tests/data/corpus/`, scaricati nell'edizione **`.epub.images`**:
+**10** hanno insieme **TOC multilivello** (profondità ≥ 2) e **illustrazioni**
+(≥ 15 immagini) — trattati, manuali e testi scientifici (botanica, anatomia,
+astronomia, geologia, bookbinding, meccanica…). Elenco completo in
+`tests/data/corpus/SOURCE.md`; catalogo leggibile in `MANIFEST.json`.
 
-| File | Project Gutenberg | Illustrazioni |
-| --- | --- | --- |
-| `origin_of_species.epub` | [#1228 — On the Origin of Species](https://www.gutenberg.org/ebooks/1228) | copertina |
-| `voyage_of_the_beagle.epub` | [#944 — The Voyage of the Beagle](https://www.gutenberg.org/ebooks/944) | **15 immagini (40 `<img>`)** |
-| `descent_of_man.epub` | [#2300 — The Descent of Man](https://www.gutenberg.org/ebooks/2300) | copertina |
-
-Verificano che l'output sia un EPUB valido, con **stesso numero di documenti**,
-traduzioni applicate, **ancore/link** e **illustrazioni preservate** (`<img>`).
+I test verificano che l'output sia un EPUB valido con **stesso numero di
+documenti**, traduzioni applicate, **ancore/link**, **illustrazioni** (`<img>`) e
+**profondità del TOC** preservati.
 
 ```bash
-python tools/fetch_darwin_fixtures.py          # (ri)scarica le fixture
-NOESIS_ONLINE_TESTS=1 python -m unittest tests.test_darwin_corpus -v   # + test Google reale
+python tools/fetch_corpus_fixtures.py            # (ri)scarica corpus + MANIFEST.json
+NOESIS_ONLINE_TESTS=1 python -m unittest tests.test_corpus -v   # + test Google reale
 ```
 
 ## Build delle release (GitHub Actions)
