@@ -18,12 +18,13 @@ from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFormLayout, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit,
-    QProgressBar, QPushButton, QTextEdit, QVBoxLayout, QWidget)
+    QProgressBar, QPushButton, QTabWidget, QTextEdit, QVBoxLayout, QWidget)
 
 from pyqtribbon import RibbonBar
 
 from noesis_ebook_translator import APP_NAME, __version__, appconfig, book, theme
 from noesis_ebook_translator.i18n import T, get_language, set_language
+from noesis_ebook_translator.reader import ReaderWidget
 from noesis_ebook_translator.engines.languages import google as GOOGLE_LANGUAGES
 
 
@@ -133,6 +134,16 @@ class MainWindow(QMainWindow):
         self.chk_cache.setChecked(True)
         self.chk_batch = panel_out.addCheckBox(T("label.batch"))
 
+        read_cat = self.ribbon.addCategory("Lettura")
+        panel_nav = read_cat.addPanel("Navigazione")
+        panel_nav.addLargeButton("◀ Prev", slot=lambda: self.reader.backend.prev_chapter())
+        panel_nav.addLargeButton("Next ▶", slot=lambda: self.reader.backend.next_chapter())
+        panel_zoom = read_cat.addPanel("Vista")
+        panel_zoom.addLargeButton("Zoom +", slot=lambda: self.reader.backend.set_zoom(1))
+        panel_zoom.addLargeButton("Zoom −", slot=lambda: self.reader.backend.set_zoom(-1))
+        self.btn_parallel = panel_zoom.addLargeButton(
+            "Parallelo", slot=lambda: self.reader.btn_parallel.toggle())
+
         info_cat = self.ribbon.addCategory(T("tab.info"))
         panel_about = info_cat.addPanel(T("tab.info"))
         panel_about.addLargeButton("About", slot=self.on_about)
@@ -160,8 +171,15 @@ class MainWindow(QMainWindow):
         self.log.setReadOnly(True)
         outer.addWidget(self.log, 1)
 
-        self.setCentralWidget(central)
-        self.resize(900, 620)
+        self.reader = ReaderWidget()
+        self.reader.statusMessage.connect(self.status.setText)
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(central, "Traduzione")
+        self.tabs.addTab(self.reader, "Lettura")
+
+        self.setCentralWidget(self.tabs)
+        self.resize(1024, 700)
         self._input_path: str | None = None
         self._output_path: str | None = None
 
@@ -209,6 +227,11 @@ class MainWindow(QMainWindow):
         self.lbl_input.setText(path)
         self.lbl_output.setText(self._output_path)
         self.status.setText(T("status.ready"))
+        try:
+            self.reader.open_path(path)
+            self.tabs.setCurrentWidget(self.reader)
+        except Exception as exc:  # noqa: BLE001 - reader is best effort
+            self.log.appendPlainText(f"[reader] {exc}")
 
     def on_open_output(self) -> None:
         if not self._output_path:
@@ -281,6 +304,10 @@ class MainWindow(QMainWindow):
     def _on_finished(self, path: str) -> None:
         self.progress.setValue(100)
         self.status.setText(T("status.done"))
+        try:
+            self.reader.set_translated_path(path)
+        except Exception:  # noqa: BLE001
+            pass
         QMessageBox.information(self, T("app.title"), T("msg.done").format(path))
 
     def _on_failed(self, message: str) -> None:

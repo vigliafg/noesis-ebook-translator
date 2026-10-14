@@ -23,7 +23,7 @@ class TestGui(unittest.TestCase):
 
         window = main.MainWindow()
         try:
-            self.assertEqual(len(window.ribbon.categories()), 5)
+            self.assertEqual(len(window.ribbon.categories()), 6)
             self.assertGreater(window.cmb_engine.count(), 10)
             self.assertGreater(window.cmb_target.count(), 100)
         finally:
@@ -40,6 +40,28 @@ class TestGui(unittest.TestCase):
             window.cmb_engine.setCurrentText("OpenRouter")
             self.assertTrue(window.edt_api_key.isEnabled())
             self.assertGreater(window.cmb_model.count(), 0)
+        finally:
+            window.close()
+
+    def test_reader_opens_and_navigates(self):
+        import os
+        import tempfile
+
+        from noesis_ebook_translator import appconfig
+        from tests.fixtures import build_sample_epub
+
+        appconfig.ensure_defaults()
+        import main
+
+        path = build_sample_epub(os.path.join(tempfile.mkdtemp(), "s.epub"))
+        window = main.MainWindow()
+        try:
+            self.assertEqual(window.tabs.count(), 2)
+            window.reader.open_path(path)
+            self.assertGreater(window.reader.toc.topLevelItemCount(), 0)
+            first = window.reader.backend.current_href()
+            window.reader.backend.next_chapter()
+            self.assertNotEqual(window.reader.backend.current_href(), first)
         finally:
             window.close()
 
