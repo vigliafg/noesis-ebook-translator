@@ -119,15 +119,17 @@ def build_ribbon(window) -> None:
     pvw = panel(read, "panel.view")
     big(pvw, "assets.zoom_in", "zoom_in", lambda: window.reader.backend.set_zoom(1))
     big(pvw, "assets.zoom_out", "zoom_out", lambda: window.reader.backend.set_zoom(-1))
-    window.btn_spread = big(pvw, "label.spread", "options", window.on_toggle_spread)
+    window.btn_spread = pvw.addLargeToggleButton(T("label.spread"), icon=icon("options"))
+    window.btn_spread.toggled.connect(window.on_toggle_spread)
 
     ps = panel(read, "panel.search")
     big(ps, "action.find", "find", window.on_find)
     big(ps, "action.find_next", "find", window.on_find_next)
 
     pcp = panel(read, "panel.compare")
-    window.btn_parallel = big(pcp, "action.compare", "parallel",
-                              lambda: window.reader.btn_parallel.toggle())
+    window.btn_parallel = pcp.addLargeToggleButton(
+        T("action.compare"), icon=icon("parallel"))
+    window.btn_parallel.toggled.connect(window.on_parallel_toggled)
 
     pnt = panel(read, "panel.notes")
     big(pnt, "action.add_note", "note", window.on_add_note)

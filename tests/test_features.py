@@ -125,16 +125,102 @@ class TestWidgets(unittest.TestCase):
         window = main.MainWindow()
         try:
             window._apply_source(book)
+            item = window.reader.toc.topLevelItem(0)
+            # Reader category (index 2) → no checkboxes at all
+            window._on_ribbon_category(2)
+            self.assertEqual(window.reader.toc_mode(), "read")
+            self.assertFalse(bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable))
+            self.assertIsNone(item.data(0, Qt.ItemDataRole.CheckStateRole))
             # Translate category (index 4) → selectable checkboxes
             window._on_ribbon_category(4)
             self.assertEqual(window.reader.toc_mode(), "select")
-            item = window.reader.toc.topLevelItem(0)
             self.assertTrue(bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable))
-            # Reader category (index 2) → no checkboxes
-            window._on_ribbon_category(2)
-            self.assertEqual(window.reader.toc_mode(), "read")
-            item = window.reader.toc.topLevelItem(0)
-            self.assertFalse(bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable))
+            self.assertIsNotNone(item.data(0, Qt.ItemDataRole.CheckStateRole))
+        finally:
+            window.close()
+
+    def test_toc_click_navigates_and_section_expands(self):
+        from PyQt6.QtCore import Qt
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-tocclick-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = main.MainWindow()
+        try:
+            window._apply_source(book)
+
+            def find(name):
+                def walk(it):
+                    yield it
+                    for i in range(it.childCount()):
+                        yield from walk(it.child(i))
+                for i in range(window.reader.toc.topLevelItemCount()):
+                    for it in walk(window.reader.toc.topLevelItem(i)):
+                        if it.data(0, Qt.ItemDataRole.UserRole) == name:
+                            return it
+                return None
+
+            target = find("c3.xhtml")
+            window.reader._on_toc_click(target, 0)
+            self.assertEqual(window.reader.backend.current_href(), "c3.xhtml")
+            # a section without a file toggles expansion instead of navigating
+            section = next(
+                window.reader.toc.topLevelItem(i)
+                for i in range(window.reader.toc.topLevelItemCount())
+                if not window.reader.toc.topLevelItem(i).data(
+                    0, Qt.ItemDataRole.UserRole))
+            before = section.isExpanded()
+            window.reader._on_toc_click(section, 0)
+            self.assertNotEqual(section.isExpanded(), before)
+        finally:
+            window.close()
+
+    def test_parallel_view_syncs_both_on_toc_click(self):
+        from PyQt6.QtCore import Qt
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-parallel-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        translated = build_rich_epub(os.path.join(tmp, "rich_IT.epub"))
+        window = main.MainWindow()
+        try:
+            window._apply_source(book)
+            window.reader.set_translated_path(translated)
+            window.reader.set_parallel(True)
+            self.assertTrue(window.reader.is_parallel())
+
+            def find(name):
+                def walk(it):
+                    yield it
+                    for i in range(it.childCount()):
+                        yield from walk(it.child(i))
+                for i in range(window.reader.toc.topLevelItemCount()):
+                    for it in walk(window.reader.toc.topLevelItem(i)):
+                        if it.data(0, Qt.ItemDataRole.UserRole) == name:
+                            return it
+                return None
+
+            window.reader._on_toc_click(find("c3.xhtml"), 0)
+            self.assertEqual(window.reader.backend.current_href(), "c3.xhtml")
+            self.assertEqual(window.reader.second.current_href(), "c3.xhtml")
+        finally:
+            window.close()
+
+    def test_reader_find(self):
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-find-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = main.MainWindow()
+        try:
+            window._apply_source(book)
+            self.assertTrue(window.reader.find_text("Opening"))
         finally:
             window.close()
 

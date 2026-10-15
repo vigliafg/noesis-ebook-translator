@@ -7,6 +7,36 @@ document.body.append(view)
 
 let bridge = null
 
+// --- reading style (applied to the book's section documents) ----------------
+let currentTheme = 'light'
+let currentZoom = 16
+
+function themeCss(mode) {
+  if (mode === 'dark') {
+    return 'html, body { background: #1f2227; color: #e8eaed; }'
+      + ' img, video, svg { filter: invert(1) hue-rotate(180deg); }'
+  }
+  if (mode === 'sepia') {
+    return 'html, body { background: #f4ecd8; color: #4a3f2f; }'
+      + ' img, video, svg { filter: sepia(0.4) saturate(1.1); }'
+  }
+  return 'html, body { background: #ffffff; color: #1c1e21; }'
+}
+
+function pageBackground(mode) {
+  if (mode === 'dark') return '#1f2227'
+  if (mode === 'sepia') return '#f4ecd8'
+  return '#ffffff'
+}
+
+function applyStyles() {
+  const css = `html { font-size: ${currentZoom}px; }\n` + themeCss(currentTheme)
+  document.body.style.background = pageBackground(currentTheme)
+  if (view.renderer && typeof view.renderer.setStyles === 'function') {
+    try { view.renderer.setStyles(css) } catch (e) { /* renderer not ready */ }
+  }
+}
+
 function emit(name, ...args) {
   if (bridge && typeof bridge[name] === 'function') {
     try { bridge[name](...args) } catch (e) { /* ignore */ }
@@ -21,20 +51,11 @@ view.addEventListener('relocate', (e) => {
 view.addEventListener('load', () => emit('on_loaded', ''))
 view.addEventListener('error', (e) => emit('on_error', String((e.detail) || e)))
 
-function themeCss(mode) {
-  if (mode === 'dark') {
-    return 'body{background:#1f2227;} foliate-view::part(filter){filter:invert(1) hue-rotate(180deg);}'
-  }
-  if (mode === 'sepia') {
-    return 'body{background:#f4ecd8;} foliate-view::part(filter){filter:sepia(0.4) saturate(1.1);}'
-  }
-  return 'body{background:#ffffff;}'
-}
-
 window.api = {
   open: async (url) => {
     try {
       await view.open(url)
+      applyStyles()
       emit('on_opened', view.book ? JSON.stringify(view.book.metadata || {}) : '{}')
     } catch (err) { emit('on_error', String(err)) }
   },
@@ -47,16 +68,16 @@ window.api = {
     if (value === null || value === undefined) view.removeAttribute(name)
     else view.setAttribute(name, value)
   },
-  zoom: (pt) => {
-    document.getElementById('zoom').textContent =
-      `foliate-view { font-size: ${pt}px; }`
-  },
-  theme: (mode) => {
-    document.getElementById('theme').textContent = themeCss(mode)
+  zoom: (pt) => { currentZoom = pt; applyStyles() },
+  theme: (mode) => { currentTheme = mode; applyStyles() },
+  setStyles: (css) => {
+    if (view.renderer && typeof view.renderer.setStyles === 'function') {
+      try { view.renderer.setStyles(css) } catch (e) { /* ignore */ }
+    }
   },
   toc: () => {
     const toc = (view.book && view.book.toc) || []
-    emit('toc', JSON.stringify(toc))
+    emit('on_toc', JSON.stringify(toc))
   },
 }
 

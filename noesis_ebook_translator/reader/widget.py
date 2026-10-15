@@ -1,22 +1,33 @@
-"""Composite EPUB reader widget (TOC dock + toolbar + view + optional parallel)."""
+"""Composite EPUB reader widget (TOC dock + search + view + optional parallel)."""
 from __future__ import annotations
 
 import os
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox, QHBoxLayout, QLineEdit, QPushButton, QSplitter, QTreeWidget,
-    QTreeWidgetItem, QVBoxLayout, QWidget)
+    QHBoxLayout, QLineEdit, QSplitter, QTreeWidget, QTreeWidgetItem,
+    QVBoxLayout, QWidget)
 
+from ..i18n import T
 from .document import EpubDocument
 from .session import Session
 
 
 class ReaderWidget(QWidget):
-    """Reader with a multi-level TOC, navigation, zoom, theme, find, parallel."""
+    """Reader with a multi-level TOC, search, and an optional parallel view.
+
+    The TOC has two modes:
+
+    * ``"read"`` — clickable bookmarks only (click a chapter to navigate);
+    * ``"select"`` — clickable **and** with checkboxes to pick chapters.
+
+    Navigating (TOC click, link click) moves **both** viewports when the
+    parallel view is on, and scrolling is synchronised in both directions.
+    """
 
     statusMessage = pyqtSignal(str)
     translatedRequested = pyqtSignal(str)  # emission → host starts translation
+    parallelChanged = pyqtSignal(bool)
 
     def __init__(self, session: Session | None = None, backend_mode: str = "auto",
                  parent=None) -> None:
@@ -25,9 +36,9 @@ class ReaderWidget(QWidget):
         self.document: EpubDocument | None = None
         self._translated: EpubDocument | None = None
         self._syncing = False
-        #: "read" (clickable bookmarks only) or "select" (click + checkboxes).
         self._toc_mode = "read"
         self._toc_items: list = []
+        self._parallel = False
 
         from . import create_backend
         self.mode = backend_mode
@@ -46,34 +57,18 @@ class ReaderWidget(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
 
         bar = QHBoxLayout()
-        self.btn_prev = QPushButton("◀")
-        self.btn_next = QPushButton("▶")
-        self.btn_prev.clicked.connect(lambda: self.backend.prev_chapter())
-        self.btn_next.clicked.connect(lambda: self.backend.next_chapter())
-        self.btn_zoom_out = QPushButton("A−")
-        self.btn_zoom_in = QPushButton("A+")
-        self.btn_zoom_out.clicked.connect(lambda: self.backend.set_zoom(-1))
-        self.btn_zoom_in.clicked.connect(lambda: self.backend.set_zoom(1))
-        self.cmb_theme = QComboBox()
-        self.cmb_theme.addItems(["light", "sepia", "dark"])
-        self.cmb_theme.currentTextChanged.connect(self.backend.set_theme)
-        self.btn_parallel = QPushButton("Parallelo")
-        self.btn_parallel.setCheckable(True)
-        self.btn_parallel.toggled.connect(self._toggle_parallel)
         self.edt_find = QLineEdit()
-        self.edt_find.setPlaceholderText("Cerca nel capitolo…")
-        self.edt_find.returnPressed.connect(lambda: self._find(False))
-        for widget in (self.btn_prev, self.btn_next, self.btn_zoom_out,
-                       self.btn_zoom_in, self.cmb_theme, self.btn_parallel):
-            bar.addWidget(widget)
+        self.edt_find.setPlaceholderText(T("label.search"))
+        self.edt_find.returnPressed.connect(lambda: self.find_next(False))
         bar.addWidget(self.edt_find, 1)
         root.addLayout(bar)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.toc = QTreeWidget()
-        self.toc.setHeaderLabels(["Indice"])
+        self.toc.setHeaderLabels([T("action.toc")])
         self.toc.setMinimumWidth(200)
         self.toc.itemClicked.connect(self._on_toc_click)
+        self.toc.itemActivated.connect(self._on_toc_click)
         splitter.addWidget(self.toc)
 
         views = QSplitter(Qt.Orientation.Horizontal)
@@ -91,9 +86,10 @@ class ReaderWidget(QWidget):
             # Non-EPUB formats are handled natively by the full (foliate-js) backend.
             self.document = None
             self.toc.clear()
+            self._toc_items = []
             self.backend.open_file(path)
             self.session.add_recent(path, path.rsplit("/", 1)[-1])
-            self.statusMessage.emit(f"Formato nativo: {path.rsplit('/', 1)[-1]}")
+            self.statusMessage.emit(path.rsplit("/", 1)[-1])
             return
         self.document = EpubDocument(path)
         self._populate_toc()
@@ -108,6 +104,16 @@ class ReaderWidget(QWidget):
         except Exception:  # noqa: BLE001
             self._translated = None
 
+    # --------------------------------------------------------------- theme
+    def set_theme(self, mode: str) -> None:
+        """Apply the reading theme to both viewports (called by ``apply_theme``)."""
+        for backend in (self.backend, self.second):
+            try:
+                backend.set_theme(mode)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # ---------------------------------------------------------------- TOC
     def _populate_toc(self) -> None:
         self.toc.clear()
         self._toc_items = []
@@ -119,8 +125,6 @@ class ReaderWidget(QWidget):
             item = QTreeWidgetItem([chapter.name or chapter.file or "(section)"])
             if chapter.file:
                 item.setData(0, Qt.ItemDataRole.UserRole, chapter.file)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(0, Qt.CheckState.Unchecked)
             if parent_item is None:
                 self.toc.addTopLevelItem(item)
             else:
@@ -136,11 +140,7 @@ class ReaderWidget(QWidget):
         self._apply_toc_mode()
 
     def set_toc_mode(self, mode: str) -> None:
-        """Set the TOC behaviour: ``"read"`` (click only) or ``"select"``.
-
-        In ``"read"`` mode the checkboxes are hidden (the tree stays clickable);
-        in ``"select"`` mode the checkboxes are shown for chapter selection.
-        """
+        """Set the TOC behaviour: ``"read"`` (click only) or ``"select"``."""
         self._toc_mode = "select" if mode == "select" else "read"
         self._apply_toc_mode()
 
@@ -150,15 +150,16 @@ class ReaderWidget(QWidget):
     def _apply_toc_mode(self) -> None:
         selectable = self._toc_mode == "select"
         for item in self._toc_items:
-            flags = item.flags() | Qt.ItemFlag.ItemIsUserCheckable
+            flags = item.flags()
             if selectable:
-                flags |= Qt.ItemFlag.ItemIsUserCheckable
-                if item.checkState(0) == Qt.CheckState.PartiallyChecked:
+                item.setFlags(flags | Qt.ItemFlag.ItemIsUserCheckable)
+                if item.data(0, Qt.ItemDataRole.CheckStateRole) is None:
                     item.setCheckState(0, Qt.CheckState.Unchecked)
             else:
-                flags &= ~Qt.ItemFlag.ItemIsUserCheckable
-                item.setCheckState(0, Qt.CheckState.Unchecked)
-            item.setFlags(flags)
+                # Clearing the data (not just the flag) is required: Qt keeps
+                # drawing the checkbox while a CheckStateRole value is present.
+                item.setData(0, Qt.ItemDataRole.CheckStateRole, None)
+                item.setFlags(flags & ~Qt.ItemFlag.ItemIsUserCheckable)
 
     def selected_files(self) -> list[str]:
         """Files of the checked chapters (a checked parent selects its subtree)."""
@@ -177,11 +178,20 @@ class ReaderWidget(QWidget):
             collect(self.toc.topLevelItem(i), False)
         return result
 
-    # ---------------------------------------------------------- callbacks
-    def _on_toc_click(self, item: QTreeWidgetItem, _column: int) -> None:
+    # ---------------------------------------------------------- navigation
+    def _navigate(self, href: str, fraction: float = 0.0) -> None:
+        """Move the primary viewport (and the parallel one) to ``href``."""
+        self.backend.show_chapter(href, restore=fraction)
+        if self._parallel and self._translated is not None:
+            self.second.show_chapter(href, restore=fraction)
+
+    def _on_toc_click(self, item: QTreeWidgetItem, _column: int = 0) -> None:
         file_name = item.data(0, Qt.ItemDataRole.UserRole)
         if file_name:
-            self.backend.show_chapter(file_name)
+            self._navigate(file_name)
+        else:
+            # A section (no file): expand/collapse instead of navigating.
+            item.setExpanded(not item.isExpanded())
 
     def _on_link(self, href: str) -> None:
         if not href:
@@ -191,40 +201,63 @@ class ReaderWidget(QWidget):
             return
         file_name = href.split("#", 1)[0]
         if file_name and self.document and file_name in self.document.files():
-            self.backend.show_chapter(href)
+            self._navigate(href)
 
     def _on_position(self, href: str, fraction: float) -> None:
         if self.document is not None:
             self.session.set_position(self.document.path, href, fraction)
-        if self.btn_parallel.isChecked() and not self._syncing:
+        if self._parallel and self._translated is not None and not self._syncing:
             self._syncing = True
             try:
-                if self.second.current_href() != href:
-                    self.second.show_chapter(href)
-                self.second.set_fraction(fraction)
+                if href and self.second.current_href() != href:
+                    self.second.show_chapter(href, restore=fraction)
+                else:
+                    self.second.set_fraction(fraction)
             finally:
                 self._syncing = False
 
     def _on_second_scroll(self, href: str, fraction: float) -> None:
-        if self._syncing:
+        if not self._parallel or self._syncing:
             return
         self._syncing = True
         try:
-            self.backend.set_fraction(fraction)
+            if href and self.backend.current_href() != href:
+                self.backend.show_chapter(href, restore=fraction)
+            else:
+                self.backend.set_fraction(fraction)
         finally:
             self._syncing = False
 
-    def _toggle_parallel(self, on: bool) -> None:
-        if on and self._translated is not None:
+    # ------------------------------------------------------------- parallel
+    def is_parallel(self) -> bool:
+        return self._parallel
+
+    def set_parallel(self, on: bool) -> None:
+        on = bool(on) and self._translated is not None
+        if on == self._parallel:
+            return
+        self._parallel = on
+        if on:
             self.second.show()
             href = self.backend.current_href()
-            if href:
-                self.second.open_document(
-                    self._translated, {"href": href, "fraction": self.backend.fraction()})
+            self.second.open_document(
+                self._translated, {"href": href, "fraction": self.backend.fraction()})
         else:
             self.second.hide()
+        self.parallelChanged.emit(self._parallel)
 
+    def toggle_parallel(self) -> None:
+        self.set_parallel(not self._parallel)
+
+    # --------------------------------------------------------------- search
+    def find_text(self, text: str, backward: bool = False) -> bool:
+        if not text:
+            return False
+        return bool(self.backend.find(text, backward))
+
+    def find_next(self, backward: bool = False) -> bool:
+        return self.find_text(self.edt_find.text().strip(), backward)
+
+    # Backwards-compatible alias used by older callers.
     def _find(self, backward: bool) -> None:
-        text = self.edt_find.text().strip()
-        if text:
-            self.backend.find(text, backward)
+        self.find_next(backward)

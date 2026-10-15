@@ -138,6 +138,7 @@ class MainWindow(QMainWindow):
 
         self.reader = ReaderWidget(session=None, backend_mode=self._reader_mode())
         self.reader.statusMessage.connect(self.status.set_base_text)
+        self.reader.parallelChanged.connect(self._on_parallel_changed)
         self.library = LibraryWidget(self.reader.session)
         self.chapters = ChaptersWidget()
         self.figures = FiguresWidget()
@@ -278,7 +279,7 @@ class MainWindow(QMainWindow):
         from noesis_ebook_translator.ui import apply_theme
         app = QApplication.instance()
         if app is not None:
-            apply_theme(app, self._current_theme(), reader=self.reader.backend)
+            apply_theme(app, self._current_theme(), reader=self.reader)
         appconfig.save_settings({"ui_theme": self._current_theme()})
 
     def _on_ui_language_changed(self, _index: int) -> None:
@@ -351,8 +352,16 @@ class MainWindow(QMainWindow):
 
     def on_compare(self) -> None:
         self.tabs.setCurrentWidget(self.reader)
-        if not self.reader.btn_parallel.isChecked():
-            self.reader.btn_parallel.toggle()
+        self.reader.set_parallel(True)
+
+    def on_parallel_toggled(self, checked: bool) -> None:
+        self.reader.set_parallel(bool(checked))
+
+    def _on_parallel_changed(self, on: bool) -> None:
+        if hasattr(self, "btn_parallel"):
+            self.btn_parallel.blockSignals(True)
+            self.btn_parallel.setChecked(bool(on))
+            self.btn_parallel.blockSignals(False)
 
     def on_retranslate(self) -> None:
         self.tabs.setCurrentWidget(self._translate_tab)
@@ -390,15 +399,15 @@ class MainWindow(QMainWindow):
     def on_toggle_toc(self) -> None:
         self.reader.toc.setVisible(not self.reader.toc.isVisible())
 
-    def on_toggle_spread(self) -> None:
+    def on_toggle_spread(self, checked: bool) -> None:
         if hasattr(self.reader.backend, "set_spread"):
-            self.reader.backend.set_spread(not self.reader.btn_parallel.isChecked())
+            self.reader.backend.set_spread(bool(checked))
 
     def on_find(self) -> None:
         self.reader.edt_find.setFocus()
 
     def on_find_next(self) -> None:
-        self.reader._find(False)
+        self.reader.find_next(False)
 
     def on_print_pdf(self) -> None:
         backend = self.reader.backend
@@ -443,7 +452,7 @@ class MainWindow(QMainWindow):
         from noesis_ebook_translator.ui import apply_theme
         app = QApplication.instance()
         if app is not None:
-            apply_theme(app, mode, reader=self.reader.backend)
+            apply_theme(app, mode, reader=self.reader)
 
     def on_wizard(self) -> None:
         from noesis_ebook_translator.ui import OnboardingWizard

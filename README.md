@@ -63,6 +63,11 @@ importabile, altrimenti ripiega sul **lite**. Puoi forzare la scelta dalle
 *Impostazioni* (o nel wizard) oppure con la variabile
 `NOESIS_READER_BACKEND=full|lite|auto`.
 
+I comandi di lettura (navigazione, zoom, tema, vista parallela, stampa/PDF) sono
+nella scheda **Reader** del ribbon; nel lettore resta solo il **campo di ricerca**.
+Nel **full**, tema e zoom sono applicati al contenuto delle sezioni (via
+`foliate-js setStyles`).
+
 ## Capitoli, figure, tabelle, export
 
 - Traduci/ed esporta **l'intero libro o capitoli selezionati** dall'indice
