@@ -27,9 +27,19 @@ def available_backends() -> list[str]:
 
 def _preferred_mode() -> str:
     import os
-    # Default to the lite reader (deterministic, no WebEngine subprocess). The
-    # "full" packaging flavour exports NOESIS_READER_BACKEND=full.
-    return os.environ.get("NOESIS_READER_BACKEND", "lite").lower()
+    # Default to "auto": use the full reader (foliate-js) when QtWebEngine is
+    # importable, otherwise fall back to the lite reader. The "full" packaging
+    # flavour can still force it with NOESIS_READER_BACKEND=full.
+    return os.environ.get("NOESIS_READER_BACKEND", "auto").lower()
+
+
+def resolve_backend(mode: str) -> str:
+    """Resolve a requested backend to a concrete one that is available."""
+    mode = (mode or "auto").lower()
+    available = available_backends()
+    if mode in ("auto", ""):
+        return "full" if "full" in available else "lite"
+    return mode if mode in available else "lite"
 
 
 def prepare_full() -> bool:

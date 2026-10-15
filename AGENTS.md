@@ -128,7 +128,12 @@ GitHub Pages da `.github/workflows/docs.yml`.
   `scheme.py` (scheme `app://`), `widget.py`, `session.py`, `panels.py`.
 - `reader_web/` — bundle foliate-js **vendorizzato** (MIT) + wrapper QWebChannel.
   NON è un submodule: aggiornalo a mano e annota il commit in `reader_web/README.md`.
-- Il backend **full** è opt-in: `NOESIS_READER_BACKEND=full`. Default = `lite`.
+- Il backend è **`auto`** di default: usa **full** se QtWebEngine è importabile
+  (va importato *prima* della `QApplication`: vedi `prepare_full()`), altrimenti
+  ripiega su **lite**. Forzabile con `NOESIS_READER_BACKEND=full|lite|auto`.
+- In test/CI `NOESIS_READER_BACKEND=lite` (impostato in `tests/__init__.py`) e la
+  `QApplication` è creata prima dell'import di WebEngine, quindi i test restano
+  sul backend lite (deterministico).
 - Harness: `tests/harness.py` (scenario comune), `tests/test_reader_backends.py`
   (lite/full; il full gira in **sottoprocesso**), `tools/reader_harness.py` (CLI).
 - In test/CI `NOESIS_READER_BACKEND=lite` (impostato in `tests/__init__.py`).

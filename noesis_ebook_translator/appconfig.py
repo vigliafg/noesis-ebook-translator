@@ -40,7 +40,7 @@ APP_DEFAULTS: dict[str, Any] = {
     # App-level (desktop only) preferences.
     "ui_language": "it",
     "ui_theme": "system",
-    "reader_backend": "lite",
+    "reader_backend": "auto",
     "reduce_motion": False,
     "onboarding_done": False,
     # Reserve anchors/links so navigation targets and footnote references survive
@@ -63,6 +63,13 @@ def ensure_defaults() -> None:
         if config.preferences.get(key) is None:
             config.set(key, value)
             changed = True
+    # One-time migration: the reader backend default became "auto" (full when
+    # WebEngine is available, otherwise lite). Bump legacy "lite" users.
+    if not config.preferences.get("reader_backend_default_v2"):
+        if config.get("reader_backend") in (None, "lite"):
+            config.set("reader_backend", "auto")
+        config.set("reader_backend_default_v2", True)
+        changed = True
     if changed:
         config.commit()
 

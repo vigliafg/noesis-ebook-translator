@@ -35,9 +35,10 @@ class SettingsDialog(QDialog):
         self.chk_reduce = QCheckBox(T("label.reduce_motion"))
         self.chk_reduce.setChecked(bool(settings.get("reduce_motion", False)))
         self.cmb_reader = QComboBox()
+        self.cmb_reader.addItem(T("backend.auto"), "auto")
         for backend in available_backends():
             self.cmb_reader.addItem(T(f"backend.{backend}"), backend)
-        self._select(self.cmb_reader, settings.get("reader_backend", "lite"))
+        self._select(self.cmb_reader, settings.get("reader_backend", "auto"))
 
         form.addRow(T("label.ui_language"), self.cmb_language)
         form.addRow(T("label.theme"), self.cmb_theme)
@@ -76,7 +77,7 @@ class SettingsDialog(QDialog):
             "ui_language": self.cmb_language.currentData(),
             "ui_theme": self.cmb_theme.currentData(),
             "reduce_motion": self.chk_reduce.isChecked(),
-            "reader_backend": self.cmb_reader.currentData() or "lite",
+            "reader_backend": self.cmb_reader.currentData() or "auto",
         }
 
     def apply(self) -> dict:

@@ -88,10 +88,11 @@ class OnboardingWizard(QWizard):
 
         # -- reader -------------------------------------------------------
         self.cmb_reader = QComboBox()
+        self.cmb_reader.addItem(T("backend.auto"), "auto")
         for backend in available_backends():
             self.cmb_reader.addItem(T(f"backend.{backend}"), backend)
         reader_index = self.cmb_reader.findData(
-            settings.get("reader_backend", "lite"))
+            settings.get("reader_backend", "auto"))
         if reader_index >= 0:
             self.cmb_reader.setCurrentIndex(reader_index)
         reader_page = _page(T("wizard.reader_title"), T("wizard.reader_text"),
@@ -131,7 +132,7 @@ class OnboardingWizard(QWizard):
             "ui_language": self.cmb_language.currentData(),
             "ui_theme": self.cmb_theme.currentData(),
             "translate_engine": self.cmb_engine.currentText(),
-            "reader_backend": self.cmb_reader.currentData() or "lite",
+            "reader_backend": self.cmb_reader.currentData() or "auto",
             "api_key": self.edt_api_key.text().strip(),
             "model": self.edt_model.currentText().strip(),
         }

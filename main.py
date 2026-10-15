@@ -25,7 +25,7 @@ from pyqtribbon import RibbonBar
 
 from noesis_ebook_translator import APP_NAME, __version__, appconfig, book, theme
 from noesis_ebook_translator.i18n import T, get_language, set_language
-from noesis_ebook_translator.reader import ReaderWidget, available_backends
+from noesis_ebook_translator.reader import ReaderWidget, resolve_backend
 from noesis_ebook_translator.reader.panels import (
     ChaptersWidget, FiguresWidget, LibraryWidget, PreviewWidget, TablesWidget,
     TextsWidget)
@@ -244,9 +244,7 @@ class MainWindow(QMainWindow):
         self._output_path: str | None = None
 
     def _reader_mode(self) -> str:
-        requested = self._settings.get("reader_backend", "lite")
-        available = available_backends()
-        return requested if requested in available else "lite"
+        return resolve_backend(self._settings.get("reader_backend", "auto"))
 
     # ------------------------------------------------------------- helpers
     def _preview_options(self) -> dict:
@@ -386,10 +384,18 @@ class MainWindow(QMainWindow):
             self.chk_reduce.setChecked(bool(values.get("reduce_motion")))
             self._reduce_motion = bool(values.get("reduce_motion"))
             self.progress.set_reduce_motion(self._reduce_motion)
+            restart = False
             if values.get("ui_language") != get_language():
+                restart = True
+            if values.get("reader_backend") != self._settings.get(
+                    "reader_backend", "auto"):
+                restart = True
+            if restart:
                 QMessageBox.information(self, T("app.title"),
-                                        T("msg.restart_language"))
-            QMessageBox.information(self, T("app.title"), T("msg.settings_saved"))
+                                        T("msg.restart_needed"))
+            else:
+                QMessageBox.information(self, T("app.title"),
+                                        T("msg.settings_saved"))
 
     def _apply_theme_preview(self, mode: str) -> None:
         from noesis_ebook_translator.ui import apply_theme

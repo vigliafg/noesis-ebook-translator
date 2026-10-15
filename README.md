@@ -53,11 +53,15 @@ La GUI include un **lettore** con indice multilivello, navigazione, zoom, temi
 (chiaro/sepia/scuro), ricerca nel capitolo e **vista parallela** (originale vs
 tradotto). Esiste in due flavor:
 
-- **lite** (default): `QTextBrowser`, solo EPUB, nessuna dipendenza extra;
-- **full** (opt-in): [`foliate-js`](https://github.com/johnfactotum/foliate-js)
+- **full** (default quando disponibile): [`foliate-js`](https://github.com/johnfactotum/foliate-js)
   (MIT) in `QWebEngineView` — EPUB, **MOBI/AZW3, FB2, CBZ, PDF**, due pagine
-  (spread), stampa/export in PDF. Si attiva con `NOESIS_READER_BACKEND=full`
-  (richiede `requirements-full.txt`).
+  (spread), stampa/export in PDF. Richiede `requirements-full.txt` (QtWebEngine);
+- **lite** (fallback): `QTextBrowser`, solo EPUB, nessuna dipendenza extra.
+
+Il backend è **automatico** (`auto`): usa il **full** se QtWebEngine è
+importabile, altrimenti ripiega sul **lite**. Puoi forzare la scelta dalle
+*Impostazioni* (o nel wizard) oppure con la variabile
+`NOESIS_READER_BACKEND=full|lite|auto`.
 
 ## Capitoli, figure, tabelle, export
 
