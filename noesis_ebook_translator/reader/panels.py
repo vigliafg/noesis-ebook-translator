@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap, QTransform
+from PyQt6.QtGui import QIcon, QPainter, QPixmap, QTransform
 from PyQt6.QtWidgets import (
     QAbstractItemView, QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton,
@@ -50,6 +50,23 @@ def _fallback_icon() -> QIcon:
 def _chapter_icon() -> QIcon:
     from ..ui.icons import icon as _icon
     return _icon("chapters")
+
+
+def _with_badge(pixmap: QPixmap) -> QPixmap:
+    """Return a copy of ``pixmap`` with a 'translated' check badge in the corner."""
+    if pixmap.isNull():
+        return pixmap
+    from ..ui.icons import icon as _icon
+    canvas = QPixmap(pixmap.size())
+    canvas.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(canvas)
+    painter.drawPixmap(0, 0, pixmap)
+    badge_size = max(16, pixmap.height() // 4)
+    badge = _icon("check").pixmap(badge_size, badge_size)
+    painter.drawPixmap(canvas.width() - badge_size - 2,
+                       canvas.height() - badge_size - 2, badge)
+    painter.end()
+    return canvas
 
 
 class LibraryWidget(QWidget):
@@ -141,17 +158,17 @@ class LibraryWidget(QWidget):
 
     def _refresh_books(self, needle: str) -> None:
         for entry in self.session.recent():
-            if self._view == "translated" and not entry.get("translated_path"):
+            translated = bool(entry.get("translated_path"))
+            if self._view == "translated" and not translated:
                 continue
             title = entry.get("title") or entry.get("path", "")
             if needle and needle not in title.lower():
                 continue
-            if entry.get("translated_path"):
-                title = f"{title}  ({T('library.translated')})"
-            icon = self._book_icon(entry["path"])
+            icon = self._item_icon(entry["path"], translated, "book")
             item = QListWidgetItem(icon, title)
             item.setData(Qt.ItemDataRole.UserRole, entry["path"])
-            item.setToolTip(entry["path"])
+            tip = entry["path"] + (" · " + T("library.translated") if translated else "")
+            item.setToolTip(tip)
             self.list.addItem(item)
 
     def _refresh_chapters(self, needle: str) -> None:
@@ -159,25 +176,32 @@ class LibraryWidget(QWidget):
             rows = self.store.all()
         except Exception:  # noqa: BLE001
             rows = []
-        fallback = _chapter_icon()
         for row in rows:
+            translated = row.get("status") == "translated"
             book = os.path.basename(row.get("book_path", ""))
             name = row.get("name") or row.get("chapter_index")
             label = f"{name}\n{book}" if self._layout == "grid" else f"{name} — {book}"
             if needle and needle not in label.lower():
                 continue
-            icon = self._book_icon(row.get("book_path", ""), fallback)
+            icon = self._item_icon(row.get("book_path", ""), translated, "chapter")
             item = QListWidgetItem(icon, label)
             item.setData(Qt.ItemDataRole.UserRole, row.get("book_path", ""))
+            item.setToolTip(row.get("book_path", ""))
             self.list.addItem(item)
 
-    def _book_icon(self, path: str, fallback: QIcon | None = None) -> QIcon:
+    def _item_icon(self, path: str, translated: bool = False,
+                   kind: str = "book") -> QIcon:
+        size = self.list.iconSize()
         pixmap = _cover_pixmap(path)
         if pixmap is not None:
-            return QIcon(pixmap.scaled(
-                110, 150, Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation))
-        return fallback if fallback is not None else _fallback_icon()
+            base = pixmap.scaled(size, Qt.AspectRatioMode.KeepAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+        else:
+            source = _chapter_icon() if kind == "chapter" else _fallback_icon()
+            base = source.pixmap(size)
+        if translated:
+            base = _with_badge(base)
+        return QIcon(base)
 
     def add_book(self, path: str, title: str = "") -> None:
         if not title:
