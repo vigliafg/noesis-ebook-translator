@@ -21,8 +21,11 @@ __all__ = ["build_ribbon"]
 
 def build_ribbon(window) -> None:
     ribbon = RibbonBar()
-    # Half-height ribbon: smaller buttons and icons (default is 150 px).
-    ribbon.setRibbonHeight(92)
+    # Compact ribbon whose height scales with the actual font metrics, so it
+    # never clips native widgets (labels are tooltips now, so panels are short).
+    fm = window.fontMetrics()
+    height = 4 * fm.height() + 38
+    ribbon.setRibbonHeight(max(104, min(150, height)))
     window.setMenuWidget(ribbon)
     window.ribbon = ribbon
 
@@ -62,20 +65,20 @@ def build_ribbon(window) -> None:
     big(pc, "action.wizard", "wizard", window.on_wizard)
 
     pa = panel(home, "panel.appearance")
-    pa.addLabel(T("label.theme"))
     window.cmb_theme = pa.addComboBox(
         [T(f"theme.{m}") for m in theme_mod.theme_choices()])
+    window.cmb_theme.setToolTip(T("label.theme"))
     window.cmb_theme.currentIndexChanged.connect(window._on_theme_changed)
-    pa.addLabel(T("label.ui_language"))
     window.cmb_ui_lang = pa.addComboBox(
         [T(f"language.{c}") for c in ("it", "en", "fr", "es", "de")])
+    window.cmb_ui_lang.setToolTip(T("label.ui_language"))
     window.cmb_ui_lang.currentIndexChanged.connect(window._on_ui_language_changed)
     window.chk_reduce = pa.addCheckBox(T("label.reduce_motion"))
     window.chk_reduce.toggled.connect(window._on_reduce_motion)
 
     pr = panel(home, "panel.reader_default")
-    pr.addLabel(T("label.reader_backend"))
     window.cmb_reader_default = pr.addComboBox([])
+    window.cmb_reader_default.setToolTip(T("label.reader_backend"))
     window.cmb_reader_default.currentIndexChanged.connect(
         window._on_reader_backend_changed)
 
@@ -118,14 +121,13 @@ def build_ribbon(window) -> None:
 
     # Per-book reading settings (font, line height, size).
     pfont = panel(read, "panel.font")
-    pfont.addLabel(T("label.font"))
     window.cmb_font = pfont.addComboBox(["Serif", "Sans Serif", "Monospace"])
+    window.cmb_font.setToolTip(T("label.font"))
     window.cmb_font.currentIndexChanged.connect(window.on_font_changed)
-    pfont.addLabel(T("label.line_height"))
     window.cmb_line = pfont.addComboBox(["1.0", "1.2", "1.5", "1.8", "2.0"])
+    window.cmb_line.setToolTip(T("label.line_height"))
     window.cmb_line.setCurrentIndex(2)  # 1.5
     window.cmb_line.currentIndexChanged.connect(window.on_line_height_changed)
-    pfont.addLabel(T("label.zoom"))
     big(pfont, "assets.zoom_in", "zoom_in", lambda: window.reader.backend.set_zoom(1))
     big(pfont, "assets.zoom_out", "zoom_out", lambda: window.reader.backend.set_zoom(-1))
 
@@ -152,9 +154,9 @@ def build_ribbon(window) -> None:
     # ===================================================================
     assets = category("tab.assets")
     psa = panel(assets, "panel.source")
-    psa.addLabel(T("label.edition"))
     window.cmb_assets_edition = psa.addComboBox(
         [T("edition.original"), T("edition.translated")])
+    window.cmb_assets_edition.setToolTip(T("label.edition"))
     window.cmb_assets_edition.currentIndexChanged.connect(
         window._on_assets_edition_changed)
     big(psa, "action.refresh", "refresh", window.on_assets_reload)
@@ -188,23 +190,23 @@ def build_ribbon(window) -> None:
     big(pch, "action.extract_chapters", "chapters", window.on_extract_chapters)
 
     peng = panel(tr, "panel.engine")
-    peng.addLabel(T("panel.engine"))
     window.cmb_engine = peng.addComboBox(window._engine_names())
+    window.cmb_engine.setToolTip(T("panel.engine"))
     window.cmb_engine.currentTextChanged.connect(window._on_engine_changed)
-    peng.addLabel(T("label.api_key"))
     window.edt_api_key = peng.addLineEdit()
+    window.edt_api_key.setToolTip(T("label.api_key"))
     from PyQt6.QtWidgets import QLineEdit
     window.edt_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-    peng.addLabel(T("label.model"))
     window.cmb_model = peng.addComboBox([])
+    window.cmb_model.setToolTip(T("label.model"))
     window.cmb_model.setEditable(True)
 
     plang = panel(tr, "panel.languages")
-    plang.addLabel(T("label.source"))
     window.cmb_source = plang.addComboBox(
         ["Auto detect"] + list(window._google_languages()))
-    plang.addLabel(T("label.target"))
+    window.cmb_source.setToolTip(T("label.source"))
     window.cmb_target = plang.addComboBox(list(window._google_languages()))
+    window.cmb_target.setToolTip(T("label.target"))
     big(plang, "action.swap", "swap", window.on_swap_languages)
 
     popt = panel(tr, "panel.options")
@@ -224,8 +226,8 @@ def build_ribbon(window) -> None:
     pev = panel(qual, "panel.evaluation")
     big(pev, "action.evaluate", "check", lambda: window.on_quality(False))
     big(pev, "action.evaluate_ai", "quality", lambda: window.on_quality(True))
-    pev.addLabel(T("label.samples"))
     window.spn_samples = pev.addSpinBox()
+    window.spn_samples.setToolTip(T("label.samples"))
     window.spn_samples.setRange(1, 100)
     window.spn_samples.setValue(10)
 
@@ -234,8 +236,8 @@ def build_ribbon(window) -> None:
     big(pre, "action.report_open", "report", window.on_report_open)
 
     pres = panel(qual, "panel.result")
-    pres.addLabel(T("label.threshold"))
     window.spn_threshold = pres.addSpinBox()
+    window.spn_threshold.setToolTip(T("label.threshold"))
     window.spn_threshold.setRange(0, 100)
     window.spn_threshold.setValue(60)
 
@@ -244,9 +246,9 @@ def build_ribbon(window) -> None:
     # ===================================================================
     exp = category("tab.export")
     pcon = panel(exp, "panel.content")
-    pcon.addLabel(T("label.edition"))
     window.cmb_export_edition = pcon.addComboBox(
         [T("edition.original"), T("edition.translated")])
+    window.cmb_export_edition.setToolTip(T("label.edition"))
     window.edt_export_chapters = pcon.addLineEdit()
     window.edt_export_chapters.setPlaceholderText(T("label.chapters_filter"))
 
