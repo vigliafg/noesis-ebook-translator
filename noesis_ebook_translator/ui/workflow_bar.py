@@ -38,7 +38,8 @@ class WorkflowButton(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setAlignment(Qt.AlignmentFlag.AlignHCenter
+                            | Qt.AlignmentFlag.AlignTop)
 
         self._button = QToolButton(self)
         self._button.setIcon(icon(icon_name))
@@ -100,7 +101,7 @@ class SectionPage(QWidget):
         self._layout.setContentsMargins(8, 2, 8, 2)
         self._layout.setSpacing(5)
         self._layout.setAlignment(Qt.AlignmentFlag.AlignLeft
-                                  | Qt.AlignmentFlag.AlignVCenter)
+                                  | Qt.AlignmentFlag.AlignTop)
 
     def _add(self, widget: QWidget, stretch: int = 0) -> QWidget:
         self._layout.addWidget(widget, stretch)
