@@ -99,6 +99,8 @@ class WebEngineBackend(QWidget):
         self._fraction = 0.0
         self._pt = 16
         self._theme = "light"
+        self._font = "serif"
+        self._line = 1.5
         self._book_url: str | None = None
         self._resume_href: str | None = None
         self._ready = False
@@ -216,7 +218,12 @@ class WebEngineBackend(QWidget):
         self._js_when_ready(f"api.theme({json.dumps(mode)})")
 
     def set_font(self, family: str) -> None:
-        return None
+        self._font = family
+        self._js_when_ready(f"api.font({json.dumps(family)})")
+
+    def set_line_height(self, value: float) -> None:
+        self._line = float(value)
+        self._js_when_ready(f"api.line({self._line})")
 
     def set_spread(self, on: bool) -> None:
         self._js_when_ready(f"api.setAttr('max-column-count', {2 if on else 1})")

@@ -150,6 +150,7 @@ class MainWindow(QMainWindow):
         self.library.openRequested.connect(self._apply_source)
 
         self.tabs = QTabWidget()
+        self.tabs.tabBar().hide()  # navigation is driven by the ribbon
         self.tabs.addTab(central, T("tab.translate"))
         self.tabs.addTab(self.reader, T("tab.reader"))
         self.tabs.addTab(self.library, T("tab.library"))
@@ -215,6 +216,7 @@ class MainWindow(QMainWindow):
         try:
             self.reader.open_path(path)
             self.tabs.setCurrentWidget(self.reader)
+            self._select_category(2)
         except Exception as exc:  # noqa: BLE001 - reader is best effort
             self.log.appendPlainText(f"[reader] {exc}")
 
@@ -307,9 +309,11 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------- tab / TOC
     def _on_ribbon_category(self, index: int) -> None:
-        # 1 = Library, 2 = Reader, 3 = Assets, 4 = Translate
+        # 0 = Home, 1 = Library, 2 = Reader, 3 = Assets, 4 = Translate
         self._ribbon_index = index
-        if index == 1:
+        if index == 0:
+            self.tabs.setCurrentWidget(self._translate_tab)
+        elif index == 1:
             self.tabs.setCurrentWidget(self.library)
         elif index == 2:
             self.tabs.setCurrentWidget(self.reader)
@@ -343,7 +347,14 @@ class MainWindow(QMainWindow):
         self.library._remove()
 
     def on_open_reader(self) -> None:
-        self.tabs.setCurrentWidget(self.reader)
+        self._select_category(2)
+
+    def _select_category(self, index: int) -> None:
+        """Switch the ribbon category (which in turn shows the matching view)."""
+        try:
+            self.ribbon.tabBar().setCurrentIndex(index)
+        except Exception:  # noqa: BLE001
+            self._on_ribbon_category(index)
 
     def on_refresh(self) -> None:
         self.library.refresh()
@@ -353,7 +364,7 @@ class MainWindow(QMainWindow):
             pass
 
     def on_compare(self) -> None:
-        self.tabs.setCurrentWidget(self.reader)
+        self._select_category(2)
         self.reader.set_parallel(True)
 
     def on_parallel_toggled(self, checked: bool) -> None:
@@ -372,6 +383,7 @@ class MainWindow(QMainWindow):
         if self._input_path:
             self.chapters.set_source(self._input_path)
             self.chapters.load_current()
+        self._select_category(1)
         self.tabs.setCurrentWidget(self.chapters)
 
     def on_reveal(self) -> None:
@@ -401,10 +413,6 @@ class MainWindow(QMainWindow):
     def on_toggle_toc(self) -> None:
         self.reader.toc.setVisible(not self.reader.toc.isVisible())
 
-    def on_toggle_spread(self, checked: bool) -> None:
-        if hasattr(self.reader.backend, "set_spread"):
-            self.reader.backend.set_spread(bool(checked))
-
     def on_find(self) -> None:
         self.edt_find.setFocus()
 
@@ -413,6 +421,17 @@ class MainWindow(QMainWindow):
 
     def on_find_next(self) -> None:
         self.reader.find_text(self.edt_find.text().strip(), False)
+
+    def on_font_changed(self, _index: int) -> None:
+        families = ["serif", "sans-serif", "monospace"]
+        self.reader.set_font(families[max(0, min(2, self.cmb_font.currentIndex()))])
+
+    def on_line_height_changed(self, _index: int) -> None:
+        try:
+            value = float(self.cmb_line.currentText())
+        except ValueError:
+            value = 1.5
+        self.reader.set_line_height(value)
 
     def on_print_pdf(self) -> None:
         backend = self.reader.backend
@@ -536,18 +555,21 @@ class MainWindow(QMainWindow):
         if self._assets_source():
             self.figures.set_source(self._assets_source())
             self.figures.load_current()
+        self._select_category(3)
         self.tabs.setCurrentWidget(self.figures)
 
     def _load_tables(self) -> None:
         if self._assets_source():
             self.tables.set_source(self._assets_source())
             self.tables.load_current()
+        self._select_category(3)
         self.tabs.setCurrentWidget(self.tables)
 
     def _load_texts(self) -> None:
         if self._assets_source():
             self.texts.set_source(self._assets_source())
             self.texts.load_current()
+        self._select_category(3)
         self.tabs.setCurrentWidget(self.texts)
 
     def on_export(self) -> None:

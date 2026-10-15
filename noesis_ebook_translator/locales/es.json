@@ -248,5 +248,9 @@
   "action.translate_selected": "Traducir seleccionados",
   "action.export_selected": "Exportar seleccionados",
   "tip.open": "Abre el EPUB, lo añade a la biblioteca y lo carga en el lector",
-  "tip.add_book": "Añade el libro a la biblioteca sin abrirlo"
+  "tip.add_book": "Añade el libro a la biblioteca sin abrirlo",
+  "flow.paginated": "Paginado",
+  "flow.scrolled": "Desplazado",
+  "panel.font": "Texto",
+  "label.line_height": "Interlineado"
 }

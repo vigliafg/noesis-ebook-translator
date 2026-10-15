@@ -95,8 +95,11 @@ DeepL Free e Microsoft Edge funzionano senza chiave.
 
 ## Barra degli strumenti (workflow)
 
-Il ribbon segue il flusso di lavoro con **9 schede**, ognuna con i suoi pannelli
-e bottoni **con icone colorate** (Microsoft Fluent Emoji, MIT):
+La barra segue il flusso di lavoro con **9 schede**, ognuna con i suoi pannelli
+e bottoni **con icone colorate** (Microsoft Fluent Emoji, MIT). La navigazione
+tra le viste (Traduzione, Lettura, Libreria, Capitoli, Figure, Tabelle, Testi,
+Anteprima) avviene **dal ribbon**: la barra a schede del pannello centrale è
+nascosta, quindi sopra il contenuto resta solo il ribbon.
 
 `Home · Library · Reader · Assets · Translate · Quality · Export · Tools · Info`
 

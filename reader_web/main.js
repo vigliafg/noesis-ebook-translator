@@ -10,6 +10,8 @@ let bridge = null
 // --- reading style (applied to the book's section documents) ----------------
 let currentTheme = 'light'
 let currentZoom = 16
+let currentFont = 'serif'
+let currentLine = 1.5
 
 function themeCss(mode) {
   if (mode === 'dark') {
@@ -30,7 +32,10 @@ function pageBackground(mode) {
 }
 
 function applyStyles() {
-  const css = `html { font-size: ${currentZoom}px; }\n` + themeCss(currentTheme)
+  const family = currentFont ? `body, p, div, span, li { font-family: ${currentFont}; }` : ''
+  const css = `html { font-size: ${currentZoom}px; }\n`
+    + `body { line-height: ${currentLine}; }\n`
+    + family + '\n' + themeCss(currentTheme)
   document.body.style.background = pageBackground(currentTheme)
   if (view.renderer && typeof view.renderer.setStyles === 'function') {
     try { view.renderer.setStyles(css) } catch (e) { /* renderer not ready */ }
@@ -70,6 +75,8 @@ window.api = {
   },
   zoom: (pt) => { currentZoom = pt; applyStyles() },
   theme: (mode) => { currentTheme = mode; applyStyles() },
+  font: (family) => { currentFont = family || ''; applyStyles() },
+  line: (value) => { currentLine = value || 1.5; applyStyles() },
   setStyles: (css) => {
     if (view.renderer && typeof view.renderer.setStyles === 'function') {
       try { view.renderer.setStyles(css) } catch (e) { /* ignore */ }

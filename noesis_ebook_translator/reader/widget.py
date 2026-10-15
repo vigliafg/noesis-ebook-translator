@@ -5,7 +5,8 @@ import os
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QSplitter, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+    QComboBox, QHBoxLayout, QPushButton, QSplitter, QTreeWidget,
+    QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from ..i18n import T
 from .document import EpubDocument
@@ -54,6 +55,30 @@ class ReaderWidget(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
+
+        # Mini toolbar with the *quick* controls (per-session, frequent):
+        # previous/next, page vs scrolling, single vs two pages. The per-book
+        # settings (font, line height, size) live in the Reader ribbon panel.
+        bar = QHBoxLayout()
+        self.btn_prev = QPushButton("◀ " + T("action.prev"))
+        self.btn_next = QPushButton(T("action.next") + " ▶")
+        self.btn_prev.clicked.connect(lambda: self.backend.prev_chapter())
+        self.btn_next.clicked.connect(lambda: self.backend.next_chapter())
+        self.cmb_flow = QComboBox()
+        self.cmb_flow.addItem(T("flow.paginated"), "paginated")
+        self.cmb_flow.addItem(T("flow.scrolled"), "scrolled")
+        self.cmb_flow.currentIndexChanged.connect(
+            lambda i: self.set_flow(self.cmb_flow.itemData(i)))
+        self.btn_spread = QPushButton(T("label.spread"))
+        self.btn_spread.setCheckable(True)
+        self.btn_spread.toggled.connect(self.set_spread)
+        bar.addWidget(self.btn_prev)
+        bar.addWidget(self.btn_next)
+        bar.addSpacing(12)
+        bar.addWidget(self.cmb_flow)
+        bar.addWidget(self.btn_spread)
+        bar.addStretch(1)
+        root.addLayout(bar)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.toc = QTreeWidget()
@@ -104,6 +129,40 @@ class ReaderWidget(QWidget):
                 backend.set_theme(mode)
             except Exception:  # noqa: BLE001
                 pass
+
+    def set_font(self, family: str) -> None:
+        """Apply the reading font to both viewports."""
+        for backend in (self.backend, self.second):
+            try:
+                backend.set_font(family)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def set_line_height(self, value: float) -> None:
+        """Apply the line height to both viewports."""
+        for backend in (self.backend, self.second):
+            try:
+                backend.set_line_height(value)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def set_flow(self, mode: str) -> None:
+        """Set the flow (``paginated``/``scrolled``) on both viewports."""
+        for backend in (self.backend, self.second):
+            if hasattr(backend, "set_flow"):
+                try:
+                    backend.set_flow(mode)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def set_spread(self, on: bool) -> None:
+        """Set single vs two-page spread on both viewports."""
+        for backend in (self.backend, self.second):
+            if hasattr(backend, "set_spread"):
+                try:
+                    backend.set_spread(bool(on))
+                except Exception:  # noqa: BLE001
+                    pass
 
     # ---------------------------------------------------------------- TOC
     def _populate_toc(self) -> None:

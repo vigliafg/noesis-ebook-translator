@@ -248,5 +248,9 @@
   "action.translate_selected": "Translate selected",
   "action.export_selected": "Export selected",
   "tip.open": "Opens the EPUB, adds it to the library and loads it in the reader",
-  "tip.add_book": "Adds the book to the library without opening it"
+  "tip.add_book": "Adds the book to the library without opening it",
+  "flow.paginated": "Paginated",
+  "flow.scrolled": "Scrolled",
+  "panel.font": "Text",
+  "label.line_height": "Line height"
 }

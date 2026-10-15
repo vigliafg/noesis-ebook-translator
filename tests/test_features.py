@@ -226,6 +226,18 @@ class TestWidgets(unittest.TestCase):
         finally:
             window.close()
 
+    def test_content_tabbar_hidden(self):
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        window = main.MainWindow()
+        try:
+            # navigation is driven by the ribbon: the content tab bar is hidden
+            self.assertTrue(window.tabs.tabBar().isHidden())
+        finally:
+            window.close()
+
     def test_chapters_are_selectable(self):
         from PyQt6.QtCore import Qt
         from noesis_ebook_translator import appconfig

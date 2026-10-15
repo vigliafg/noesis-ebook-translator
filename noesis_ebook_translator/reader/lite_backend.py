@@ -15,7 +15,7 @@ THEMES = {
 }
 
 BASE_CSS = """
-body {{ font-family: {family}; font-size: {size}pt; line-height: 1.5;
+body {{ font-family: {family}; font-size: {size}pt; line-height: {line};
         margin: 1.5rem auto; max-width: 42rem; padding: 0 1rem; }}
 img {{ max-width: 100%; }}
 h1,h2,h3 {{ line-height: 1.25; }}
@@ -45,6 +45,7 @@ class LiteBackend(QWidget):
         self._zoom = 0
         self._theme = "light"
         self._font = "serif"
+        self._line = 1.5
         self._pending_fraction = 0.0
 
     # -- opening ----------------------------------------------------------
@@ -71,7 +72,8 @@ class LiteBackend(QWidget):
         self.positionChanged.emit(self._href, self._pending_fraction)
 
     def _wrap(self, body: str) -> str:
-        css = BASE_CSS.format(family=self._font, size=12 + self._zoom)
+        css = BASE_CSS.format(family=self._font, size=12 + self._zoom,
+                              line=self._line)
         css += THEMES.get(self._theme, "")
         return f"<html><head><style>{css}</style></head><body>{body}</body></html>"
 
@@ -112,6 +114,11 @@ class LiteBackend(QWidget):
 
     def set_font(self, family: str) -> None:
         self._font = family
+        if self._href:
+            self.show_chapter(self._href, restore=self.fraction())
+
+    def set_line_height(self, value: float) -> None:
+        self._line = float(value)
         if self._href:
             self.show_chapter(self._href, restore=self.fraction())
 

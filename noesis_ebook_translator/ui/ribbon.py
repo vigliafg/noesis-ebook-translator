@@ -112,15 +112,20 @@ def build_ribbon(window) -> None:
     # ===================================================================
     read = category("tab.reader")
     pn = panel(read, "panel.navigation")
-    big(pn, "action.prev", "back", lambda: window.reader.backend.prev_chapter())
-    big(pn, "action.next", "next", lambda: window.reader.backend.next_chapter())
     window.btn_toc = big(pn, "action.toc", "chapters", window.on_toggle_toc)
 
-    pvw = panel(read, "panel.view")
-    big(pvw, "assets.zoom_in", "zoom_in", lambda: window.reader.backend.set_zoom(1))
-    big(pvw, "assets.zoom_out", "zoom_out", lambda: window.reader.backend.set_zoom(-1))
-    window.btn_spread = pvw.addLargeToggleButton(T("label.spread"), icon=icon("options"))
-    window.btn_spread.toggled.connect(window.on_toggle_spread)
+    # Per-book reading settings (font, line height, size).
+    pfont = panel(read, "panel.font")
+    pfont.addLabel(T("label.font"))
+    window.cmb_font = pfont.addComboBox(["Serif", "Sans Serif", "Monospace"])
+    window.cmb_font.currentIndexChanged.connect(window.on_font_changed)
+    pfont.addLabel(T("label.line_height"))
+    window.cmb_line = pfont.addComboBox(["1.0", "1.2", "1.5", "1.8", "2.0"])
+    window.cmb_line.setCurrentIndex(2)  # 1.5
+    window.cmb_line.currentIndexChanged.connect(window.on_line_height_changed)
+    pfont.addLabel(T("label.zoom"))
+    big(pfont, "assets.zoom_in", "zoom_in", lambda: window.reader.backend.set_zoom(1))
+    big(pfont, "assets.zoom_out", "zoom_out", lambda: window.reader.backend.set_zoom(-1))
 
     ps = panel(read, "panel.search")
     window.edt_find = ps.addLineEdit()
@@ -203,6 +208,10 @@ def build_ribbon(window) -> None:
     window.chk_cache = popt.addCheckBox(T("label.cache"))
     window.chk_cache.setChecked(True)
     window.chk_batch = popt.addCheckBox(T("label.batch"))
+
+    pprev = panel(tr, "panel.preview")
+    big(pprev, "tab.preview", "preview",
+        lambda: window.tabs.setCurrentWidget(window.preview))
 
     # ===================================================================
     #  Quality
