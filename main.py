@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
 
         engine_cat = self.ribbon.addCategory(T("tab.engine"))
         panel_engine = engine_cat.addPanel(T("panel.engine"))
-        panel_engine.addLabel(T("label.model"))
+        panel_engine.addLabel(T("panel.engine") + ":")
         self.cmb_engine = panel_engine.addComboBox(appconfig.engine_names())
         self.cmb_engine.currentTextChanged.connect(self._on_engine_changed)
 
