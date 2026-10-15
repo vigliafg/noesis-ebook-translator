@@ -1,57 +1,166 @@
-"""Qt stylesheet themes for the desktop app (pure module, no Qt import)."""
+"""Qt stylesheet themes for the desktop app (pure module, no Qt import).
+
+The app exposes a small registry of themes; each theme provides a Qt stylesheet
+(for the whole window) and, optionally, a matching reader theme name understood
+by the reader backends (``light``/``sepia``/``dark``).
+"""
 from __future__ import annotations
 
-__all__ = ["MODES", "normalize_mode", "stylesheet", "is_dark"]
+__all__ = [
+    "THEMES", "MODES", "THEME_LABELS", "normalize_mode", "is_dark",
+    "reader_theme", "stylesheet", "theme_choices", "theme_label", "palette",
+]
 
-MODES = ("system", "light", "dark")
+#: Ordered theme ids shown in the UI.
+THEMES = ("system", "light", "dark", "sepia")
+
+#: Backwards-compatible alias (older callers imported ``MODES``).
+MODES = THEMES
+
+#: Human-readable labels (English; the GUI may translate them via ``T()``).
+THEME_LABELS = {
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark",
+    "sepia": "Sepia",
+}
+
+#: Reader theme used by the backends for each app theme. ``system`` resolves to
+#: light/dark at runtime, so the reader theme is picked dynamically in the GUI.
+_READER_THEME = {
+    "system": None,
+    "light": "light",
+    "dark": "dark",
+    "sepia": "sepia",
+}
+
+#: Foreground/background hints for embedding (e.g. generated HTML exports).
+_PALETTES = {
+    "light": {"background": "#f6f7f9", "foreground": "#1c1e21",
+              "accent": "#2d6cdf", "surface": "#ffffff"},
+    "dark": {"background": "#1f2227", "foreground": "#e8eaed",
+             "accent": "#4c8bf5", "surface": "#2a2e35"},
+    "sepia": {"background": "#f4ecd8", "foreground": "#4a3f2f",
+              "accent": "#a06a2c", "surface": "#fbf3e0"},
+}
 
 _LIGHT = """
 QWidget { background: #f6f7f9; color: #1c1e21; }
-QPlainTextEdit, QLineEdit, QComboBox, QSpinBox {
+QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QTextEdit, QTextBrowser {
     background: #ffffff; border: 1px solid #d0d3d9; border-radius: 4px;
     padding: 3px 6px; selection-background-color: #2d6cdf;
 }
 QPushButton { background: #e7e9ee; border: 1px solid #cfd3da; border-radius: 4px;
     padding: 4px 10px; }
 QPushButton:hover { background: #dfe3ea; }
+QPushButton:pressed { background: #d3d8e0; }
+QPushButton:checked { background: #c9d6f2; border-color: #2d6cdf; }
 QProgressBar { border: 1px solid #cfd3da; border-radius: 4px; text-align: center; }
-QProgressBar::chunk { background: #2d6cdf; }
+QProgressBar::chunk { background: #2d6cdf; border-radius: 3px; }
 QGroupBox { border: 1px solid #d5d8de; border-radius: 6px; margin-top: 10px;
     padding: 8px; }
 QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; }
+QTabWidget::pane { border: 1px solid #d5d8de; border-radius: 6px; }
+QTabBar::tab { background: #e7e9ee; padding: 5px 12px; margin-right: 2px;
+    border-top-left-radius: 4px; border-top-right-radius: 4px; }
+QTabBar::tab:selected { background: #ffffff; border-bottom: 2px solid #2d6cdf; }
+QListWidget, QTreeWidget, QTableWidget { background: #ffffff;
+    border: 1px solid #d0d3d9; border-radius: 4px; }
+QHeaderView::section { background: #eceef2; border: 0; padding: 4px; }
 """
 
 _DARK = """
 QWidget { background: #1f2227; color: #e8eaed; }
-QPlainTextEdit, QLineEdit, QComboBox, QSpinBox {
+QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QTextEdit, QTextBrowser {
     background: #2a2e35; border: 1px solid #3a3f47; border-radius: 4px;
     padding: 3px 6px; color: #e8eaed; selection-background-color: #4c8bf5;
 }
 QPushButton { background: #313640; border: 1px solid #3f4550; border-radius: 4px;
     padding: 4px 10px; color: #e8eaed; }
 QPushButton:hover { background: #3a404b; }
+QPushButton:pressed { background: #2b303a; }
+QPushButton:checked { background: #2f4772; border-color: #4c8bf5; }
 QProgressBar { border: 1px solid #3f4550; border-radius: 4px; text-align: center;
     color: #e8eaed; }
-QProgressBar::chunk { background: #4c8bf5; }
+QProgressBar::chunk { background: #4c8bf5; border-radius: 3px; }
 QGroupBox { border: 1px solid #3a3f47; border-radius: 6px; margin-top: 10px;
     padding: 8px; }
 QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; }
+QTabWidget::pane { border: 1px solid #3a3f47; border-radius: 6px; }
+QTabBar::tab { background: #313640; padding: 5px 12px; margin-right: 2px;
+    border-top-left-radius: 4px; border-top-right-radius: 4px; }
+QTabBar::tab:selected { background: #1f2227; border-bottom: 2px solid #4c8bf5; }
+QListWidget, QTreeWidget, QTableWidget { background: #262a30;
+    border: 1px solid #3a3f47; border-radius: 4px; }
+QHeaderView::section { background: #313640; border: 0; padding: 4px; }
 QPlainTextEdit { font-family: monospace; }
 """
 
+_SEPIA = """
+QWidget { background: #f4ecd8; color: #4a3f2f; }
+QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QTextEdit, QTextBrowser {
+    background: #fbf3e0; border: 1px solid #d8c9a6; border-radius: 4px;
+    padding: 3px 6px; color: #4a3f2f; selection-background-color: #a06a2c;
+}
+QPushButton { background: #ecdfc2; border: 1px solid #d0bd93; border-radius: 4px;
+    padding: 4px 10px; color: #4a3f2f; }
+QPushButton:hover { background: #e5d5b3; }
+QPushButton:checked { background: #dcc79b; border-color: #a06a2c; }
+QProgressBar { border: 1px solid #d0bd93; border-radius: 4px; text-align: center;
+    color: #4a3f2f; }
+QProgressBar::chunk { background: #a06a2c; border-radius: 3px; }
+QGroupBox { border: 1px solid #d8c9a6; border-radius: 6px; margin-top: 10px;
+    padding: 8px; }
+QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; }
+QTabWidget::pane { border: 1px solid #d8c9a6; border-radius: 6px; }
+QTabBar::tab { background: #ecdfc2; padding: 5px 12px; margin-right: 2px;
+    border-top-left-radius: 4px; border-top-right-radius: 4px; }
+QTabBar::tab:selected { background: #fbf3e0; border-bottom: 2px solid #a06a2c; }
+QListWidget, QTreeWidget, QTableWidget { background: #fbf3e0;
+    border: 1px solid #d8c9a6; border-radius: 4px; }
+QHeaderView::section { background: #ecdfc2; border: 0; padding: 4px; }
+"""
+
+_SHEETS = {"light": _LIGHT, "dark": _DARK, "sepia": _SEPIA}
+
 
 def normalize_mode(mode: str) -> str:
-    return mode if mode in MODES else "system"
+    return mode if mode in THEMES else "system"
 
 
 def is_dark(mode: str, system_dark: bool = True) -> bool:
     mode = normalize_mode(mode)
     if mode == "dark":
         return True
-    if mode == "light":
+    if mode in ("light", "sepia"):
         return False
     return system_dark
 
 
+def reader_theme(mode: str, system_dark: bool = True) -> str:
+    """Return the concrete reader theme name for an app theme id."""
+    mode = normalize_mode(mode)
+    if mode == "system":
+        return "dark" if system_dark else "light"
+    return _READER_THEME.get(mode) or "light"
+
+
+def palette(mode: str, system_dark: bool = True) -> dict:
+    effective = "dark" if is_dark(mode, system_dark) else (
+        "sepia" if normalize_mode(mode) == "sepia" else "light")
+    return dict(_PALETTES[effective])
+
+
 def stylesheet(mode: str, system_dark: bool = True) -> str:
-    return _DARK if is_dark(mode, system_dark) else _LIGHT
+    mode = normalize_mode(mode)
+    if mode == "system":
+        mode = "dark" if system_dark else "light"
+    return _SHEETS.get(mode, _LIGHT)
+
+
+def theme_choices() -> list[str]:
+    return list(THEMES)
+
+
+def theme_label(mode: str) -> str:
+    return THEME_LABELS.get(normalize_mode(mode), mode)

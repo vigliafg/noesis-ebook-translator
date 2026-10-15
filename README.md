@@ -89,7 +89,44 @@ DeepL Free e Microsoft Edge funzionano senza chiave.
 - **Origine**: rilevamento automatico (`Auto detect`) oppure una lingua esplicita.
 - **Destinazione**: il set Google copre **~240 lingue** (`engines/languages.py`),
   ma la disponibilità effettiva dipende dal motore scelto.
-- L'interfaccia è disponibile in **italiano** e **inglese** (`i18n.py`).
+- L'interfaccia e la **guida** sono disponibili in **5 lingue**: italiano,
+  inglese, francese, spagnolo, tedesco (`noesis_ebook_translator/locales/*.json`
+  + `docs/site/` pubblicato su GitHub Pages).
+
+## Temi, onboarding, aiuto
+
+- **Temi** (sistema, chiaro, scuro, seppia) applicati a tutta l'app (ribbon,
+  pannelli, lettore). Selezionabili dal ribbon o dalle Impostazioni.
+- **Wizard di benvenuto** al primo avvio (lingua, tema, motore + chiave API,
+  backend di lettura). Si può **rilanciare** dalle Impostazioni
+  (*Impostazioni… → Wizard di configurazione…*).
+- **Aiuto** in-app (voce *Aiuto*, scorciatoia): apre la guida online nella lingua
+  corrente, con fallback offline.
+- **Animazioni** durante la traduzione (barra shimmer, progresso per capitolo),
+  disattivabili con *Riduci animazioni*.
+
+## Esportazione
+
+Dal dialog *Esporta…* (o dagli strumenti) puoi esportare l'intero libro o i
+**capitoli selezionati**, scegliendo fra **EPUB, HTML, Markdown, TXT, JSON, CSV**
+e, se le dipendenze sono presenti, **DOCX** (`python-docx`) e **PDF**
+(QtWebEngine). Puoi esportare l'edizione **originale** o **tradotta**.
+
+## Libreria e capitoli
+
+- **Libreria** persistente (SQLite) con copertina, ricerca, posizione di lettura e
+  indicazione del file tradotto. Migra automaticamente il vecchio `reader.json`.
+- **Libreria dei capitoli** estratti/tradotti con stato e ricerca.
+
+## Qualità, split/merge, editor
+
+- **Valutazione qualità** (`noesis_ebook_translator/quality/`): metriche
+  automatiche (segmenti non tradotti/vuoti, lunghezze, numeri) + **giudice AI**
+  opzionale. CLI: `python tools/quality_harness.py src.epub dst.epub [--judge OpenAI]`.
+- **Split/merge** dei capitoli (originali o tradotti), preservando TOC e asset.
+  CLI: `python tools/segment_tool.py split|merge ...`.
+- **Editor** di testi, immagini e tavole con **scrittura nell'EPUB**
+  (tab *Testi*, *Figure*, *Tabelle*).
 
 ## Requisiti
 

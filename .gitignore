@@ -21,6 +21,10 @@ venv/
 env/
 ENV/
 
+# MkDocs build output (published to gh-pages, not committed)
+docs/_site/
+site/
+
 # Unit test / coverage
 .tox/
 .nox/

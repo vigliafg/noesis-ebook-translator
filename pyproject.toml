@@ -44,6 +44,12 @@ dependencies = [
     "mechanize",
 ]
 
+[project.optional-dependencies]
+# Optional extras: PDF export reuses the full reader (QtWebEngine, see
+# requirements-full.txt); DOCX export needs python-docx.
+docx = ["python-docx>=1.0"]
+full = ["PyQt6-WebEngine>=6.6", "python-docx>=1.0"]
+
 [project.urls]
 Homepage = "https://github.com/vigliafg/noesis-ebook-translator"
 Source = "https://github.com/vigliafg/noesis-ebook-translator"
@@ -59,6 +65,10 @@ noesis-ebook-translator = "main:main"
 # distributable package).
 py-modules = ["main"]
 include-package-data = true
+
+[tool.setuptools.package-data]
+# Per-language UI catalogs (loaded at runtime by i18n.py).
+"noesis_ebook_translator" = ["locales/*.json"]
 
 [tool.setuptools.packages.find]
 include = ["noesis_ebook_translator*"]

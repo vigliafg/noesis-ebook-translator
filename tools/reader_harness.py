@@ -35,9 +35,11 @@ def main(argv=None) -> int:
     ap.add_argument("--mode", choices=["lite", "full", "both"], default="both")
     ap.add_argument("--wait", type=float, default=20.0,
                     help="seconds to wait for the full backend to become ready")
+    ap.add_argument("--features", action="store_true",
+                    help="also exercise the new GUI features (tabs, panels, theme)")
     args = ap.parse_args(argv)
 
-    from tests.harness import run_reader_harness, webengine_available
+    from tests.harness import run_reader_harness, run_feature_harness, webengine_available
 
     books = args.books or [_sample_book()]
     modes = ["lite", "full"] if args.mode == "both" else [args.mode]
@@ -54,6 +56,14 @@ def main(argv=None) -> int:
                 failures += 1
             elif not report.available and mode == "lite":
                 failures += 1
+
+    if args.features:
+        for book in books:
+            report = run_feature_harness(book)
+            print(f"[features] {Path(book).name}: {report.summary()}")
+            if report.available and not report.ok:
+                failures += 1
+
     print("\nRESULT:", "FAIL" if failures else "OK")
     return 1 if failures else 0
 

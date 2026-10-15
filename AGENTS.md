@@ -88,6 +88,32 @@ Per (ri)scaricare: `python tools/fetch_corpus_fixtures.py`. I test online
 opzionali (`NOESIS_ONLINE_TESTS=1`) traducono davvero con Google. Questo corpus è
 **condiviso** col repo engine gemello (copiato dal suo `tools/sync_from_desktop.py`).
 
+## Funzionalità desktop (solo GUI, fuori dal sync motore)
+
+Questi moduli sono **desktop-only** (non inlineati nel repo gemello):
+
+- `noesis_ebook_translator/paths.py` — directory dati dell'app.
+- `noesis_ebook_translator/library.py` — libreria SQLite (libri, posizioni,
+  annotazioni; migra `reader.json`). `reader/session.py` è un adapter su di essa.
+- `noesis_ebook_translator/chapter_store.py` — libreria capitoli estratti/tradotti.
+- `noesis_ebook_translator/segment.py` + `tools/segment_tool.py` — split/merge.
+- `noesis_ebook_translator/quality/` + `tools/quality_harness.py` — valutazione
+  qualità (metriche + giudice AI).
+- `noesis_ebook_translator/help.py` — URL guida + fallback offline.
+- `noesis_ebook_translator/ui/` — temi, wizard, impostazioni, help, export,
+  animazioni, dialog qualità.
+- `noesis_ebook_translator/locales/*.json` — cataloghi interfaccia (5 lingue) e
+  `main.py` (ribbon/tab). **Inclusi nel bundle** via `package-data` e
+  `--collect-all noesis_ebook_translator` in `release.yml`.
+
+**Guida**: `docs/site/` (MkDocs Material + i18n, 5 lingue) è pubblicata su
+GitHub Pages da `.github/workflows/docs.yml`.
+
+> Nota: `exporter.py` ed `extract.py` sono **condivisi** (inlineati nel repo
+> gemello). Le funzioni aggiunte (export JSON/CSV/DOCX/PDF, write-back
+> testi/tabelle/immagini) vanno rispecchiate con
+> `tools/sync_from_desktop.py` nel repo engine.
+
 ## File da NON toccare senza motivo
 
 - `main.py`, `noesis_ebook_translator/**`, `calibre/**` — codice dell'app e

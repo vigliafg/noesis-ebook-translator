@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import base64
 import csv
+import io
+import json
 import os
 import re
 from pathlib import Path
@@ -17,16 +19,42 @@ from ebooklib import epub
 from lxml import etree
 
 from .chapters import Chapter, chapter_files
-from .extract import Figure, Table, extract_figures, extract_tables
+from .extract import Figure, Table, extract_figures, extract_tables, extract_text
 
 __all__ = [
     "restrict_book", "export_epub", "export_html", "export_markdown",
-    "export_text", "export_figures", "export_tables", "export_chapters",
+    "export_text", "export_json", "export_csv", "export_docx", "export_pdf",
+    "export_figures", "export_tables", "export_chapters",
+    "supported_exports", "docx_available", "pdf_available",
 ]
 
 XHTML = "{http://www.w3.org/1999/xhtml}"
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 BLOCKS = {"p", "blockquote", "li", "pre"}
+
+#: Every format ``export_chapters`` understands (docx/pdf may be unavailable).
+CHAPTER_FORMATS = ("epub", "html", "markdown", "text", "json", "csv", "docx", "pdf")
+
+
+def supported_exports() -> list[str]:
+    """Return the export formats the current environment can produce."""
+    formats = ["epub", "html", "markdown", "text", "json", "csv"]
+    if docx_available():
+        formats.append("docx")
+    if pdf_available():
+        formats.append("pdf")
+    return formats
+
+
+def docx_available() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("docx") is not None
+
+
+def pdf_available() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("PyQt6.QtWebEngineWidgets") is not None
+
 
 
 def _localname(tag) -> str:
@@ -219,6 +247,99 @@ def export_text(input_path: str, output_path: str,
     return [output_path]
 
 
+def _grouped_text(input_path: str, selected: list[Chapter] | None):
+    """Group ``extract_text`` output into ``[{index, name, segments}, ...]``."""
+    chapters: list[dict] = []
+    current = None
+    for index, name, text in extract_text(input_path, selected=selected):
+        if current is None or current["index"] != index or current["name"] != name:
+            current = {"index": index, "name": name, "segments": []}
+            chapters.append(current)
+        current["segments"].append(text)
+    return chapters
+
+
+def export_json(input_path: str, output_path: str,
+                selected: list[Chapter] | None = None) -> list[str]:
+    """Export the book text as structured JSON (chapter → segments)."""
+    payload = {
+        "source": os.path.basename(input_path),
+        "chapters": _grouped_text(input_path, selected),
+    }
+    Path(output_path).write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return [output_path]
+
+
+def export_csv(input_path: str, output_path: str,
+               selected: list[Chapter] | None = None) -> list[str]:
+    """Export the book text as CSV rows ``chapter,index,name,text``."""
+    with open(output_path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["chapter", "chapter_name", "text"])
+        for index, name, text in extract_text(input_path, selected=selected):
+            writer.writerow([index, name, text])
+    return [output_path]
+
+
+def export_docx(input_path: str, output_path: str,
+                selected: list[Chapter] | None = None) -> list[str]:
+    """Export the book text as a DOCX document (needs ``python-docx``)."""
+    try:
+        import docx  # type: ignore
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise RuntimeError(
+            "DOCX export needs the optional 'python-docx' package") from exc
+
+    document = docx.Document()
+    current_name = None
+    for _index, name, text in extract_text(input_path, selected=selected):
+        if name != current_name:
+            document.add_heading(name or "Section", level=1)
+            current_name = name
+        document.add_paragraph(text)
+    document.save(output_path)
+    return [output_path]
+
+
+def export_pdf(input_path: str, output_path: str,
+               selected: list[Chapter] | None = None) -> list[str]:
+    """Export as PDF by rendering the HTML export through QtWebEngine.
+
+    Requires a working QtWebEngine (the *full* reader flavour). Call it from the
+    GUI thread with a running ``QApplication``; raises ``RuntimeError`` when the
+    WebEngine is unavailable (``pdf_available()`` is ``False``).
+    """
+    if not pdf_available():  # pragma: no cover - depends on optional extra
+        raise RuntimeError("PDF export needs QtWebEngine (the full reader extra)")
+    from PyQt6.QtCore import QEventLoop, QMarginsF, QUrl
+    from PyQt6.QtGui import QPageLayout, QPageSize
+    from PyQt6.QtWebEngineCore import QWebEnginePage
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:  # pragma: no cover - GUI-only path
+        raise RuntimeError("PDF export needs a running QApplication")
+
+    html_path = str(Path(output_path).with_suffix(".pdf.html"))
+    export_html(input_path, html_path, selected)
+    page = QWebEnginePage()
+    loop = QEventLoop()
+    page.printToPdf(output_path, QPageLayout(
+        QPageSize(QPageSize.PageSizeId.A4),
+        QPageLayout.Orientation.Portrait,
+        QMarginsF(12, 12, 12, 12)))
+    page.pdfPrintingFinished.connect(lambda *_: loop.quit())
+    page.load(QUrl.fromLocalFile(html_path))
+    loop.exec()
+    try:
+        os.remove(html_path)
+    except OSError:
+        pass
+    return [output_path]
+
+
+
 # --------------------------------------------------------------------------
 #  Figures and tables
 # --------------------------------------------------------------------------
@@ -319,4 +440,12 @@ def export_chapters(input_path: str, out, selected: list[Chapter] | None = None,
         return export_markdown(input_path, out, selected)
     if fmt in ("txt", "text"):
         return export_text(input_path, out, selected)
+    if fmt == "json":
+        return export_json(input_path, out, selected)
+    if fmt == "csv":
+        return export_csv(input_path, out, selected)
+    if fmt == "docx":
+        return export_docx(input_path, out, selected)
+    if fmt == "pdf":
+        return export_pdf(input_path, out, selected)
     raise ValueError(f"unknown chapter format: {fmt}")

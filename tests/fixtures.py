@@ -122,3 +122,36 @@ def register_fake_engine():
     engines.builtin_engines = extended
     translation_mod.builtin_engines = extended
     return fake
+
+
+def make_score_engine():
+    """Return an offline engine that always replies with a fixed score."""
+    from noesis_ebook_translator.engines.base import Base
+    from noesis_ebook_translator.engines.languages import google
+
+    class ScoreEngine(Base):
+        name = "FakeScore"
+        alias = "FakeScore"
+        free = True
+        need_api_key = False
+        lang_codes = Base.load_lang_codes(google)
+        endpoint = ""
+
+        def translate(self, content):
+            return "85"
+
+    return ScoreEngine
+
+
+def register_score_engine():
+    """Inject the score engine into the registry (for AI-judge tests)."""
+    import noesis_ebook_translator.engines as engines
+    from noesis_ebook_translator.lib import translation as translation_mod
+    from noesis_ebook_translator.lib import utils as utils_mod
+
+    utils_mod.log.level = utils_mod.log.ERROR
+    engine = make_score_engine()
+    extended = tuple(engines.builtin_engines) + (engine,)
+    engines.builtin_engines = extended
+    translation_mod.builtin_engines = extended
+    return engine

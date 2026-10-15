@@ -37,6 +37,12 @@ APP_DEFAULTS: dict[str, Any] = {
     "priority_rules": [],
     "filter_rules": [],
     "ignore_rules": [],
+    # App-level (desktop only) preferences.
+    "ui_language": "it",
+    "ui_theme": "system",
+    "reader_backend": "lite",
+    "reduce_motion": False,
+    "onboarding_done": False,
     # Reserve anchors/links so navigation targets and footnote references survive
     # translation. Emphasis tags (em/i/b/…) are intentionally NOT reserved: their
     # text must be translated, so the tag is dropped in favour of correct text.

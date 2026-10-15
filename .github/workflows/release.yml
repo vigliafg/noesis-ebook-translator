@@ -68,7 +68,7 @@ jobs:
             --paths . \
             "${ICON[@]}" \
             --collect-all pyqtribbon \
-            --collect-submodules noesis_ebook_translator \
+            --collect-all noesis_ebook_translator \
             --collect-submodules calibre \
             --hidden-import calibre \
             --add-data "assets/noesis-ebook-translator.png${SEP}assets" \
@@ -149,7 +149,7 @@ jobs:
             --name NoesisEbookTranslator \
             --paths . \
             --collect-all pyqtribbon \
-            --collect-submodules noesis_ebook_translator \
+            --collect-all noesis_ebook_translator \
             --collect-submodules calibre \
             --hidden-import calibre \
             --add-data "assets/noesis-ebook-translator.png:assets" \
