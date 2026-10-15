@@ -33,6 +33,31 @@ class TestCatalogs(unittest.TestCase):
         finally:
             i18n.set_language(original)
 
+    def test_ribbon_keys_present(self):
+        keys = [
+            "tab.assets", "tab.quality", "tab.export", "tab.tools",
+            "panel.configuration", "panel.books", "panel.views", "panel.actions",
+            "panel.metadata", "panel.search", "panel.compare", "panel.notes",
+            "panel.source", "panel.options", "panel.evaluation", "panel.report",
+            "panel.result", "panel.content", "panel.format_grp",
+            "panel.destination", "panel.split", "panel.merge",
+            "panel.maintenance", "panel.information", "panel.diagnostics",
+            "action.add_book", "action.remove_book", "action.open_reader",
+            "action.refresh", "action.compare", "action.retranslate",
+            "action.extract_chapters", "action.reveal", "action.prev",
+            "action.next", "action.toc", "action.find", "action.find_next",
+            "action.add_note", "action.bookmarks", "action.print_pdf",
+            "action.rotate", "action.reset_view", "action.export_assets",
+            "action.clear_cache", "action.data_dir", "action.report_save",
+            "action.report_open", "action.evaluate", "action.evaluate_ai",
+            "action.swap", "action.stats", "action.license", "action.upstream",
+            "action.engine_version", "label.samples", "label.threshold",
+            "label.search", "label.font", "label.spread", "label.flow",
+            "view.original", "view.translated", "view.chapters",
+        ]
+        for key in keys:
+            self.assertNotEqual(i18n.T(key), key, key)
+
 
 if __name__ == "__main__":
     unittest.main()

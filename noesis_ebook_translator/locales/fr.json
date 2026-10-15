@@ -241,5 +241,8 @@
   "label.view": "Vue",
   "view.original": "Originaux",
   "view.translated": "Traduits",
-  "view.chapters": "Chapitres"
+  "view.chapters": "Chapitres",
+  "action.license": "Licence",
+  "action.upstream": "Amont",
+  "action.engine_version": "Version du moteur"
 }

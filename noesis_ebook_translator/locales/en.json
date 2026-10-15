@@ -241,5 +241,8 @@
   "label.view": "View",
   "view.original": "Original",
   "view.translated": "Translated",
-  "view.chapters": "Chapters"
+  "view.chapters": "Chapters",
+  "action.license": "License",
+  "action.upstream": "Upstream",
+  "action.engine_version": "Engine version"
 }

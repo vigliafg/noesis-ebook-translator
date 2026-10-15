@@ -241,5 +241,8 @@
   "label.view": "Vista",
   "view.original": "Originales",
   "view.translated": "Traducidos",
-  "view.chapters": "Capítulos"
+  "view.chapters": "Capítulos",
+  "action.license": "Licencia",
+  "action.upstream": "Upstream",
+  "action.engine_version": "Versión del motor"
 }

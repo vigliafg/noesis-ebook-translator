@@ -241,5 +241,8 @@
   "label.view": "Ansicht",
   "view.original": "Originale",
   "view.translated": "Übersetzt",
-  "view.chapters": "Kapitel"
+  "view.chapters": "Kapitel",
+  "action.license": "Lizenz",
+  "action.upstream": "Upstream",
+  "action.engine_version": "Engine-Version"
 }
