@@ -29,6 +29,8 @@ class ReaderWidget(QWidget):
     statusMessage = pyqtSignal(str)
     translatedRequested = pyqtSignal(str)  # emission → host starts translation
     parallelChanged = pyqtSignal(bool)
+    flowChanged = pyqtSignal(str)
+    spreadChanged = pyqtSignal(bool)
 
     def __init__(self, session: Session | None = None, backend_mode: str = "auto",
                  parent=None) -> None:
@@ -199,6 +201,7 @@ class ReaderWidget(QWidget):
                     backend.set_flow(mode)
                 except Exception:  # noqa: BLE001
                     pass
+        self.flowChanged.emit(mode or "paginated")
 
     def set_spread(self, on: bool) -> None:
         """Set single vs two-page spread on both viewports."""
@@ -208,6 +211,28 @@ class ReaderWidget(QWidget):
                     backend.set_spread(bool(on))
                 except Exception:  # noqa: BLE001
                     pass
+        self.spreadChanged.emit(bool(on))
+
+    def apply_reading_settings(self, *, theme=None, font=None, line=None,
+                               justify=None, hyphenate=None, flow=None,
+                               spread=None) -> None:
+        """Apply saved reading defaults to the viewports and the mini toolbar."""
+        if theme:
+            self.set_theme(theme)
+        if font:
+            self.set_font(font)
+        if line is not None:
+            self.set_line_height(line)
+        if justify is not None:
+            self.set_justify(justify)
+        if hyphenate is not None:
+            self.set_hyphenate(hyphenate)
+        if flow:
+            index = self.cmb_flow.findData(flow)
+            if index >= 0:
+                self.cmb_flow.setCurrentIndex(index)
+        if spread is not None:
+            self.btn_spread.setChecked(bool(spread))
 
     # ---------------------------------------------------------------- TOC
     def _populate_toc(self) -> None:

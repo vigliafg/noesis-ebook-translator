@@ -269,5 +269,16 @@
   "action.expand_all": "Espandi tutto",
   "action.collapse_all": "Collassa tutto",
   "view.grid": "Griglia",
-  "view.list": "Lista"
+  "view.list": "Lista",
+  "settings.tab.general": "Generale",
+  "settings.tab.reader": "Lettore",
+  "settings.tab.translation": "Traduzione",
+  "settings.tab.quality": "Qualità",
+  "settings.tab.export": "Esportazione",
+  "settings.tab.paths": "Percorsi e dati",
+  "settings.tab.about": "Assistenza e info",
+  "label.reader_theme": "Tema del lettore",
+  "label.output_dir": "Cartella di output",
+  "settings.reset_onboarding": "Riavvia il wizard al prossimo avvio",
+  "settings.database": "Database libreria e capitoli"
 }

@@ -269,5 +269,16 @@
   "action.expand_all": "Alle erweitern",
   "action.collapse_all": "Alle einklappen",
   "view.grid": "Raster",
-  "view.list": "Liste"
+  "view.list": "Liste",
+  "settings.tab.general": "Allgemein",
+  "settings.tab.reader": "Leser",
+  "settings.tab.translation": "Übersetzung",
+  "settings.tab.quality": "Qualität",
+  "settings.tab.export": "Export",
+  "settings.tab.paths": "Pfade & Daten",
+  "settings.tab.about": "Hilfe & Info",
+  "label.reader_theme": "Leser-Design",
+  "label.output_dir": "Ausgabeordner",
+  "settings.reset_onboarding": "Assistenten beim nächsten Start erneut ausführen",
+  "settings.database": "Bibliothek- & Kapitel-Datenbank"
 }

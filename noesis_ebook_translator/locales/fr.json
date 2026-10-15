@@ -269,5 +269,16 @@
   "action.expand_all": "Tout développer",
   "action.collapse_all": "Tout réduire",
   "view.grid": "Grille",
-  "view.list": "Liste"
+  "view.list": "Liste",
+  "settings.tab.general": "Général",
+  "settings.tab.reader": "Lecteur",
+  "settings.tab.translation": "Traduction",
+  "settings.tab.quality": "Qualité",
+  "settings.tab.export": "Export",
+  "settings.tab.paths": "Chemins et données",
+  "settings.tab.about": "Aide et infos",
+  "label.reader_theme": "Thème du lecteur",
+  "label.output_dir": "Dossier de sortie",
+  "settings.reset_onboarding": "Relancer l'assistant au prochain démarrage",
+  "settings.database": "Base de données bibliothèque et chapitres"
 }

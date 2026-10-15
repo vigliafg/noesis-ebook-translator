@@ -150,6 +150,10 @@ class MainWindow(QMainWindow):
         self.reader = ReaderWidget(session=None, backend_mode=self._reader_mode())
         self.reader.statusMessage.connect(self.status.set_base_text)
         self.reader.parallelChanged.connect(self._on_parallel_changed)
+        self.reader.flowChanged.connect(
+            lambda flow: appconfig.save_settings({"reader_flow": flow}))
+        self.reader.spreadChanged.connect(
+            lambda on: appconfig.save_settings({"reader_spread": bool(on)}))
         self.library = LibraryWidget(self.reader.session)
         self.chapters = ChaptersWidget()
         self.chapters.translateRequested.connect(self._translate_chapters)
@@ -256,12 +260,33 @@ class MainWindow(QMainWindow):
         self._reduce_motion = bool(settings.get("reduce_motion", False))
         self.progress.set_reduce_motion(self._reduce_motion)
         self.chapter_bar.set_reduce_motion(self._reduce_motion)
-        theme_index = self.cmb_theme_reader.findText(
-            T(f"theme.{settings.get('ui_theme', 'system')}"))
-        if theme_index >= 0:
-            self.cmb_theme_reader.setCurrentIndex(theme_index)
+        # Reader defaults (theme is separate from the app theme) + quick controls
+        reader_themes = ("light", "sepia", "dark")
+        rt = settings.get("reader_theme", "light")
+        self.cmb_theme_reader.setCurrentIndex(
+            reader_themes.index(rt) if rt in reader_themes else 0)
+        fonts = ["serif", "sans-serif", "monospace"]
+        rf = settings.get("reader_font", "serif")
+        self.cmb_font.setCurrentIndex(fonts.index(rf) if rf in fonts else 0)
+        line_index = self.cmb_line.findText(str(settings.get("reader_line_height", 1.5)))
+        if line_index >= 0:
+            self.cmb_line.setCurrentIndex(line_index)
+        self.chk_justify.setChecked(bool(settings.get("reader_justify", True)))
+        self.chk_hyphenate.setChecked(bool(settings.get("reader_hyphenate", True)))
+        self.reader.apply_reading_settings(
+            theme=rt, font=rf,
+            line=float(settings.get("reader_line_height", 1.5)),
+            justify=bool(settings.get("reader_justify", True)),
+            hyphenate=bool(settings.get("reader_hyphenate", True)),
+            flow=settings.get("reader_flow", "paginated"),
+            spread=bool(settings.get("reader_spread", False)))
         for fmt in exporter_mod.supported_exports():
             self.cmb_export_format.addItem(T(f"format.{fmt}"), fmt)
+        fmt_index = self.cmb_export_format.findData(settings.get("export_format", "epub"))
+        if fmt_index >= 0:
+            self.cmb_export_format.setCurrentIndex(fmt_index)
+        self.cmb_export_edition.setCurrentIndex(
+            1 if settings.get("export_edition") == "translated" else 0)
         self._on_engine_changed(self.cmb_engine.currentText())
         self._update_toc_mode()
         self._initializing = False
@@ -285,11 +310,16 @@ class MainWindow(QMainWindow):
             self.cmb_model.setCurrentText(pref["model"])
 
     def _set_theme(self, mode: str) -> None:
+        """Apply the *app* theme (the reader theme is separate)."""
         from noesis_ebook_translator.ui import apply_theme
         app = QApplication.instance()
         if app is not None:
-            apply_theme(app, mode, reader=self.reader)
+            apply_theme(app, mode)
         appconfig.save_settings({"ui_theme": mode})
+
+    def _set_reader_theme(self, mode: str) -> None:
+        self.reader.set_theme(mode)
+        appconfig.save_settings({"reader_theme": mode})
 
     def _set_ui_language(self, lang: str) -> None:
         appconfig.save_settings({"ui_language": lang})
@@ -308,6 +338,37 @@ class MainWindow(QMainWindow):
 
     def _apply_theme_preview(self, mode: str) -> None:
         self._set_theme(mode)
+
+    def _apply_settings_values(self, values: dict) -> None:
+        """Apply saved settings to the running app (theme, reader, quick controls)."""
+        self._set_theme(values.get("ui_theme", "system"))
+        self._set_reduce_motion(bool(values.get("reduce_motion", False)))
+        self.reader.apply_reading_settings(
+            theme=values.get("reader_theme", "light"),
+            font=values.get("reader_font", "serif"),
+            line=float(values.get("reader_line_height", 1.5)),
+            justify=bool(values.get("reader_justify", True)),
+            hyphenate=bool(values.get("reader_hyphenate", True)),
+            flow=values.get("reader_flow", "paginated"),
+            spread=bool(values.get("reader_spread", False)))
+        reader_themes = ("light", "sepia", "dark")
+        theme_name = values.get("reader_theme", "light")
+        if theme_name in reader_themes:
+            self.cmb_theme_reader.setCurrentIndex(reader_themes.index(theme_name))
+        fonts = ["serif", "sans-serif", "monospace"]
+        font = values.get("reader_font", "serif")
+        if font in fonts:
+            self.cmb_font.setCurrentIndex(fonts.index(font))
+        line_index = self.cmb_line.findText(str(values.get("reader_line_height", 1.5)))
+        if line_index >= 0:
+            self.cmb_line.setCurrentIndex(line_index)
+        self.chk_justify.setChecked(bool(values.get("reader_justify", True)))
+        self.chk_hyphenate.setChecked(bool(values.get("reader_hyphenate", True)))
+        fmt_index = self.cmb_export_format.findData(values.get("export_format", "epub"))
+        if fmt_index >= 0:
+            self.cmb_export_format.setCurrentIndex(fmt_index)
+        self.cmb_export_edition.setCurrentIndex(
+            1 if values.get("export_edition") == "translated" else 0)
 
     # --------------------------------------------------------- tab / TOC
     def _on_section_changed(self, index: int) -> None:
@@ -424,7 +485,9 @@ class MainWindow(QMainWindow):
 
     def on_font_changed(self, _index: int) -> None:
         families = ["serif", "sans-serif", "monospace"]
-        self.reader.set_font(families[max(0, min(2, self.cmb_font.currentIndex()))])
+        family = families[max(0, min(2, self.cmb_font.currentIndex()))]
+        self.reader.set_font(family)
+        appconfig.save_settings({"reader_font": family})
 
     def on_line_height_changed(self, _index: int) -> None:
         try:
@@ -432,12 +495,15 @@ class MainWindow(QMainWindow):
         except ValueError:
             value = 1.5
         self.reader.set_line_height(value)
+        appconfig.save_settings({"reader_line_height": value})
 
     def on_justify_toggled(self, checked: bool) -> None:
         self.reader.set_justify(bool(checked))
+        appconfig.save_settings({"reader_justify": bool(checked)})
 
     def on_hyphenate_toggled(self, checked: bool) -> None:
         self.reader.set_hyphenate(bool(checked))
+        appconfig.save_settings({"reader_hyphenate": bool(checked)})
 
     def on_expand_all(self) -> None:
         self.reader.expand_all()
@@ -473,12 +539,13 @@ class MainWindow(QMainWindow):
     def on_settings(self) -> None:
         from noesis_ebook_translator.ui import SettingsDialog
         dialog = SettingsDialog(self, apply_theme_cb=self._apply_theme_preview)
+        dialog.applied.connect(self._apply_settings_values)
         if dialog.exec():
             values = dialog.apply()
-            self._set_reduce_motion(bool(values.get("reduce_motion")))
+            self._apply_settings_values(values)
             restart = (values.get("ui_language") != get_language()
-                       or values.get("reader_backend") != self._settings.get(
-                           "reader_backend", "auto"))
+                       or values.get("reader_backend")
+                       != self._settings.get("reader_backend", "auto"))
             self._status_message(T("msg.restart_needed") if restart
                                  else T("msg.settings_saved"))
 

@@ -106,10 +106,15 @@ funzione**) della sezione attiva. Le icone sono Microsoft Fluent Emoji (MIT).
 
 `Library · Reader · Assets · Translate · Quality · Export · Tools`
 
-A sinistra della fascia alta c'è un pulsante **Start** (Apri/Aggiungi, Impostazioni,
-Wizard, Tema, Lingua, Backend lettore, Aiuto, Informazioni) e a destra la
-**rotella Impostazioni**. La navigazione tra le viste avviene da qui (la barra a
-schede del pannello centrale è nascosta).
+A sinistra della fascia alta c'è un pulsante **Start** (Apri/Aggiungi/Apri
+cartella · Impostazioni · Wizard · Aiuto/Guida online · Informazioni ·
+Diagnostica) e a destra la **rotella Impostazioni**. La navigazione tra le viste
+avviene da qui (la barra a schede del pannello centrale è nascosta).
+
+La **rotella** apre il **centro impostazioni** a tab (un unico posto): *Generale ·
+Lettore · Traduzione · Qualità · Esportazione · Percorsi e dati · Assistenza e
+info*. Il **tema del lettore è separato** dal tema dell'app; i controlli rapidi
+nelle sezioni aggiornano anche i valori predefiniti.
 
 - **Library**: libri originali, copie tradotte e capitoli (viste a toggle).
 - **Reader**: indice, fonte/interlinea, zoom, ricerca, confronto, note, stampa/PDF.

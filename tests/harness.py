@@ -192,7 +192,7 @@ def run_feature_harness(book_path: str, *, app=None) -> FeatureReport:
         # settings dialog can be built and read
         from noesis_ebook_translator.ui import SettingsDialog
         dialog = SettingsDialog(window)
-        report.settings_ok = bool(dialog.changes().get("ui_theme"))
+        report.settings_ok = bool(dialog.values().get("ui_theme"))
         dialog.close()
     except Exception as exc:  # noqa: BLE001
         report.notes.append(f"{type(exc).__name__}: {exc}")

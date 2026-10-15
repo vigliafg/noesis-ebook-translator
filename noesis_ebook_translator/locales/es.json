@@ -269,5 +269,16 @@
   "action.expand_all": "Expandir todo",
   "action.collapse_all": "Contraer todo",
   "view.grid": "Cuadrícula",
-  "view.list": "Lista"
+  "view.list": "Lista",
+  "settings.tab.general": "General",
+  "settings.tab.reader": "Lector",
+  "settings.tab.translation": "Traducción",
+  "settings.tab.quality": "Calidad",
+  "settings.tab.export": "Exportación",
+  "settings.tab.paths": "Rutas y datos",
+  "settings.tab.about": "Ayuda e info",
+  "label.reader_theme": "Tema del lector",
+  "label.output_dir": "Carpeta de salida",
+  "settings.reset_onboarding": "Volver a ejecutar el asistente al reiniciar",
+  "settings.database": "Base de datos de biblioteca y capítulos"
 }

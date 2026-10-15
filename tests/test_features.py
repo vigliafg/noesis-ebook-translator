@@ -336,6 +336,19 @@ class TestWidgets(unittest.TestCase):
         finally:
             window.close()
 
+    def test_settings_dialog_tabs(self):
+        from noesis_ebook_translator.ui import SettingsDialog
+
+        dialog = SettingsDialog()
+        try:
+            self.assertEqual(dialog.tabs.count(), 7)
+            values = dialog.values()
+            for key in ("ui_theme", "reader_theme", "reader_font", "reader_flow",
+                        "export_format", "output_dir", "quality_samples"):
+                self.assertIn(key, values)
+        finally:
+            dialog.close()
+
     def test_startup_section_matches_view(self):
         from noesis_ebook_translator import appconfig
         import main

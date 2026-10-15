@@ -43,6 +43,22 @@ APP_DEFAULTS: dict[str, Any] = {
     "reader_backend": "auto",
     "reduce_motion": False,
     "onboarding_done": False,
+    # Reader defaults (separate theme from the app).
+    "reader_theme": "light",
+    "reader_font": "serif",
+    "reader_line_height": 1.5,
+    "reader_justify": True,
+    "reader_hyphenate": True,
+    "reader_flow": "paginated",
+    "reader_spread": False,
+    # Quality defaults.
+    "quality_samples": 10,
+    "quality_threshold": 60,
+    "quality_judge_engine": "",
+    # Export defaults.
+    "export_format": "epub",
+    "export_edition": "original",
+    "output_dir": "",
     # Reserve anchors/links so navigation targets and footnote references survive
     # translation. Emphasis tags (em/i/b/…) are intentionally NOT reserved: their
     # text must be translated, so the tag is dropped in favour of correct text.

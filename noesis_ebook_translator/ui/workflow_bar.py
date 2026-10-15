@@ -300,28 +300,6 @@ def build_workflow(window) -> WorkflowBar:
         menu.addAction(T("action.add_book"), window.on_add_book)
         menu.addAction(T("action.open_output"), window.on_open_output)
         menu.addSeparator()
-
-        settings = appconfig.load_settings()
-        theme_menu = menu.addMenu(T("label.theme"))
-        for mode in theme_mod.theme_choices():
-            act = theme_menu.addAction(T(f"theme.{mode}"))
-            act.setCheckable(True)
-            act.setChecked(settings.get("ui_theme", "system") == mode)
-            act.triggered.connect(lambda _c, m=mode: window._set_theme(m))
-        lang_menu = menu.addMenu(T("label.ui_language"))
-        for code in ("it", "en", "fr", "es", "de"):
-            act = lang_menu.addAction(T(f"language.{code}"))
-            act.setCheckable(True)
-            act.setChecked(get_language() == code)
-            act.triggered.connect(lambda _c, c=code: window._set_ui_language(c))
-        backend_menu = menu.addMenu(T("label.reader_backend"))
-        for backend in ["auto"] + available_backends():
-            act = backend_menu.addAction(T(f"backend.{backend}"))
-            act.setCheckable(True)
-            act.setChecked(settings.get("reader_backend", "auto") == backend)
-            act.triggered.connect(lambda _c, b=backend: window._set_reader_backend(b))
-
-        menu.addSeparator()
         menu.addAction(T("action.settings"), window.on_settings)
         menu.addAction(T("action.wizard"), window.on_wizard)
         menu.addSeparator()
@@ -368,10 +346,10 @@ def build_workflow(window) -> WorkflowBar:
     p.button("action.collapse_all", "remove", window.on_collapse_all)
     p.separator()
     window.cmb_theme_reader = p.labelled_combo(
-        "label.theme", [T(f"theme.{m}") for m in theme_mod.theme_choices()],
-        tooltip=T("label.theme"))
+        "label.reader_theme", [T(f"theme.{m}") for m in ("light", "sepia", "dark")],
+        tooltip=T("label.reader_theme"))
     window.cmb_theme_reader.currentIndexChanged.connect(
-        lambda i: window._set_theme(theme_mod.theme_choices()[i]))
+        lambda i: window._set_reader_theme(("light", "sepia", "dark")[max(0, i)]))
     window.cmb_font = p.labelled_combo(
         "label.font", ["Serif", "Sans Serif", "Monospace"], tooltip=T("label.font"))
     window.cmb_font.currentIndexChanged.connect(window.on_font_changed)

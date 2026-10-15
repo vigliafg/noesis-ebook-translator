@@ -269,5 +269,16 @@
   "action.expand_all": "Expand all",
   "action.collapse_all": "Collapse all",
   "view.grid": "Grid",
-  "view.list": "List"
+  "view.list": "List",
+  "settings.tab.general": "General",
+  "settings.tab.reader": "Reader",
+  "settings.tab.translation": "Translation",
+  "settings.tab.quality": "Quality",
+  "settings.tab.export": "Export",
+  "settings.tab.paths": "Paths & data",
+  "settings.tab.about": "Help & about",
+  "label.reader_theme": "Reader theme",
+  "label.output_dir": "Output folder",
+  "settings.reset_onboarding": "Re-run the wizard on next start",
+  "settings.database": "Library & chapters database"
 }
