@@ -96,6 +96,8 @@ class WebEngineBackend(QWidget):
         self._line = 1.5
         self._justify = True
         self._hyphenate = True
+        self._flow = "paginated"
+        self._spread = False
         self._resume_href: str | None = None
         self._ready = False
         self._opened = False
@@ -132,6 +134,8 @@ class WebEngineBackend(QWidget):
         self._js(f"api.setJustify({str(bool(self._justify)).lower()})")
         self._js(f"api.setHyphenate({str(bool(self._hyphenate)).lower()})")
         self._js(f"api.setZoom({self._pt})")
+        self._js(f"api.setFlow({json.dumps(self._flow)})")
+        self._js(f"api.setSpread({str(bool(self._spread)).lower()})")
 
     def _on_opened(self, _payload: str) -> None:
         self._opened = True
@@ -236,10 +240,12 @@ class WebEngineBackend(QWidget):
         self._js_when_ready(f"api.setHyphenate({str(bool(on)).lower()})")
 
     def set_spread(self, on: bool) -> None:
+        self._spread = bool(on)
         self._js_when_ready(f"api.setSpread({str(bool(on)).lower()})")
 
     def set_flow(self, flow: str) -> None:
-        self._js_when_ready(f"api.setFlow({json.dumps(flow)})")
+        self._flow = flow or "paginated"
+        self._js_when_ready(f"api.setFlow({json.dumps(self._flow)})")
 
     def find(self, text: str, backward: bool = False) -> bool:
         if text:
