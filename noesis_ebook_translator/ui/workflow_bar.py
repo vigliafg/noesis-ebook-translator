@@ -25,31 +25,68 @@ from .icons import icon
 __all__ = ["WorkflowBar", "build_workflow"]
 
 
-class WorkflowButton(QToolButton):
-    """Toolbar button: icon on the left, function name on the right."""
+class WorkflowButton(QWidget):
+    """Toolbar button: a large icon with the function name on two lines below."""
+
+    clicked = pyqtSignal()
+    toggled = pyqtSignal(bool)
 
     def __init__(self, text: str, icon_name: str, slot=None, *,
                  tooltip: str | None = None, shortcut: str | None = None,
                  checkable: bool = False, on_toggle=None, parent=None) -> None:
         super().__init__(parent)
-        self.setText(text or "")
-        self.setIcon(icon(icon_name))
-        self.setIconSize(QSize(20, 20))
-        self.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon if text
-            else Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.setAutoRaise(True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(1)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._button = QToolButton(self)
+        self._button.setIcon(icon(icon_name))
+        self._button.setIconSize(QSize(40, 40))
+        self._button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self._button.setAutoRaise(True)
+        self._button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._button.setCheckable(bool(checkable))
+        layout.addWidget(self._button, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self._label = None
+        if text:
+            self._label = QLabel(text, self)
+            self._label.setWordWrap(True)
+            self._label.setMaximumWidth(104)
+            self._label.setAlignment(Qt.AlignmentFlag.AlignHCenter
+                                     | Qt.AlignmentFlag.AlignTop)
+            layout.addWidget(self._label, 0, Qt.AlignmentFlag.AlignHCenter)
+
         self.setToolTip(tooltip or text)
-        self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         if shortcut:
-            self.setShortcut(shortcut)
-        if checkable:
-            self.setCheckable(True)
+            self._button.setShortcut(shortcut)
+        self._button.clicked.connect(lambda: self.clicked.emit())
+        self._button.toggled.connect(self.toggled.emit)
         if slot is not None:
             self.clicked.connect(slot)
         if on_toggle is not None:
             self.toggled.connect(on_toggle)
+
+    # -- proxies so callers can treat it like the underlying button --------
+    def setChecked(self, value: bool) -> None:
+        self._button.setChecked(bool(value))
+
+    def isChecked(self) -> bool:
+        return self._button.isChecked()
+
+    def blockSignals(self, block: bool) -> bool:  # noqa: N802 - Qt naming
+        return self._button.blockSignals(block)
+
+    def setEnabled(self, value: bool) -> None:  # noqa: N802 - Qt naming
+        super().setEnabled(value)
+        self._button.setEnabled(value)
+
+    def icon(self) -> QIcon:
+        return self._button.icon()
+
+    def text(self) -> str:
+        return self._label.text() if self._label is not None else ""
 
 
 class SectionPage(QWidget):
