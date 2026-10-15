@@ -267,5 +267,7 @@
   "label.justify": "Justificado",
   "label.hyphenate": "Guiones",
   "action.expand_all": "Expandir todo",
-  "action.collapse_all": "Contraer todo"
+  "action.collapse_all": "Contraer todo",
+  "view.grid": "Cuadrícula",
+  "view.list": "Lista"
 }

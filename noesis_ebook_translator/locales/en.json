@@ -267,5 +267,7 @@
   "label.justify": "Justified",
   "label.hyphenate": "Hyphenate",
   "action.expand_all": "Expand all",
-  "action.collapse_all": "Collapse all"
+  "action.collapse_all": "Collapse all",
+  "view.grid": "Grid",
+  "view.list": "List"
 }

@@ -535,6 +535,10 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.library)
         self.library.set_view(view)
 
+    def set_library_layout(self, layout: str) -> None:
+        self.tabs.setCurrentWidget(self.library)
+        self.library.set_layout(layout)
+
     def _on_assets_edition_changed(self, _index: int) -> None:
         self._assets_edition = (
             "translated" if self.cmb_assets_edition.currentIndex() == 1

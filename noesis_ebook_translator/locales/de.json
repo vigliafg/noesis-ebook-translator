@@ -267,5 +267,7 @@
   "label.justify": "Blocksatz",
   "label.hyphenate": "Silbentrennung",
   "action.expand_all": "Alle erweitern",
-  "action.collapse_all": "Alle einklappen"
+  "action.collapse_all": "Alle einklappen",
+  "view.grid": "Raster",
+  "view.list": "Liste"
 }

@@ -267,5 +267,7 @@
   "label.justify": "Justifié",
   "label.hyphenate": "Césure",
   "action.expand_all": "Tout développer",
-  "action.collapse_all": "Tout réduire"
+  "action.collapse_all": "Tout réduire",
+  "view.grid": "Grille",
+  "view.list": "Liste"
 }

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon, QPixmap, QTransform
 from PyQt6.QtWidgets import (
     QAbstractItemView, QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
@@ -42,11 +42,23 @@ def _cover_icon(path: str) -> QIcon | None:
     return QIcon(pixmap.scaledToHeight(96, Qt.TransformationMode.SmoothTransformation))
 
 
-class LibraryWidget(QWidget):
-    """Multi-book library backed by the SQLite session store.
+def _fallback_icon() -> QIcon:
+    from ..ui.icons import icon as _icon
+    return _icon("library")
 
-    Three views: ``original`` (all books), ``translated`` (books with a
-    translation) and ``chapters`` (extracted chapters across books).
+
+def _chapter_icon() -> QIcon:
+    from ..ui.icons import icon as _icon
+    return _icon("chapters")
+
+
+class LibraryWidget(QWidget):
+    """Multi-book library with two layouts (grid of covers / vertical list).
+
+    Views (content): ``original`` (all books), ``translated`` (books with a
+    translation) and ``chapters`` (extracted chapters). Layouts (presentation):
+    ``grid`` (5 covers per row, multi-line title below) and ``list`` (cover with
+    the title on the right).
     """
 
     openRequested = pyqtSignal(str)
@@ -55,6 +67,7 @@ class LibraryWidget(QWidget):
         super().__init__(parent)
         self.session = session
         self._view = "original"
+        self._layout = "grid"
         from ..chapter_store import ChapterStore
         self.store = ChapterStore()
         layout = QVBoxLayout(self)
@@ -70,14 +83,45 @@ class LibraryWidget(QWidget):
         layout.addLayout(bar)
 
         self.list = QListWidget()
+        self.list.setWordWrap(True)
+        self.list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.list.setMovement(QListWidget.Movement.Static)
+        self.list.setSpacing(6)
+        self.list.itemActivated.connect(self._open_item)
+        self.list.itemDoubleClicked.connect(self._open_item)
         layout.addWidget(self.list, 1)
 
         self.btn_add.clicked.connect(self._add)
         self.btn_remove.clicked.connect(self._remove)
         self.edt_filter.textChanged.connect(self.refresh)
-        self.list.itemActivated.connect(self._open_item)
-        self.list.itemDoubleClicked.connect(self._open_item)
+        self.set_layout("grid")
         self.refresh()
+
+    # ------------------------------------------------------------ modes
+    def set_layout(self, layout: str) -> None:
+        self._layout = "list" if layout == "list" else "grid"
+        if self._layout == "grid":
+            self.list.setViewMode(QListWidget.ViewMode.IconMode)
+            self.list.setIconSize(QSize(110, 150))
+            self._update_grid()
+        else:
+            self.list.setViewMode(QListWidget.ViewMode.ListMode)
+            self.list.setGridSize(QSize())
+            self.list.setIconSize(QSize(48, 64))
+
+    def layout_mode(self) -> str:
+        return self._layout
+
+    def _update_grid(self) -> None:
+        # 5 covers per row
+        width = max(self.list.viewport().width(), 400)
+        cell = max(120, width // 5)
+        self.list.setGridSize(QSize(cell, 210))
+
+    def resizeEvent(self, event):  # noqa: N802 - Qt naming
+        super().resizeEvent(event)
+        if self._layout == "grid":
+            self._update_grid()
 
     def set_view(self, view: str) -> None:
         self._view = view if view in ("original", "translated", "chapters") else "original"
@@ -86,12 +130,16 @@ class LibraryWidget(QWidget):
     def view(self) -> str:
         return self._view
 
+    # ------------------------------------------------------------ content
     def refresh(self) -> None:
         self.list.clear()
         needle = self.edt_filter.text().strip().lower()
         if self._view == "chapters":
             self._refresh_chapters(needle)
-            return
+        else:
+            self._refresh_books(needle)
+
+    def _refresh_books(self, needle: str) -> None:
         for entry in self.session.recent():
             if self._view == "translated" and not entry.get("translated_path"):
                 continue
@@ -100,10 +148,10 @@ class LibraryWidget(QWidget):
                 continue
             if entry.get("translated_path"):
                 title = f"{title}  ({T('library.translated')})"
-            icon = _cover_icon(entry["path"])
-            item = (QListWidgetItem(icon, title) if icon is not None
-                    else QListWidgetItem(title))
+            icon = self._book_icon(entry["path"])
+            item = QListWidgetItem(icon, title)
             item.setData(Qt.ItemDataRole.UserRole, entry["path"])
+            item.setToolTip(entry["path"])
             self.list.addItem(item)
 
     def _refresh_chapters(self, needle: str) -> None:
@@ -111,14 +159,25 @@ class LibraryWidget(QWidget):
             rows = self.store.all()
         except Exception:  # noqa: BLE001
             rows = []
+        fallback = _chapter_icon()
         for row in rows:
-            label = f"{os.path.basename(row.get('book_path', ''))}: " \
-                    f"{row.get('name') or row.get('chapter_index')}"
+            book = os.path.basename(row.get("book_path", ""))
+            name = row.get("name") or row.get("chapter_index")
+            label = f"{name}\n{book}" if self._layout == "grid" else f"{name} — {book}"
             if needle and needle not in label.lower():
                 continue
-            item = QListWidgetItem(label)
+            icon = self._book_icon(row.get("book_path", ""), fallback)
+            item = QListWidgetItem(icon, label)
             item.setData(Qt.ItemDataRole.UserRole, row.get("book_path", ""))
             self.list.addItem(item)
+
+    def _book_icon(self, path: str, fallback: QIcon | None = None) -> QIcon:
+        pixmap = _cover_pixmap(path)
+        if pixmap is not None:
+            return QIcon(pixmap.scaled(
+                110, 150, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
+        return fallback if fallback is not None else _fallback_icon()
 
     def add_book(self, path: str, title: str = "") -> None:
         if not title:

@@ -304,6 +304,38 @@ class TestWidgets(unittest.TestCase):
         finally:
             window.close()
 
+    def test_library_layouts_and_views(self):
+        from PyQt6.QtWidgets import QListWidget
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-lib-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = main.MainWindow()
+        try:
+            window.tabs.setCurrentWidget(window.library)
+            window.library.add_book(book)
+            self.assertGreaterEqual(window.library.list.count(), 1)
+
+            window.set_library_layout("grid")
+            self.assertEqual(window.library.layout_mode(), "grid")
+            self.assertEqual(window.library.list.viewMode(),
+                             QListWidget.ViewMode.IconMode)
+            window.set_library_layout("list")
+            self.assertEqual(window.library.layout_mode(), "list")
+            self.assertEqual(window.library.list.viewMode(),
+                             QListWidget.ViewMode.ListMode)
+            # views keep the same layouts
+            window.set_library_view("original")
+            self.assertEqual(window.library.view(), "original")
+            window.set_library_view("translated")
+            self.assertEqual(window.library.view(), "translated")
+            window.set_library_view("chapters")
+            self.assertEqual(window.library.view(), "chapters")
+        finally:
+            window.close()
+
     def test_startup_section_matches_view(self):
         from noesis_ebook_translator import appconfig
         import main

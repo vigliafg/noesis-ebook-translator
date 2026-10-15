@@ -267,5 +267,7 @@
   "label.justify": "Giustificato",
   "label.hyphenate": "Sillabazione",
   "action.expand_all": "Espandi tutto",
-  "action.collapse_all": "Collassa tutto"
+  "action.collapse_all": "Collassa tutto",
+  "view.grid": "Griglia",
+  "view.list": "Lista"
 }
