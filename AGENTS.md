@@ -136,6 +136,5 @@ GitHub Pages da `.github/workflows/docs.yml`.
   sul backend lite (deterministico).
 - Harness: `tests/harness.py` (scenario comune), `tests/test_reader_backends.py`
   (lite/full; il full gira in **sottoprocesso**), `tools/reader_harness.py` (CLI).
-- In test/CI `NOESIS_READER_BACKEND=lite` (impostato in `tests/__init__.py`).
 - NON importare `PyQt6.QtWebEngineWidgets` a livello di modulo nei test (blocca il
   processo): usa `importlib.util.find_spec` e i sottoprocessi.
