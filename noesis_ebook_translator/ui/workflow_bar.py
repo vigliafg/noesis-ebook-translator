@@ -151,6 +151,37 @@ class SectionPage(QWidget):
         self._add(container)
         return combo
 
+    def labelled_line(self, label_key: str, placeholder: str | None = None,
+                      width: int | None = None) -> QLineEdit:
+        container = QWidget()
+        box = QVBoxLayout(container)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(1)
+        edit = QLineEdit()
+        if placeholder:
+            edit.setPlaceholderText(placeholder)
+        if width:
+            edit.setMinimumWidth(width)
+        label = QLabel(T(label_key))
+        label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        box.addWidget(label)
+        box.addWidget(edit)
+        self._add(container)
+        return edit
+
+    def labelled_spin(self, label_key: str) -> QSpinBox:
+        container = QWidget()
+        box = QVBoxLayout(container)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(1)
+        spin = QSpinBox()
+        label = QLabel(T(label_key))
+        label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        box.addWidget(label)
+        box.addWidget(spin)
+        self._add(container)
+        return spin
+
     def check(self, key: str) -> QCheckBox:
         return self._add(QCheckBox(T(key)))
 
@@ -400,17 +431,19 @@ def build_workflow(window) -> WorkflowBar:
     window.btn_cancel = p.button("action.cancel", "cancel", window.on_cancel)
     window.btn_cancel.setEnabled(False)
     p.separator()
-    window.cmb_engine = p.combo(appconfig.engine_names(), tooltip=T("panel.engine"))
+    window.cmb_engine = p.labelled_combo("panel.engine", appconfig.engine_names(),
+                                         tooltip=T("panel.engine"))
     window.cmb_engine.currentTextChanged.connect(window._on_engine_changed)
-    window.edt_api_key = p.line(width=140)
-    window.edt_api_key.setToolTip(T("label.api_key"))
+    window.edt_api_key = p.labelled_line("label.api_key", width=140)
     window.edt_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-    window.cmb_model = p.combo(tooltip=T("label.model"))
+    window.cmb_model = p.labelled_combo("label.model", tooltip=T("label.model"))
     window.cmb_model.setEditable(True)
     p.separator()
-    window.cmb_source = p.combo(["Auto detect"] + list(GOOGLE_LANGUAGES),
-                                tooltip=T("label.source"))
-    window.cmb_target = p.combo(list(GOOGLE_LANGUAGES), tooltip=T("label.target"))
+    window.cmb_source = p.labelled_combo(
+        "label.source", ["Auto detect"] + list(GOOGLE_LANGUAGES),
+        tooltip=T("label.source"))
+    window.cmb_target = p.labelled_combo(
+        "label.target", list(GOOGLE_LANGUAGES), tooltip=T("label.target"))
     p.button("action.swap", "swap", window.on_swap_languages)
     p.separator()
     window.chk_bilingual = p.check("label.bilingual")
@@ -426,16 +459,14 @@ def build_workflow(window) -> WorkflowBar:
     p = bar.add_section("quality", T("tab.quality"))
     p.button("action.evaluate", "check", lambda: window.on_quality(False))
     p.button("action.evaluate_ai", "quality", lambda: window.on_quality(True))
-    window.spn_samples = p.spin()
-    window.spn_samples.setToolTip(T("label.samples"))
+    window.spn_samples = p.labelled_spin("label.samples")
     window.spn_samples.setRange(1, 100)
     window.spn_samples.setValue(10)
     p.separator()
     p.button("action.report_save", "save", window.on_report_save)
     p.button("action.report_open", "report", window.on_report_open)
     p.separator()
-    window.spn_threshold = p.spin()
-    window.spn_threshold.setToolTip(T("label.threshold"))
+    window.spn_threshold = p.labelled_spin("label.threshold")
     window.spn_threshold.setRange(0, 100)
     window.spn_threshold.setValue(60)
     p.stretch()
