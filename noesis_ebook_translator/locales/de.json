@@ -244,5 +244,9 @@
   "view.chapters": "Kapitel",
   "action.license": "Lizenz",
   "action.upstream": "Upstream",
-  "action.engine_version": "Engine-Version"
+  "action.engine_version": "Engine-Version",
+  "action.translate_selected": "Auswahl übersetzen",
+  "action.export_selected": "Auswahl exportieren",
+  "tip.open": "Öffnet die EPUB, fügt sie zur Bibliothek hinzu und lädt sie im Leser",
+  "tip.add_book": "Fügt das Buch zur Bibliothek hinzu, ohne es zu öffnen"
 }

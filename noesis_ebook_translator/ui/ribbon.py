@@ -51,8 +51,8 @@ def build_ribbon(window) -> None:
     # ===================================================================
     home = category("tab.home")
     pf = panel(home, "panel.file")
-    big(pf, "action.open", "folder", window.on_open, "Ctrl+O")
-    big(pf, "action.add_book", "add", window.on_add_book)
+    big(pf, "action.open", "folder", window.on_open, "Ctrl+O",
+        tooltip=T("tip.open"))
     big(pf, "action.open_output", "file_folder", window.on_open_output)
 
     pc = panel(home, "panel.configuration")
@@ -82,7 +82,7 @@ def build_ribbon(window) -> None:
     # ===================================================================
     lib = category("tab.library")
     pl = panel(lib, "panel.books")
-    big(pl, "action.add_book", "add", window.on_add_book)
+    big(pl, "action.add_book", "add", window.on_add_book, tooltip=T("tip.add_book"))
     big(pl, "action.remove_book", "remove", window.on_remove_book)
     big(pl, "action.open_reader", "reader", window.on_open_reader)
     small(pl, "action.refresh", "refresh", window.on_refresh)
@@ -123,7 +123,9 @@ def build_ribbon(window) -> None:
     window.btn_spread.toggled.connect(window.on_toggle_spread)
 
     ps = panel(read, "panel.search")
-    big(ps, "action.find", "find", window.on_find)
+    window.edt_find = ps.addLineEdit()
+    window.edt_find.setPlaceholderText(T("label.search"))
+    window.edt_find.returnPressed.connect(window.on_find_run)
     big(ps, "action.find_next", "find", window.on_find_next)
 
     pcp = panel(read, "panel.compare")

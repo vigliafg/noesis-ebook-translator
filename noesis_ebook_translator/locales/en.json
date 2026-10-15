@@ -244,5 +244,9 @@
   "view.chapters": "Chapters",
   "action.license": "License",
   "action.upstream": "Upstream",
-  "action.engine_version": "Engine version"
+  "action.engine_version": "Engine version",
+  "action.translate_selected": "Translate selected",
+  "action.export_selected": "Export selected",
+  "tip.open": "Opens the EPUB, adds it to the library and loads it in the reader",
+  "tip.add_book": "Adds the book to the library without opening it"
 }

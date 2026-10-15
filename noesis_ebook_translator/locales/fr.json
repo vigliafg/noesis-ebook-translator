@@ -244,5 +244,9 @@
   "view.chapters": "Chapitres",
   "action.license": "Licence",
   "action.upstream": "Amont",
-  "action.engine_version": "Version du moteur"
+  "action.engine_version": "Version du moteur",
+  "action.translate_selected": "Traduire la sélection",
+  "action.export_selected": "Exporter la sélection",
+  "tip.open": "Ouvre l'EPUB, l'ajoute à la bibliothèque et le charge dans le lecteur",
+  "tip.add_book": "Ajoute le livre à la bibliothèque sans l'ouvrir"
 }

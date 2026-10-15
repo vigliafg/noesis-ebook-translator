@@ -221,6 +221,29 @@ class TestWidgets(unittest.TestCase):
         try:
             window._apply_source(book)
             self.assertTrue(window.reader.find_text("Opening"))
+            # the reader has no inner toolbar anymore (controls live in the ribbon)
+            self.assertFalse(hasattr(window.reader, "edt_find"))
+        finally:
+            window.close()
+
+    def test_chapters_are_selectable(self):
+        from PyQt6.QtCore import Qt
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-chapters-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = main.MainWindow()
+        try:
+            window._apply_source(book)
+            window.on_extract_chapters()
+            self.assertGreaterEqual(window.chapters.list.count(), 1)
+            item = window.chapters.list.item(0)
+            self.assertTrue(bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable))
+            self.assertEqual(window.chapters.selected_chapters(), [])
+            item.setCheckState(Qt.CheckState.Checked)
+            self.assertEqual(len(window.chapters.selected_chapters()), 1)
         finally:
             window.close()
 

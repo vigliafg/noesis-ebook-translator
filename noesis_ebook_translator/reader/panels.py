@@ -492,7 +492,14 @@ class TextsWidget(QWidget):
 
 
 class ChaptersWidget(QWidget):
-    """Chapter library: extracted/translated chapters with a source viewer."""
+    """Chapter library: extracted/translated chapters with a source viewer.
+
+    Chapters are **selectable** (checkboxes); the selection can be translated or
+    exported from here.
+    """
+
+    translateRequested = pyqtSignal(list)  # list[int] chapter indices
+    exportRequested = pyqtSignal(list)
 
     def __init__(self, store=None, parent=None) -> None:
         super().__init__(parent)
@@ -502,15 +509,19 @@ class ChaptersWidget(QWidget):
 
         bar = QHBoxLayout()
         self.btn_load = QPushButton(T("chapters.load"))
+        self.btn_translate = QPushButton(T("action.translate_selected"))
+        self.btn_export = QPushButton(T("action.export_selected"))
         self.edt_filter = QLineEdit()
         self.edt_filter.setPlaceholderText(T("library.filter"))
         bar.addWidget(self.btn_load)
+        bar.addWidget(self.btn_translate)
+        bar.addWidget(self.btn_export)
         bar.addWidget(self.edt_filter, 1)
         layout.addLayout(bar)
 
         body = QHBoxLayout()
         self.list = QListWidget()
-        self.list.setMaximumWidth(320)
+        self.list.setMaximumWidth(360)
         self.list.currentRowChanged.connect(self._show_current)
         body.addWidget(self.list)
         self.viewer = QPlainTextEdit()
@@ -521,6 +532,10 @@ class ChaptersWidget(QWidget):
         self._rows: list[dict] = []
         self._source = None
         self.btn_load.clicked.connect(self.load_current)
+        self.btn_translate.clicked.connect(
+            lambda: self.translateRequested.emit(self.selected_chapters()))
+        self.btn_export.clicked.connect(
+            lambda: self.exportRequested.emit(self.selected_chapters()))
         self.edt_filter.textChanged.connect(self.refresh)
 
     def set_source(self, path: str) -> None:
@@ -537,21 +552,37 @@ class ChaptersWidget(QWidget):
     def refresh(self) -> None:
         needle = self.edt_filter.text().strip().lower()
         self.list.clear()
+        self._rows = []
         if self._source:
-            self._rows = self.store.for_book(self._source)
+            rows = self.store.for_book(self._source)
         elif needle:
-            self._rows = self.store.search(needle)
+            rows = self.store.search(needle)
         else:
-            self._rows = []
-        for row in self._rows:
+            rows = []
+        for row in rows:
             label = f"[{row.get('status', '')}] {row.get('name') or row.get('chapter_index')}"
             if needle and needle not in label.lower():
                 continue
-            self.list.addItem(QListWidgetItem(label))
+            item = QListWidgetItem(label)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.list.addItem(item)
+            self._rows.append(row)
         if self._rows:
             self.list.setCurrentRow(0)
         else:
             self.viewer.clear()
+
+    def selected_chapters(self) -> list[int]:
+        """Return the ``chapter_index`` of every checked chapter."""
+        result: list[int] = []
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            if item.checkState() == Qt.CheckState.Checked and i < len(self._rows):
+                index = self._rows[i].get("chapter_index")
+                if index is not None:
+                    result.append(int(index))
+        return result
 
     def _show_current(self, index: int) -> None:
         if not (0 <= index < len(self._rows)):

@@ -5,8 +5,7 @@ import os
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QLineEdit, QSplitter, QTreeWidget, QTreeWidgetItem,
-    QVBoxLayout, QWidget)
+    QSplitter, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from ..i18n import T
 from .document import EpubDocument
@@ -55,13 +54,6 @@ class ReaderWidget(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-
-        bar = QHBoxLayout()
-        self.edt_find = QLineEdit()
-        self.edt_find.setPlaceholderText(T("label.search"))
-        self.edt_find.returnPressed.connect(lambda: self.find_next(False))
-        bar.addWidget(self.edt_find, 1)
-        root.addLayout(bar)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.toc = QTreeWidget()
@@ -255,9 +247,6 @@ class ReaderWidget(QWidget):
             return False
         return bool(self.backend.find(text, backward))
 
-    def find_next(self, backward: bool = False) -> bool:
-        return self.find_text(self.edt_find.text().strip(), backward)
-
-    # Backwards-compatible alias used by older callers.
-    def _find(self, backward: bool) -> None:
-        self.find_next(backward)
+    # Backwards-compatible alias.
+    def find_next(self, text: str = "", backward: bool = False) -> bool:
+        return self.find_text(text, backward)

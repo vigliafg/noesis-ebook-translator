@@ -141,6 +141,8 @@ class MainWindow(QMainWindow):
         self.reader.parallelChanged.connect(self._on_parallel_changed)
         self.library = LibraryWidget(self.reader.session)
         self.chapters = ChaptersWidget()
+        self.chapters.translateRequested.connect(self._translate_chapters)
+        self.chapters.exportRequested.connect(self._export_chapters)
         self.figures = FiguresWidget()
         self.tables = TablesWidget()
         self.texts = TextsWidget()
@@ -404,10 +406,13 @@ class MainWindow(QMainWindow):
             self.reader.backend.set_spread(bool(checked))
 
     def on_find(self) -> None:
-        self.reader.edt_find.setFocus()
+        self.edt_find.setFocus()
+
+    def on_find_run(self) -> None:
+        self.reader.find_text(self.edt_find.text().strip(), False)
 
     def on_find_next(self) -> None:
-        self.reader.find_next(False)
+        self.reader.find_text(self.edt_find.text().strip(), False)
 
     def on_print_pdf(self) -> None:
         backend = self.reader.backend
@@ -686,7 +691,52 @@ class MainWindow(QMainWindow):
             self.worker.cancel()
             self.status.set_base_text(T("status.canceled"))
 
+    def _resolve_chapter_files(self, spec) -> list[str] | None:
+        """Resolve a chapter spec (indices/hrefs) into EPUB file names."""
+        if not spec or not self._input_path:
+            return None
+        from noesis_ebook_translator.chapters import (
+            chapter_files, load_chapters, resolve_selection)
+        selected = resolve_selection(load_chapters(self._input_path), spec)
+        files: list[str] = []
+        for chapter in selected:
+            for name in chapter.files:
+                if name not in files:
+                    files.append(name)
+        return files or None
+
+    def _translate_chapters(self, indices) -> None:
+        self.tabs.setCurrentWidget(self._translate_tab)
+        spec = ",".join(str(i) for i in indices) if indices else None
+        self._translate(self._resolve_chapter_files(spec))
+
+    def _export_chapters(self, indices) -> None:
+        if not self._input_path:
+            self._status_message(T("msg.no_input"))
+            return
+        spec = ",".join(str(i) for i in indices) if indices else None
+        source = self._input_path
+        dest, _ = QFileDialog.getSaveFileName(
+            self, T("action.export_selected"),
+            os.path.splitext(source)[0] + "_chapters.epub",
+            "EPUB (*.epub);;All files (*)")
+        if not dest:
+            return
+        fmt = os.path.splitext(dest)[1].lstrip(".").lower() or "epub"
+        from noesis_ebook_translator.chapters import load_chapters, resolve_selection
+        selected = (resolve_selection(load_chapters(source), spec)
+                    if spec else None)
+        try:
+            written = exporter_mod.export_chapters(source, dest, selected, fmt)
+        except Exception as exc:  # noqa: BLE001
+            self._status_message(T("msg.export_failed").format(exc))
+            return
+        self._status_message(T("msg.export_done").format("\n".join(written)))
+
     def on_translate(self) -> None:
+        self._translate(None)
+
+    def _translate(self, chapters) -> None:
         if self.worker is not None:
             return
         if not self._input_path:
@@ -696,7 +746,8 @@ class MainWindow(QMainWindow):
         engine = self.cmb_engine.currentText()
         source = self.cmb_source.currentText()
         target = self.cmb_target.currentText()
-        chapters = self.reader.selected_files() or None
+        if chapters is None:
+            chapters = self.reader.selected_files() or None
         if chapters:
             self._output_path = book.default_output_path(
                 self._input_path, target).replace(
