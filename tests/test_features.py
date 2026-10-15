@@ -226,6 +226,51 @@ class TestWidgets(unittest.TestCase):
         finally:
             window.close()
 
+    def test_translate_wizards(self):
+        from PyQt6.QtCore import Qt
+        from noesis_ebook_translator import appconfig
+        from noesis_ebook_translator.ui import TranslateWizard
+        import main
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-wizard-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = main.MainWindow()
+        try:
+            window._apply_source(book)
+            book_wiz = TranslateWizard(window, mode="book", input_path=book)
+            try:
+                cfg = book_wiz.config()
+                self.assertEqual(cfg["chapters"], [])
+                self.assertEqual(cfg["grouping"], "grouped")
+            finally:
+                book_wiz.close()
+            ch_wiz = TranslateWizard(window, mode="chapters", input_path=book)
+            try:
+                self.assertEqual(ch_wiz.chapter_list.count(), 3)
+                ch_wiz.chapter_list.item(0).setCheckState(Qt.CheckState.Checked)
+                self.assertEqual(len(ch_wiz.selected_chapters()), 1)
+                ch_wiz.radio_single.setChecked(True)
+                self.assertEqual(ch_wiz.config()["grouping"], "single")
+            finally:
+                ch_wiz.close()
+        finally:
+            window.close()
+
+    def test_progress_labels(self):
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        window = main.MainWindow()
+        try:
+            window._chapter_names = ["A", "B", "C"]
+            window._on_progress(0.5, "working")
+            self.assertEqual(window.book_label.text(), "50%")
+            self.assertIn(window.chapter_label.text(), ("A", "B", "C"))
+        finally:
+            window.close()
+
     def test_content_tabbar_hidden(self):
         from noesis_ebook_translator import appconfig
         import main

@@ -252,5 +252,16 @@
   "flow.paginated": "Paginated",
   "flow.scrolled": "Scrolled",
   "panel.font": "Text",
-  "label.line_height": "Line height"
+  "label.line_height": "Line height",
+  "action.translate_book": "Translate book",
+  "action.translate_chapters": "Translate chapters",
+  "wizard.translate_title": "Translation",
+  "label.grouping": "Grouping",
+  "grouping.grouped": "Single EPUB",
+  "grouping.single": "One EPUB per chapter",
+  "label.output_name": "File name",
+  "label.output_folder": "Folder",
+  "label.select_chapters": "Select chapters",
+  "action.browse": "Browse…",
+  "label.book": "Book"
 }

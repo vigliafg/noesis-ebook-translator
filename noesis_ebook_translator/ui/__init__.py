@@ -27,4 +27,7 @@ def __getattr__(name):  # PEP 562 lazy attributes (keep imports cheap, no cycles
     if name == "ExportDialog":
         from .export_dialog import ExportDialog
         return ExportDialog
+    if name == "TranslateWizard":
+        from .translate_wizard import TranslateWizard
+        return TranslateWizard
     raise AttributeError(name)

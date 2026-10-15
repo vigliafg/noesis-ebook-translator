@@ -252,5 +252,16 @@
   "flow.paginated": "Paginé",
   "flow.scrolled": "Défilant",
   "panel.font": "Texte",
-  "label.line_height": "Interligne"
+  "label.line_height": "Interligne",
+  "action.translate_book": "Traduire le livre",
+  "action.translate_chapters": "Traduire les chapitres",
+  "wizard.translate_title": "Traduction",
+  "label.grouping": "Regroupement",
+  "grouping.grouped": "Un seul EPUB",
+  "grouping.single": "Un EPUB par chapitre",
+  "label.output_name": "Nom du fichier",
+  "label.output_folder": "Dossier",
+  "label.select_chapters": "Sélectionner les chapitres",
+  "action.browse": "Parcourir…",
+  "label.book": "Livre"
 }

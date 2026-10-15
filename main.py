@@ -98,6 +98,7 @@ class MainWindow(QMainWindow):
         self._assets_edition = "original"
         self._initializing = False
         self._ribbon_index = 0
+        self._pending_split = None
         self._build_ribbon()
         self._build_body()
         self._load_settings()
@@ -126,11 +127,24 @@ class MainWindow(QMainWindow):
         self.progress = ShimmerBar(reduce_motion=self._reduce_motion)
         outer.addWidget(self.progress)
 
+        self.book_label = QLabel("0%")
+        book_row = QHBoxLayout()
+        book_row.addWidget(QLabel(T("label.book") + ":"))
+        book_row.addWidget(self.book_label)
+        outer.addLayout(book_row)
+
+        self.chapter_bar = ShimmerBar(reduce_motion=self._reduce_motion)
+        outer.addWidget(self.chapter_bar)
+
+        chapter_row = QHBoxLayout()
+        chapter_row.addWidget(QLabel(T("tab.chapters") + ":"))
+        self.chapter_label = QLabel("—")
+        chapter_row.addWidget(self.chapter_label, 1)
+        outer.addLayout(chapter_row)
+
         self.status = DotsLabel(T("status.ready"), reduce_motion=self._reduce_motion)
         outer.addWidget(self.status)
-
-        self.chapter_progress = QLabel("")
-        outer.addWidget(self.chapter_progress)
+        self._chapter_names: list[str] = []
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -729,8 +743,26 @@ class MainWindow(QMainWindow):
 
     def _translate_chapters(self, indices) -> None:
         self.tabs.setCurrentWidget(self._translate_tab)
-        spec = ",".join(str(i) for i in indices) if indices else None
-        self._translate(self._resolve_chapter_files(spec))
+        files = (self._resolve_chapter_files(",".join(str(i) for i in indices))
+                 if indices else None)
+        if not files:
+            self._status_message(T("msg.no_input"))
+            return
+        base = os.path.splitext(os.path.basename(self._input_path or "book"))[0]
+        self._start_translation({
+            "source": self.cmb_source.currentText(),
+            "target": self.cmb_target.currentText(),
+            "engine": self.cmb_engine.currentText(),
+            "api_key": self.edt_api_key.text().strip(),
+            "model": self.cmb_model.currentText().strip(),
+            "bilingual": self.chk_bilingual.isChecked(),
+            "cache": self.chk_cache.isChecked(),
+            "batching": self.chk_batch.isChecked(),
+            "chapters": files,
+            "grouping": "grouped",
+            "folder": os.path.dirname(self._input_path or ""),
+            "name": base + "_sel",
+        })
 
     def _export_chapters(self, indices) -> None:
         if not self._input_path:
@@ -755,43 +787,96 @@ class MainWindow(QMainWindow):
             return
         self._status_message(T("msg.export_done").format("\n".join(written)))
 
-    def on_translate(self) -> None:
-        self._translate(None)
+    def on_translate_book(self) -> None:
+        if not self._input_path:
+            self._status_message(T("msg.no_input"))
+            return
+        from noesis_ebook_translator.ui import TranslateWizard
+        wizard = TranslateWizard(
+            self, mode="book", input_path=self._input_path,
+            source=self.cmb_source.currentText(),
+            target=self.cmb_target.currentText(),
+            engine=self.cmb_engine.currentText())
+        if wizard.exec():
+            self._start_translation(wizard.config())
 
-    def _translate(self, chapters) -> None:
+    # Backwards-compatible alias.
+    def on_translate(self) -> None:
+        self.on_translate_book()
+
+    def on_translate_chapters(self) -> None:
+        if not self._input_path:
+            self._status_message(T("msg.no_input"))
+            return
+        from noesis_ebook_translator.ui import TranslateWizard
+        wizard = TranslateWizard(
+            self, mode="chapters", input_path=self._input_path,
+            source=self.cmb_source.currentText(),
+            target=self.cmb_target.currentText(),
+            engine=self.cmb_engine.currentText())
+        if wizard.exec():
+            cfg = wizard.config()
+            if not cfg.get("chapters"):
+                self._status_message(T("msg.no_input"))
+                return
+            self._start_translation(cfg)
+
+    def _chapter_labels(self, files) -> list[str]:
+        if not self._input_path:
+            return []
+        try:
+            from noesis_ebook_translator.chapters import flatten, load_chapters
+            tree = flatten(load_chapters(self._input_path))
+        except Exception:  # noqa: BLE001
+            return []
+        by_file = {}
+        for chapter in tree:
+            if chapter.file and chapter.file not in by_file:
+                by_file[chapter.file] = chapter.name or chapter.file
+        if files:
+            return [by_file.get(f, f) for f in files]
+        return [c.name or c.file for c in tree if c.file]
+
+    def _start_translation(self, cfg: dict) -> None:
         if self.worker is not None:
             return
         if not self._input_path:
             self._status_message(T("msg.no_input"))
             return
 
-        engine = self.cmb_engine.currentText()
-        source = self.cmb_source.currentText()
-        target = self.cmb_target.currentText()
-        if chapters is None:
-            chapters = self.reader.selected_files() or None
-        if chapters:
-            self._output_path = book.default_output_path(
-                self._input_path, target).replace(
-                ".epub", f"_sel-{len(chapters)}.epub")
-        else:
-            self._output_path = book.default_output_path(self._input_path, target)
+        engine = cfg.get("engine") or self.cmb_engine.currentText()
+        source = cfg.get("source") or "English"
+        target = cfg.get("target") or "Italian"
+        chapters = cfg.get("chapters") or None
+        folder = cfg.get("folder") or os.path.dirname(self._input_path)
+        name = cfg.get("name") or os.path.splitext(
+            os.path.basename(self._input_path))[0]
+        if not name.lower().endswith(".epub"):
+            name += ".epub"
+        self._output_path = os.path.join(folder, name)
         self.lbl_output.setText(self._output_path)
 
-        api_keys = [k for k in [self.edt_api_key.text().strip()] if k]
+        api_key = cfg.get("api_key", "")
         appconfig.set_engine_preference(
-            engine, api_keys=api_keys,
-            model=self.cmb_model.currentText().strip() or None)
-
+            engine, api_keys=[api_key] if api_key else [],
+            model=cfg.get("model") or None)
         settings = {
             "translate_engine": engine,
-            "translation_position": "below" if self.chk_bilingual.isChecked() else "only",
-            "cache_enabled": self.chk_cache.isChecked(),
-            "online_batching": self.chk_batch.isChecked(),
+            "translation_position": "below" if cfg.get("bilingual") else "only",
+            "cache_enabled": bool(cfg.get("cache", True)),
+            "online_batching": bool(cfg.get("batching", False)),
             "ui_source_lang": source,
             "ui_target_lang": target,
         }
         appconfig.save_settings(settings)
+
+        # When chapters must be split into one EPUB each, split after translating.
+        self._pending_split = None
+        if chapters and cfg.get("grouping") == "single":
+            self._pending_split = {"folder": folder,
+                                   "name": os.path.splitext(name)[0]}
+
+        self._chapter_names = self._chapter_labels(chapters)
 
         self.worker = TranslationWorker(
             self._input_path, self._output_path, engine, source, target, settings,
@@ -804,19 +889,29 @@ class MainWindow(QMainWindow):
 
         self.log.clear()
         self.btn_translate.setEnabled(False)
+        self.btn_translate_chapters.setEnabled(False)
         self.btn_cancel.setEnabled(True)
         self.status.set_base_text(T("status.translating"))
         self.status.start_busy()
         self.progress.setValue(0)
         self.progress.set_busy(True)
+        self.chapter_bar.setValue(0)
+        self.chapter_bar.set_busy(True)
+        self.book_label.setText("0%")
+        self.chapter_label.setText("—")
         self.worker.start()
 
     # --------------------------------------------------------------- slots
     def _on_progress(self, fraction: float, message: str) -> None:
-        self.progress.setValue(int(max(0.0, min(1.0, fraction)) * 100))
-        self.chapter_progress.setText(
-            T("anim.translating_chapter").format(
-                current=self.progress.value(), total=100))
+        fraction = max(0.0, min(1.0, fraction))
+        self.progress.setValue(int(fraction * 100))
+        self.book_label.setText(f"{int(fraction * 100)}%")
+        names = self._chapter_names
+        if names:
+            index = min(len(names) - 1, int(fraction * len(names)))
+            inner = fraction * len(names) - index
+            self.chapter_bar.setValue(int(max(0.0, min(1.0, inner)) * 100))
+            self.chapter_label.setText(names[index])
         if message:
             self.status.set_base_text(message)
 
@@ -825,7 +920,10 @@ class MainWindow(QMainWindow):
 
     def _on_finished(self, path: str) -> None:
         self.progress.set_busy(False)
+        self.chapter_bar.set_busy(False)
         self.progress.setValue(100)
+        self.chapter_bar.setValue(100)
+        self.book_label.setText("100%")
         self.status.stop_busy()
         self.status.set_base_text(T("status.done"))
         try:
@@ -842,10 +940,22 @@ class MainWindow(QMainWindow):
                 self.chapters.load_current()
             except Exception:  # noqa: BLE001
                 pass
-        self._status_message(T("msg.done").format(path))
+        message = T("msg.done").format(path)
+        if self._pending_split:
+            try:
+                from noesis_ebook_translator import segment
+                written = segment.split_epub(
+                    path, self._pending_split["folder"], mode="flat")
+                message += "\n" + T("msg.export_done").format("\n".join(written))
+            except Exception as exc:  # noqa: BLE001
+                message += "\n" + T("msg.export_failed").format(exc)
+            finally:
+                self._pending_split = None
+        self._status_message(message)
 
     def _on_failed(self, message: str) -> None:
         self.progress.set_busy(False)
+        self.chapter_bar.set_busy(False)
         self.status.stop_busy()
         self.status.set_base_text(T("status.failed"))
         self.log.appendPlainText(message)
@@ -854,6 +964,7 @@ class MainWindow(QMainWindow):
     def _on_worker_done(self) -> None:
         self.worker = None
         self.btn_translate.setEnabled(True)
+        self.btn_translate_chapters.setEnabled(True)
         self.btn_cancel.setEnabled(False)
 
 

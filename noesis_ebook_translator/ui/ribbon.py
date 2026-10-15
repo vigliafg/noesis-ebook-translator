@@ -175,8 +175,10 @@ def build_ribbon(window) -> None:
     # ===================================================================
     tr = category("tab.translate")
     pbook = panel(tr, "panel.book")
-    window.btn_translate = big(pbook, "action.translate", "translate",
-                               window.on_translate, "Ctrl+Return")
+    window.btn_translate = big(pbook, "action.translate_book", "translate",
+                               window.on_translate_book, "Ctrl+Return")
+    window.btn_translate_chapters = big(
+        pbook, "action.translate_chapters", "chapters", window.on_translate_chapters)
     window.btn_cancel = big(pbook, "action.cancel", "cancel", window.on_cancel)
     window.btn_cancel.setEnabled(False)
 
