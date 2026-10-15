@@ -304,6 +304,21 @@ class TestWidgets(unittest.TestCase):
         finally:
             window.close()
 
+    def test_startup_section_matches_view(self):
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        window = main.MainWindow()
+        try:
+            # the selected workflow section must match the shown view
+            self.assertEqual(window.workflow.currentSection(), 0)  # Library
+            self.assertIs(window.tabs.currentWidget(), window.library)
+            window.workflow.setCurrentSection(3)  # Translate
+            self.assertIs(window.tabs.currentWidget(), window._translate_tab)
+        finally:
+            window.close()
+
     def test_content_tabbar_hidden(self):
         from noesis_ebook_translator import appconfig
         import main

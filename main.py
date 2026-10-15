@@ -100,6 +100,9 @@ class MainWindow(QMainWindow):
         self._build_workflow()
         self._build_body()
         self._load_settings()
+        # Make the shown view match the selected workflow section at startup
+        # (the QTabBar emits its first currentChanged before we connect).
+        self._on_section_changed(self.workflow.currentSection())
 
     # ------------------------------------------------------------------ UI
     def _build_workflow(self) -> None:
