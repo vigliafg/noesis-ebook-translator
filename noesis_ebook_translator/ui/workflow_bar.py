@@ -130,6 +130,27 @@ class SectionPage(QWidget):
             QComboBox.SizeAdjustPolicy.AdjustToContents)
         return self._add(combo)
 
+    def labelled_combo(self, label_key: str, items=None,
+                       tooltip: str | None = None) -> QComboBox:
+        """A combo box with a visible label above it (they travel together)."""
+        container = QWidget()
+        box = QVBoxLayout(container)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(1)
+        label = QLabel(T(label_key))
+        label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        combo = QComboBox()
+        if items:
+            combo.addItems(list(items))
+        if tooltip:
+            combo.setToolTip(tooltip)
+        combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        box.addWidget(label)
+        box.addWidget(combo)
+        self._add(container)
+        return combo
+
     def check(self, key: str) -> QCheckBox:
         return self._add(QCheckBox(T(key)))
 
@@ -315,15 +336,17 @@ def build_workflow(window) -> WorkflowBar:
     p.button("action.expand_all", "add", window.on_expand_all)
     p.button("action.collapse_all", "remove", window.on_collapse_all)
     p.separator()
-    window.cmb_theme_reader = p.combo(
-        [T(f"theme.{m}") for m in theme_mod.theme_choices()], tooltip=T("label.theme"))
+    window.cmb_theme_reader = p.labelled_combo(
+        "label.theme", [T(f"theme.{m}") for m in theme_mod.theme_choices()],
+        tooltip=T("label.theme"))
     window.cmb_theme_reader.currentIndexChanged.connect(
         lambda i: window._set_theme(theme_mod.theme_choices()[i]))
-    window.cmb_font = p.combo(["Serif", "Sans Serif", "Monospace"],
-                              tooltip=T("label.font"))
+    window.cmb_font = p.labelled_combo(
+        "label.font", ["Serif", "Sans Serif", "Monospace"], tooltip=T("label.font"))
     window.cmb_font.currentIndexChanged.connect(window.on_font_changed)
-    window.cmb_line = p.combo(["1.0", "1.2", "1.4", "1.5", "1.8", "2.0"],
-                              tooltip=T("label.line_height"))
+    window.cmb_line = p.labelled_combo(
+        "label.line_height", ["1.0", "1.2", "1.4", "1.5", "1.8", "2.0"],
+        tooltip=T("label.line_height"))
     window.cmb_line.setCurrentIndex(3)  # 1.5
     window.cmb_line.currentIndexChanged.connect(window.on_line_height_changed)
     window.chk_justify = p.check("label.justify")
