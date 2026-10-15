@@ -15,11 +15,11 @@ function emit(name, ...args) {
 
 view.addEventListener('relocate', (e) => {
   const d = e.detail || {}
-  emit('relocated', d.cfi || '', d.fraction || 0,
+  emit('on_relocated', d.cfi || '', d.fraction || 0,
        (d.tocItem && d.tocItem.href) || '')
 })
-view.addEventListener('load', () => emit('pageLoaded', ''))
-view.addEventListener('error', (e) => emit('error', String((e.detail) || e)))
+view.addEventListener('load', () => emit('on_loaded', ''))
+view.addEventListener('error', (e) => emit('on_error', String((e.detail) || e)))
 
 function themeCss(mode) {
   if (mode === 'dark') {
@@ -35,14 +35,14 @@ window.api = {
   open: async (url) => {
     try {
       await view.open(url)
-      emit('opened', view.book ? JSON.stringify(view.book.metadata || {}) : '{}')
-    } catch (err) { emit('error', String(err)) }
+      emit('on_opened', view.book ? JSON.stringify(view.book.metadata || {}) : '{}')
+    } catch (err) { emit('on_error', String(err)) }
   },
   goTo: async (target) => {
-    try { await view.goTo(target) } catch (e) { emit('error', String(e)) }
+    try { await view.goTo(target) } catch (e) { emit('on_error', String(e)) }
   },
-  next: () => { try { view.next() } catch (e) { emit('error', String(e)) } },
-  prev: () => { try { view.prev() } catch (e) { emit('error', String(e)) } },
+  next: () => { try { view.next() } catch (e) { emit('on_error', String(e)) } },
+  prev: () => { try { view.prev() } catch (e) { emit('on_error', String(e)) } },
   setAttr: (name, value) => {
     if (value === null || value === undefined) view.removeAttribute(name)
     else view.setAttribute(name, value)
@@ -60,9 +60,17 @@ window.api = {
   },
 }
 
-if (window.qt && window.qt.webChannelTransport) {
+function connectChannel() {
+  if (!(window.qt && window.qt.webChannelTransport)) return false
   new QWebChannel(window.qt.webChannelTransport, (channel) => {
     bridge = channel.objects.reader
-    emit('ready', '')
+    emit('on_ready', '')
   })
+  return true
+}
+
+// Qt injects `window.qt.webChannelTransport` asynchronously: retry until it is
+// available instead of checking only once at module-evaluation time.
+if (!connectChannel()) {
+  const timer = setInterval(() => { if (connectChannel()) clearInterval(timer) }, 50)
 }

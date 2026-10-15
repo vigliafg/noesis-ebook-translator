@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import tempfile
 import zipfile
 
@@ -25,10 +26,34 @@ class EpubDocument:
         self.workdir = tempfile.mkdtemp(prefix="noesis-reader-")
         with zipfile.ZipFile(path) as archive:
             archive.extractall(self.workdir)
+        self._opf_dir = self._detect_opf_dir()
         self._docs = self._spine_files()
         if not self._docs:
             self._docs = [i.file_name for i in self.book.get_items()
                           if i.get_type() == 9]
+
+    def _detect_opf_dir(self) -> str:
+        """Directory of the package document (OPF) inside the zip, e.g. ``EPUB``."""
+        container = os.path.join(self.workdir, "META-INF", "container.xml")
+        try:
+            root = etree.parse(container).getroot()
+        except Exception:  # noqa: BLE001 - malformed/absent container
+            return ""
+        for element in root.iter():
+            if etree.QName(element).localname == "rootfile":
+                full = element.get("full-path")
+                if full:
+                    return posixpath.dirname(full)
+        return ""
+
+    def opf_dir(self) -> str:
+        return self._opf_dir
+
+    def foliate_href(self, file_name: str) -> str:
+        """Return the zip-root-relative href foliate-js expects (OPF dir prefix)."""
+        if not self._opf_dir:
+            return file_name
+        return posixpath.normpath(posixpath.join(self._opf_dir, file_name))
 
     def _spine_files(self) -> list[str]:
         files: list[str] = []
@@ -53,7 +78,8 @@ class EpubDocument:
         return list(self._docs)
 
     def chapter_path(self, file_name: str) -> str:
-        return os.path.join(self.workdir, file_name.split("#", 1)[0])
+        rel = self.foliate_href(file_name.split("#", 1)[0])
+        return os.path.join(self.workdir, rel)
 
     def index_of(self, file_name: str) -> int:
         try:
