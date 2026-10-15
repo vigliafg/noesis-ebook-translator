@@ -129,8 +129,11 @@ GitHub Pages da `.github/workflows/docs.yml`.
 - `noesis_ebook_translator/reader/` — lettore: `document.py`, `lite_backend.py`
   (QTextBrowser), `webengine_backend.py` (foliate-js in QWebEngineView),
   `scheme.py` (scheme `app://`), `widget.py`, `session.py`, `panels.py`.
-- `reader_web/` — bundle foliate-js **vendorizzato** (MIT) + wrapper QWebChannel.
-  NON è un submodule: aggiornalo a mano e annota il commit in `reader_web/README.md`.
+- `reader_web/` — bundle foliate-js **vendorizzato** (MIT). `reader.html` è la
+  nostra pagina (UI demo di foliate con chrome nascosto + bridge); `noesis_bridge.js`
+  espone `window.api` e inoltra gli eventi; il libro si apre via `?url=` su
+  `app://`. NON è un submodule: aggiornalo a mano e annota il commit in
+  `reader_web/README.md`.
 - Il backend è **`auto`** di default: usa **full** se QtWebEngine è importabile
   (va importato *prima* della `QApplication`: vedi `prepare_full()`), altrimenti
   ripiega su **lite**. Forzabile con `NOESIS_READER_BACKEND=full|lite|auto`.

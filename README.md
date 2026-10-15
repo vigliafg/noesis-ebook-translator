@@ -50,12 +50,15 @@ Crediti e ringraziamenti:
 ## Lettore EPUB integrato
 
 La GUI include un **lettore** con indice multilivello, navigazione, zoom, temi
-(chiaro/sepia/scuro), ricerca nel capitolo e **vista parallela** (originale vs
-tradotto). Esiste in due flavor:
+(chiaro/sepia/scuro), ricerca e **vista parallela** (originale vs tradotto).
+Esiste in due flavor:
 
-- **full** (default quando disponibile): [`foliate-js`](https://github.com/johnfactotum/foliate-js)
-  (MIT) in `QWebEngineView` — EPUB, **MOBI/AZW3, FB2, CBZ, PDF**, due pagine
-  (spread), stampa/export in PDF. Richiede `requirements-full.txt` (QtWebEngine);
+- **full** (default quando disponibile): usa **foliate-js** (MIT) in
+  `QWebEngineView` — ne incorporiamo il **motore di lettura** (`reader.html` +
+  `reader.js` + bridge QWebChannel): EPUB, **MOBI/AZW3, FB2, CBZ, PDF**
+  (pdf.js), due pagine (spread), **ricerca su tutto il libro**, note/evidenziazioni,
+  note a piè di pagina, progress/CFI, stampa/export in PDF. Richiede
+  `requirements-full.txt` (QtWebEngine);
 - **lite** (fallback): `QTextBrowser`, solo EPUB, nessuna dipendenza extra.
 
 Il backend è **automatico** (`auto`): usa il **full** se QtWebEngine è
@@ -63,10 +66,12 @@ importabile, altrimenti ripiega sul **lite**. Puoi forzare la scelta dalle
 *Impostazioni* (o nel wizard) oppure con la variabile
 `NOESIS_READER_BACKEND=full|lite|auto`.
 
-I comandi di lettura (navigazione, zoom, tema, vista parallela, stampa/PDF) sono
-nella scheda **Reader** del ribbon; nel lettore resta solo il **campo di ricerca**.
-Nel **full**, tema e zoom sono applicati al contenuto delle sezioni (via
-`foliate-js setStyles`).
+I comandi di lettura sono nella sezione **Reader** della barra (fonte, interlinea,
+zoom, ricerca, confronto, note, stampa) e nella mini-toolbar sopra il viewport
+(precedente/successivo, pagina/scorrimento, singola/doppia). Il **TOC è quello Qt**
+(evidenzia la posizione corrente; con le caselle in sezione *Translate* per
+selezionare i capitoli). Nel **full**, tema/dimensione/interlinea sono applicati al
+contenuto delle sezioni (via `foliate-js setStyles`).
 
 ## Capitoli, figure, tabelle, export
 

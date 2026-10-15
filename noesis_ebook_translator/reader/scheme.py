@@ -66,7 +66,7 @@ class ReaderSchemeHandler(QWebEngineUrlSchemeHandler):
     def requestStarted(self, job: QWebEngineUrlRequestJob) -> None:  # noqa: N802
         url = job.requestUrl()
         host = url.host()
-        rel = url.path().lstrip("/") or "index.html"
+        rel = url.path().lstrip("/") or "reader.html"
 
         if host == "book" or rel.startswith(BOOK_PREFIX):
             # Legacy host or same-origin prefix → serve from the book directory.
