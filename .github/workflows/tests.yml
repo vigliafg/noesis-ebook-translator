@@ -25,7 +25,7 @@ jobs:
       matrix:
         python-version: ["3.12"]
     env:
-      # `main.py` imports PyQt6/pyqtribbon at module level; run Qt headless.
+      # `main.py` imports PyQt6 at module level; run Qt headless.
       QT_QPA_PLATFORM: offscreen
     steps:
       - name: Checkout

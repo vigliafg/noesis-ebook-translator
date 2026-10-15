@@ -162,7 +162,6 @@ def run_feature_harness(book_path: str, *, app=None) -> FeatureReport:
     try:
         from PyQt6.QtWidgets import QApplication
         app = app or (QApplication.instance() or QApplication(["noesis-features"]))
-        import pyqtribbon  # noqa: F401
     except Exception as exc:  # noqa: BLE001 - optional dependency
         report.notes.append(f"qt unavailable: {exc}")
         return report
@@ -176,7 +175,7 @@ def run_feature_harness(book_path: str, *, app=None) -> FeatureReport:
     try:
         report.window_built = True
         report.tabs = window.tabs.count()
-        report.categories = len(window.ribbon.categories())
+        report.categories = window.workflow.sections()
         window._apply_source(book_path)
         window.figures.load_current()
         window.tables.load_current()
@@ -187,8 +186,7 @@ def run_feature_harness(book_path: str, *, app=None) -> FeatureReport:
         report.texts = window.texts.list.count()
         report.chapters = window.chapters.list.count()
         # theme switching must not raise and must update the stylesheet
-        index = (window.cmb_theme.currentIndex() + 1) % window.cmb_theme.count()
-        window.cmb_theme.setCurrentIndex(index)
+        window._set_theme("dark")
         report.theme_ok = bool(app.styleSheet())
         report.library_ok = len(window.reader.session.recent()) >= 1
         # settings dialog can be built and read

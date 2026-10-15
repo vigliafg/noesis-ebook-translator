@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Noesis Ebook Translator — desktop GUI (PyQt6 + pyqtribbon).
+"""Noesis Ebook Translator — desktop GUI (PyQt6).
 
-The ribbon follows the app's workflow (Home · Library · Reader · Assets ·
-Translate · Quality · Export · Tools · Info) and is built by
-:func:`noesis_ebook_translator.ui.ribbon.build_ribbon`. All the heavy lifting
-lives in :mod:`noesis_ebook_translator.book` (the verbatim engine).
+The ribbon is a custom two-row workflow bar (:mod:`noesis_ebook_translator.ui.workflow_bar`).
+All the heavy lifting lives in :mod:`noesis_ebook_translator.book`.
 """
 from __future__ import annotations
 
@@ -24,12 +22,12 @@ from PyQt6.QtWidgets import (
 from noesis_ebook_translator import APP_NAME, __version__, appconfig, book, theme
 from noesis_ebook_translator import exporter as exporter_mod
 from noesis_ebook_translator.i18n import T, get_language, set_language
-from noesis_ebook_translator.reader import ReaderWidget, available_backends, resolve_backend
+from noesis_ebook_translator.reader import ReaderWidget, resolve_backend
 from noesis_ebook_translator.reader.panels import (
     ChaptersWidget, FiguresWidget, LibraryWidget, PreviewWidget, TablesWidget,
     TextsWidget)
 from noesis_ebook_translator.ui.animations import DotsLabel, ShimmerBar
-from noesis_ebook_translator.ui.ribbon import build_ribbon
+from noesis_ebook_translator.ui.workflow_bar import build_workflow
 from noesis_ebook_translator.engines.languages import google as GOOGLE_LANGUAGES
 
 
@@ -99,18 +97,15 @@ class MainWindow(QMainWindow):
         self._initializing = False
         self._ribbon_index = 0
         self._pending_split = None
-        self._build_ribbon()
+        self._build_workflow()
         self._build_body()
         self._load_settings()
 
     # ------------------------------------------------------------------ UI
-    def _build_ribbon(self) -> None:
-        build_ribbon(self)
-        # Switching ribbon category drives the TOC mode (read vs select).
-        try:
-            self.ribbon.tabBar().currentChanged.connect(self._on_ribbon_category)
-        except Exception:  # noqa: BLE001 - older pyqtribbon
-            pass
+    def _build_workflow(self) -> None:
+        self.workflow = build_workflow(self)
+        self.setMenuWidget(self.workflow)
+        self.workflow.sectionChanged.connect(self._on_section_changed)
 
     def _build_body(self) -> None:
         central = QWidget()
@@ -230,7 +225,7 @@ class MainWindow(QMainWindow):
         try:
             self.reader.open_path(path)
             self.tabs.setCurrentWidget(self.reader)
-            self._select_category(2)
+            self._select_category(1)
         except Exception as exc:  # noqa: BLE001 - reader is best effort
             self.log.appendPlainText(f"[reader] {exc}")
 
@@ -250,22 +245,9 @@ class MainWindow(QMainWindow):
         self.chk_bilingual.setChecked(settings.get("translation_position") == "below")
         self.chk_cache.setChecked(bool(settings.get("cache_enabled", True)))
         self.chk_batch.setChecked(bool(settings.get("online_batching", False)))
-        self.chk_reduce.setChecked(bool(settings.get("reduce_motion", False)))
-        theme_index = self.cmb_theme.findText(
-            T(f"theme.{settings.get('ui_theme', 'system')}"))
-        if theme_index >= 0:
-            self.cmb_theme.setCurrentIndex(theme_index)
-        lang_index = self.cmb_ui_lang.findText(T(f"language.{get_language()}"))
-        if lang_index >= 0:
-            self.cmb_ui_lang.setCurrentIndex(lang_index)
-        # reader backend combo
-        for backend in ["auto"] + available_backends():
-            self.cmb_reader_default.addItem(T(f"backend.{backend}"), backend)
-        rb = settings.get("reader_backend", "auto")
-        rb_index = self.cmb_reader_default.findData(rb)
-        if rb_index >= 0:
-            self.cmb_reader_default.setCurrentIndex(rb_index)
-        # export format combo
+        self._reduce_motion = bool(settings.get("reduce_motion", False))
+        self.progress.set_reduce_motion(self._reduce_motion)
+        self.chapter_bar.set_reduce_motion(self._reduce_motion)
         for fmt in exporter_mod.supported_exports():
             self.cmb_export_format.addItem(T(f"format.{fmt}"), fmt)
         self._on_engine_changed(self.cmb_engine.currentText())
@@ -290,59 +272,58 @@ class MainWindow(QMainWindow):
         if pref.get("model"):
             self.cmb_model.setCurrentText(pref["model"])
 
-    def _current_theme(self) -> str:
-        return theme.theme_choices()[max(0, self.cmb_theme.currentIndex())]
-
-    def _on_theme_changed(self, _index: int) -> None:
+    def _set_theme(self, mode: str) -> None:
         from noesis_ebook_translator.ui import apply_theme
         app = QApplication.instance()
         if app is not None:
-            apply_theme(app, self._current_theme(), reader=self.reader)
-        appconfig.save_settings({"ui_theme": self._current_theme()})
+            apply_theme(app, mode, reader=self.reader)
+        appconfig.save_settings({"ui_theme": mode})
 
-    def _on_ui_language_changed(self, _index: int) -> None:
-        if self._initializing:
-            return
-        codes = ["it", "en", "fr", "es", "de"]
-        lang = codes[max(0, min(len(codes) - 1, self.cmb_ui_lang.currentIndex()))]
+    def _set_ui_language(self, lang: str) -> None:
         appconfig.save_settings({"ui_language": lang})
         if lang != get_language():
             self._status_message(T("msg.restart_language"))
 
-    def _on_reduce_motion(self, checked: bool) -> None:
+    def _set_reduce_motion(self, checked: bool) -> None:
         self._reduce_motion = bool(checked)
         self.progress.set_reduce_motion(self._reduce_motion)
+        self.chapter_bar.set_reduce_motion(self._reduce_motion)
         appconfig.save_settings({"reduce_motion": self._reduce_motion})
 
-    def _on_reader_backend_changed(self, _index: int) -> None:
-        if self._initializing:
-            return
-        backend = self.cmb_reader_default.currentData() or "auto"
-        appconfig.save_settings({"reader_backend": backend})
+    def _set_reader_backend(self, backend: str) -> None:
+        appconfig.save_settings({"reader_backend": backend or "auto"})
         self._status_message(T("msg.restart_needed"))
 
+    def _apply_theme_preview(self, mode: str) -> None:
+        self._set_theme(mode)
+
     # --------------------------------------------------------- tab / TOC
-    def _on_ribbon_category(self, index: int) -> None:
-        # 0 = Home, 1 = Library, 2 = Reader, 3 = Assets, 4 = Translate
+    def _on_section_changed(self, index: int) -> None:
+        # 0 = Library, 1 = Reader, 2 = Assets, 3 = Translate
         self._ribbon_index = index
         if index == 0:
-            self.tabs.setCurrentWidget(self._translate_tab)
-        elif index == 1:
             self.tabs.setCurrentWidget(self.library)
-        elif index == 2:
+        elif index == 1:
             self.tabs.setCurrentWidget(self.reader)
-        elif index == 3:
+        elif index == 2:
             self.tabs.setCurrentWidget(self.figures)
-        elif index == 4:
+        elif index == 3:
             self.tabs.setCurrentWidget(self._translate_tab)
         self._update_toc_mode()
 
     def _update_toc_mode(self) -> None:
-        mode = "select" if getattr(self, "_ribbon_index", 0) == 4 else "read"
+        mode = "select" if getattr(self, "_ribbon_index", 0) == 3 else "read"
         try:
             self.reader.set_toc_mode(mode)
         except Exception:  # noqa: BLE001 - reader is best effort
             pass
+
+    def _select_category(self, index: int) -> None:
+        """Switch the workflow section (which shows the matching view)."""
+        try:
+            self.workflow.setCurrentSection(index)
+        except Exception:  # noqa: BLE001
+            self._on_section_changed(index)
 
     # ------------------------------------------------------------- actions
     def on_open(self) -> None:
@@ -361,14 +342,7 @@ class MainWindow(QMainWindow):
         self.library._remove()
 
     def on_open_reader(self) -> None:
-        self._select_category(2)
-
-    def _select_category(self, index: int) -> None:
-        """Switch the ribbon category (which in turn shows the matching view)."""
-        try:
-            self.ribbon.tabBar().setCurrentIndex(index)
-        except Exception:  # noqa: BLE001
-            self._on_ribbon_category(index)
+        self._select_category(1)
 
     def on_refresh(self) -> None:
         self.library.refresh()
@@ -378,7 +352,7 @@ class MainWindow(QMainWindow):
             pass
 
     def on_compare(self) -> None:
-        self._select_category(2)
+        self._select_category(1)
         self.reader.set_parallel(True)
 
     def on_parallel_toggled(self, checked: bool) -> None:
@@ -397,7 +371,7 @@ class MainWindow(QMainWindow):
         if self._input_path:
             self.chapters.set_source(self._input_path)
             self.chapters.load_current()
-        self._select_category(1)
+        self._select_category(0)
         self.tabs.setCurrentWidget(self.chapters)
 
     def on_reveal(self) -> None:
@@ -477,20 +451,12 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self, apply_theme_cb=self._apply_theme_preview)
         if dialog.exec():
             values = dialog.apply()
-            self.chk_reduce.setChecked(bool(values.get("reduce_motion")))
-            self._reduce_motion = bool(values.get("reduce_motion"))
-            self.progress.set_reduce_motion(self._reduce_motion)
+            self._set_reduce_motion(bool(values.get("reduce_motion")))
             restart = (values.get("ui_language") != get_language()
                        or values.get("reader_backend") != self._settings.get(
                            "reader_backend", "auto"))
             self._status_message(T("msg.restart_needed") if restart
                                  else T("msg.settings_saved"))
-
-    def _apply_theme_preview(self, mode: str) -> None:
-        from noesis_ebook_translator.ui import apply_theme
-        app = QApplication.instance()
-        if app is not None:
-            apply_theme(app, mode, reader=self.reader)
 
     def on_wizard(self) -> None:
         from noesis_ebook_translator.ui import OnboardingWizard
@@ -569,21 +535,21 @@ class MainWindow(QMainWindow):
         if self._assets_source():
             self.figures.set_source(self._assets_source())
             self.figures.load_current()
-        self._select_category(3)
+        self._select_category(2)
         self.tabs.setCurrentWidget(self.figures)
 
     def _load_tables(self) -> None:
         if self._assets_source():
             self.tables.set_source(self._assets_source())
             self.tables.load_current()
-        self._select_category(3)
+        self._select_category(2)
         self.tabs.setCurrentWidget(self.tables)
 
     def _load_texts(self) -> None:
         if self._assets_source():
             self.texts.set_source(self._assets_source())
             self.texts.load_current()
-        self._select_category(3)
+        self._select_category(2)
         self.tabs.setCurrentWidget(self.texts)
 
     def on_export(self) -> None:

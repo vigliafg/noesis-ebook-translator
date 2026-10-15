@@ -67,6 +67,15 @@ QTabBar::tab:selected { background: #ffffff; border-bottom: 2px solid #2d6cdf; }
 QListWidget, QTreeWidget, QTableWidget { background: #ffffff;
     border: 1px solid #d0d3d9; border-radius: 4px; }
 QHeaderView::section { background: #eceef2; border: 0; padding: 4px; }
+#workflowBar { background: #f6f7f9; border-bottom: 1px solid #d5d8de; }
+#sectionBar::tab { background: transparent; color: #1c1e21; padding: 4px 12px;
+    margin: 2px; border-radius: 5px; }
+#sectionBar::tab:selected { background: #2d6cdf; color: #ffffff; }
+#sectionBar::tab:hover:!selected { background: #e3e6ec; }
+#sectionPage { background: #f6f7f9; }
+#workflowBar QToolButton { color: #1c1e21; padding: 4px 8px; border-radius: 5px; }
+#workflowBar QToolButton:hover { background: #e3e6ec; }
+#workflowBar QToolButton:checked { background: #c9d6f2; }
 """
 
 _DARK = """
@@ -94,6 +103,15 @@ QListWidget, QTreeWidget, QTableWidget { background: #262a30;
     border: 1px solid #3a3f47; border-radius: 4px; }
 QHeaderView::section { background: #313640; border: 0; padding: 4px; }
 QPlainTextEdit { font-family: monospace; }
+#workflowBar { background: #1f2227; border-bottom: 1px solid #3a3f47; }
+#sectionBar::tab { background: transparent; color: #e8eaed; padding: 4px 12px;
+    margin: 2px; border-radius: 5px; }
+#sectionBar::tab:selected { background: #4c8bf5; color: #ffffff; }
+#sectionBar::tab:hover:!selected { background: #313640; }
+#sectionPage { background: #1f2227; }
+#workflowBar QToolButton { color: #e8eaed; padding: 4px 8px; border-radius: 5px; }
+#workflowBar QToolButton:hover { background: #313640; }
+#workflowBar QToolButton:checked { background: #2f4772; }
 """
 
 _SEPIA = """
@@ -119,6 +137,15 @@ QTabBar::tab:selected { background: #fbf3e0; border-bottom: 2px solid #a06a2c; }
 QListWidget, QTreeWidget, QTableWidget { background: #fbf3e0;
     border: 1px solid #d8c9a6; border-radius: 4px; }
 QHeaderView::section { background: #ecdfc2; border: 0; padding: 4px; }
+#workflowBar { background: #f4ecd8; border-bottom: 1px solid #d8c9a6; }
+#sectionBar::tab { background: transparent; color: #4a3f2f; padding: 4px 12px;
+    margin: 2px; border-radius: 5px; }
+#sectionBar::tab:selected { background: #a06a2c; color: #ffffff; }
+#sectionBar::tab:hover:!selected { background: #e5d5b3; }
+#sectionPage { background: #f4ecd8; }
+#workflowBar QToolButton { color: #4a3f2f; padding: 4px 8px; border-radius: 5px; }
+#workflowBar QToolButton:hover { background: #e5d5b3; }
+#workflowBar QToolButton:checked { background: #dcc79b; }
 """
 
 _SHEETS = {"light": _LIGHT, "dark": _DARK, "sepia": _SEPIA}

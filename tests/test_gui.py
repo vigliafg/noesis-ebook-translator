@@ -1,15 +1,14 @@
-"""GUI smoke tests (offscreen). Skipped when Qt/pyqtribbon are unavailable."""
+"""GUI smoke tests (offscreen). Skipped when Qt is unavailable."""
 import unittest
 
 try:
     from PyQt6.QtWidgets import QApplication
-    import pyqtribbon  # noqa: F401
     _HAS_GUI = True
 except Exception:  # noqa: BLE001 - optional dependency
     _HAS_GUI = False
 
 
-@unittest.skipUnless(_HAS_GUI, "PyQt6 / pyqtribbon not installed")
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
 class TestGui(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -23,7 +22,7 @@ class TestGui(unittest.TestCase):
 
         window = main.MainWindow()
         try:
-            self.assertEqual(len(window.ribbon.categories()), 9)
+            self.assertEqual(window.workflow.sections(), 7)
             self.assertGreater(window.cmb_engine.count(), 10)
             self.assertGreater(window.cmb_target.count(), 100)
         finally:

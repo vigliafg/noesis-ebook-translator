@@ -5,7 +5,6 @@ import unittest
 
 try:
     from PyQt6.QtWidgets import QApplication
-    import pyqtribbon  # noqa: F401
     _HAS_GUI = True
 except Exception:  # noqa: BLE001
     _HAS_GUI = False
@@ -14,7 +13,7 @@ from tests.fixtures import build_rich_epub
 from tests.harness import run_feature_harness
 
 
-@unittest.skipUnless(_HAS_GUI, "PyQt6 / pyqtribbon not installed")
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
 class TestFeatureHarness(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -27,7 +26,7 @@ class TestFeatureHarness(unittest.TestCase):
         self.assertTrue(report.available, report.summary())
         self.assertTrue(report.window_built, report.summary())
         self.assertEqual(report.tabs, 8, report.summary())
-        self.assertEqual(report.categories, 9, report.summary())
+        self.assertEqual(report.categories, 7, report.summary())
         self.assertGreaterEqual(report.figures, 1, report.summary())
         self.assertGreaterEqual(report.tables, 1, report.summary())
         self.assertGreaterEqual(report.texts, 1, report.summary())
@@ -37,7 +36,7 @@ class TestFeatureHarness(unittest.TestCase):
         self.assertTrue(report.settings_ok, report.summary())
 
 
-@unittest.skipUnless(_HAS_GUI, "PyQt6 / pyqtribbon not installed")
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
 class TestWidgets(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -126,13 +125,13 @@ class TestWidgets(unittest.TestCase):
         try:
             window._apply_source(book)
             item = window.reader.toc.topLevelItem(0)
-            # Reader category (index 2) → no checkboxes at all
-            window._on_ribbon_category(2)
+            # Reader section (index 1) → no checkboxes at all
+            window.workflow.setCurrentSection(1)
             self.assertEqual(window.reader.toc_mode(), "read")
             self.assertFalse(bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable))
             self.assertIsNone(item.data(0, Qt.ItemDataRole.CheckStateRole))
-            # Translate category (index 4) → selectable checkboxes
-            window._on_ribbon_category(4)
+            # Translate section (index 3) → selectable checkboxes
+            window.workflow.setCurrentSection(3)
             self.assertEqual(window.reader.toc_mode(), "select")
             self.assertTrue(bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable))
             self.assertIsNotNone(item.data(0, Qt.ItemDataRole.CheckStateRole))
@@ -280,6 +279,13 @@ class TestWidgets(unittest.TestCase):
         try:
             # navigation is driven by the ribbon: the content tab bar is hidden
             self.assertTrue(window.tabs.tabBar().isHidden())
+            # 7 workflow sections, every button has an icon
+            from noesis_ebook_translator.ui.workflow_bar import WorkflowButton
+            self.assertEqual(window.workflow.sections(), 7)
+            buttons = window.workflow.findChildren(WorkflowButton)
+            self.assertTrue(buttons)
+            for button in buttons:
+                self.assertFalse(button.icon().isNull(), button.text())
         finally:
             window.close()
 

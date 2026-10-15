@@ -1,6 +1,6 @@
 # noesis-ebook-translator
 
-GUI desktop (**PyQt6** + **pyqtribbon**) per tradurre ebook **EPUB** in un'altra
+GUI desktop (**PyQt6**) per tradurre ebook **EPUB** in un'altra
 lingua conservando la formattazione, i markup inline e l'indice. Il motore di
 traduzione è preso **verbatim** dal plugin Calibre
 [bookfere/Ebook-Translator-Calibre-Plugin](https://github.com/bookfere/Ebook-Translator-Calibre-Plugin)
@@ -95,24 +95,27 @@ DeepL Free e Microsoft Edge funzionano senza chiave.
 
 ## Barra degli strumenti (workflow)
 
-La barra segue il flusso di lavoro con **9 schede**, ognuna con i suoi pannelli
-e bottoni **con icone colorate** (Microsoft Fluent Emoji, MIT). La navigazione
-tra le viste (Traduzione, Lettura, Libreria, Capitoli, Figure, Tabelle, Testi,
-Anteprima) avviene **dal ribbon**: la barra a schede del pannello centrale è
-nascosta, quindi sopra il contenuto resta solo il ribbon.
+La barra è **custom** (nessuna libreria ribbon esterna): una **fascia superiore**
+con **7 sezioni** e una **fascia inferiore** con i bottoni (**icona + nome
+funzione**) della sezione attiva. Le icone sono Microsoft Fluent Emoji (MIT).
 
-`Home · Library · Reader · Assets · Translate · Quality · Export · Tools · Info`
+`Library · Reader · Assets · Translate · Quality · Export · Tools`
+
+A sinistra della fascia alta c'è un pulsante **Start** (Apri/Aggiungi, Impostazioni,
+Wizard, Tema, Lingua, Backend lettore, Aiuto, Informazioni) e a destra la
+**rotella Impostazioni**. La navigazione tra le viste avviene da qui (la barra a
+schede del pannello centrale è nascosta).
 
 - **Library**: libri originali, copie tradotte e capitoli (viste a toggle).
-- **Reader**: navigazione, vista, ricerca, confronto, note, stampa/PDF.
+- **Reader**: indice, fonte/interlinea, zoom, ricerca, confronto, note, stampa/PDF.
 - **Assets**: testi, figure e tavole estratti (con editor e salvataggio nell'EPUB).
-- **Translate**: motore, lingue, opzioni, anteprima e avvio.
+- **Translate**: Traduci libro / Traduci capitoli, motore, lingue, opzioni, anteprima.
 - **Quality**: valutazione (metriche + giudice AI) e report.
 - **Export**: contenuto/edizione, formato e destinazione.
 - **Tools**: split, merge e manutenzione.
 
-Nel **TOC**: in modalità *Reader* l'albero è cliccabile (solo bookmark); nella
-scheda *Translate* è cliccabile **con le caselle di selezione** dei capitoli.
+Nel **TOC**: nella sezione *Reader* l'albero è cliccabile (solo bookmark); nella
+sezione *Translate* è cliccabile **con le caselle di selezione** dei capitoli.
 
 ## Lingue
 
@@ -161,7 +164,7 @@ e, se le dipendenze sono presenti, **DOCX** (`python-docx`) e **PDF**
 ## Requisiti
 
 - **Python ≥ 3.10**
-- PyQt6 ≥ 6.6, pyqtribbon ≥ 0.7.8, qtpy, ebooklib, lxml, mechanize
+- PyQt6 ≥ 6.6, ebooklib, lxml, mechanize
   (vedi `requirements.txt`).
 - Connessione a Internet per i motori online.
 
@@ -270,7 +273,7 @@ macOS. Gli eseguibili macOS non sono firmati: al primo avvio usare click destro 
 ```bash
 .venv/bin/pip install pyinstaller
 .venv/bin/pyinstaller --onefile --windowed --name NoesisEbookTranslator \
-  --collect-all pyqtribbon main.py
+  main.py
 ```
 
 ## Edizione CLI/engine

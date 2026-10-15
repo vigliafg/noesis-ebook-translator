@@ -37,8 +37,6 @@ classifiers = [
 ]
 dependencies = [
     "PyQt6>=6.6",
-    "pyqtribbon>=0.7.8",
-    "qtpy",
     "ebooklib",
     "lxml",
     "mechanize",
