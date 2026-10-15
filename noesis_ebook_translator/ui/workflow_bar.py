@@ -373,8 +373,9 @@ def build_workflow(window) -> WorkflowBar:
 
     # -- Assets --------------------------------------------------------
     p = bar.add_section("assets", T("tab.assets"))
-    window.cmb_assets_edition = p.combo(
-        [T("edition.original"), T("edition.translated")], tooltip=T("label.edition"))
+    window.cmb_assets_edition = p.labelled_combo(
+        "label.edition", [T("edition.original"), T("edition.translated")],
+        tooltip=T("label.edition"))
     window.cmb_assets_edition.currentIndexChanged.connect(
         window._on_assets_edition_changed)
     p.button("action.refresh", "refresh", window.on_assets_reload)
@@ -441,11 +442,12 @@ def build_workflow(window) -> WorkflowBar:
 
     # -- Export --------------------------------------------------------
     p = bar.add_section("export", T("tab.export"))
-    window.cmb_export_edition = p.combo(
-        [T("edition.original"), T("edition.translated")], tooltip=T("label.edition"))
+    window.cmb_export_edition = p.labelled_combo(
+        "label.edition", [T("edition.original"), T("edition.translated")],
+        tooltip=T("label.edition"))
     window.edt_export_chapters = p.line(T("label.chapters_filter"), width=160)
     p.separator()
-    window.cmb_export_format = p.combo(tooltip=T("label.format"))
+    window.cmb_export_format = p.labelled_combo("label.format", tooltip=T("label.format"))
     window.cmb_export_format.setMinimumWidth(110)
     p.button("action.export", "export", window.on_export_quick)
     p.button("action.export", "package", window.on_export)
