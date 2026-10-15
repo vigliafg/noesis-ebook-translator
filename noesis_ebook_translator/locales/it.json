@@ -263,5 +263,9 @@
   "label.output_folder": "Cartella",
   "label.select_chapters": "Seleziona i capitoli",
   "action.browse": "Sfoglia…",
-  "label.book": "Libro"
+  "label.book": "Libro",
+  "label.justify": "Giustificato",
+  "label.hyphenate": "Sillabazione",
+  "action.expand_all": "Espandi tutto",
+  "action.collapse_all": "Collassa tutto"
 }

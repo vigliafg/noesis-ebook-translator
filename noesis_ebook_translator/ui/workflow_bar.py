@@ -309,14 +309,27 @@ def build_workflow(window) -> WorkflowBar:
     # -- Reader --------------------------------------------------------
     p = bar.add_section("reader", T("tab.reader"))
     window.btn_toc = p.button("action.toc", "chapters", window.on_toggle_toc)
+    p.button("action.expand_all", "add", window.on_expand_all)
+    p.button("action.collapse_all", "remove", window.on_collapse_all)
     p.separator()
+    window.cmb_theme_reader = p.combo(
+        [T(f"theme.{m}") for m in theme_mod.theme_choices()], tooltip=T("label.theme"))
+    window.cmb_theme_reader.currentIndexChanged.connect(
+        lambda i: window._set_theme(theme_mod.theme_choices()[i]))
     window.cmb_font = p.combo(["Serif", "Sans Serif", "Monospace"],
                               tooltip=T("label.font"))
     window.cmb_font.currentIndexChanged.connect(window.on_font_changed)
-    window.cmb_line = p.combo(["1.0", "1.2", "1.5", "1.8", "2.0"],
+    window.cmb_line = p.combo(["1.0", "1.2", "1.4", "1.5", "1.8", "2.0"],
                               tooltip=T("label.line_height"))
-    window.cmb_line.setCurrentIndex(2)
+    window.cmb_line.setCurrentIndex(3)  # 1.5
     window.cmb_line.currentIndexChanged.connect(window.on_line_height_changed)
+    window.chk_justify = p.check("label.justify")
+    window.chk_justify.setChecked(True)
+    window.chk_justify.toggled.connect(window.on_justify_toggled)
+    window.chk_hyphenate = p.check("label.hyphenate")
+    window.chk_hyphenate.setChecked(True)
+    window.chk_hyphenate.toggled.connect(window.on_hyphenate_toggled)
+    p.separator()
     p.button("assets.zoom_in", "zoom_in", lambda: window.reader.backend.set_zoom(1))
     p.button("assets.zoom_out", "zoom_out", lambda: window.reader.backend.set_zoom(-1))
     p.separator()

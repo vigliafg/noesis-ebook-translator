@@ -263,5 +263,9 @@
   "label.output_folder": "Carpeta",
   "label.select_chapters": "Seleccionar capítulos",
   "action.browse": "Examinar…",
-  "label.book": "Libro"
+  "label.book": "Libro",
+  "label.justify": "Justificado",
+  "label.hyphenate": "Guiones",
+  "action.expand_all": "Expandir todo",
+  "action.collapse_all": "Contraer todo"
 }

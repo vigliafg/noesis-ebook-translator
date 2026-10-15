@@ -270,6 +270,40 @@ class TestWidgets(unittest.TestCase):
         finally:
             window.close()
 
+    def test_toc_current_chapter_bold_and_text_settings(self):
+        from PyQt6.QtCore import Qt
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-tocbold-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = main.MainWindow()
+        try:
+            window._apply_source(book)
+
+            def find(name):
+                def walk(it):
+                    yield it
+                    for i in range(it.childCount()):
+                        yield from walk(it.child(i))
+                for i in range(window.reader.toc.topLevelItemCount()):
+                    for it in walk(window.reader.toc.topLevelItem(i)):
+                        if it.data(0, Qt.ItemDataRole.UserRole) == name:
+                            return it
+                return None
+
+            window.reader._on_toc_click(find("c3.xhtml"), 0)
+            self.assertTrue(find("c3.xhtml").font(0).bold())
+            self.assertFalse(find("c1.xhtml").font(0).bold())
+            # typographic handlers must not raise
+            window.on_justify_toggled(False)
+            window.on_hyphenate_toggled(False)
+            window.on_expand_all()
+            window.on_collapse_all()
+        finally:
+            window.close()
+
     def test_content_tabbar_hidden(self):
         from noesis_ebook_translator import appconfig
         import main

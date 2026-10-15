@@ -263,5 +263,9 @@
   "label.output_folder": "Folder",
   "label.select_chapters": "Select chapters",
   "action.browse": "Browse…",
-  "label.book": "Book"
+  "label.book": "Book",
+  "label.justify": "Justified",
+  "label.hyphenate": "Hyphenate",
+  "action.expand_all": "Expand all",
+  "action.collapse_all": "Collapse all"
 }

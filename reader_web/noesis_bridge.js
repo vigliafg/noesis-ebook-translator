@@ -6,7 +6,9 @@ let bridge = null
 let zoom = 16
 let theme = 'light'
 let font = 'serif'
-let line = 1.5
+let spacing = 1.5
+let justify = true
+let hyphenate = true
 
 function emit(name, ...args) {
   if (bridge && typeof bridge[name] === 'function') {
@@ -35,11 +37,13 @@ function pageBackground(mode) {
 function applyStyles() {
   const view = globalThis.reader && globalThis.reader.view
   const renderer = view && view.renderer
-  const spacing = (globalThis.reader?.style?.spacing) || 1.5
   const base = '@namespace epub "http://www.idpf.org/2007/ops";'
-    + `p, li, blockquote, dd { line-height: ${spacing}; text-align: justify; }`
+    + `p, li, blockquote, dd { line-height: ${spacing};`
+    + ` text-align: ${justify ? 'justify' : 'start'};`
+    + ` -webkit-hyphens: ${hyphenate ? 'auto' : 'manual'};`
+    + ` hyphens: ${hyphenate ? 'auto' : 'manual'}; }`
     + 'pre { white-space: pre-wrap !important; }'
-  const css = `html { font-size: ${zoom}px; }\nbody { line-height: ${line}; }\n`
+  const css = `html { font-size: ${zoom}px; }\nbody { line-height: ${spacing}; }\n`
     + (font ? `body, p, div, span, li { font-family: ${font}; }` : '')
     + base + themeCss(theme)
   document.body.style.background = pageBackground(theme)
@@ -55,7 +59,10 @@ window.api = {
   goToFraction: (f) => { try { globalThis.reader?.view?.goToFraction(f) } catch (e) { emit('on_error', String(e)) } },
   setTheme: (mode) => { theme = mode || 'light'; applyStyles() },
   setFont: (family) => { font = family || ''; applyStyles() },
-  setLineHeight: (value) => { line = value || 1.5; applyStyles() },
+  setSpacing: (value) => { spacing = value || 1.5; if (globalThis.reader?.style) globalThis.reader.style.spacing = spacing; applyStyles() },
+  setLineHeight: (value) => { spacing = value || 1.5; applyStyles() },
+  setJustify: (on) => { justify = !!on; applyStyles() },
+  setHyphenate: (on) => { hyphenate = !!on; applyStyles() },
   setZoom: (pt) => { zoom = pt; applyStyles() },
   setFlow: (mode) => {
     try { globalThis.reader?.view?.renderer?.setAttribute('flow', mode) } catch (e) { /* ignore */ }

@@ -94,6 +94,8 @@ class WebEngineBackend(QWidget):
         self._theme = "light"
         self._font = "serif"
         self._line = 1.5
+        self._justify = True
+        self._hyphenate = True
         self._resume_href: str | None = None
         self._ready = False
         self._opened = False
@@ -126,7 +128,9 @@ class WebEngineBackend(QWidget):
     def _apply_current_style(self) -> None:
         self._js(f"api.setTheme({json.dumps(self._theme)})")
         self._js(f"api.setFont({json.dumps(self._font)})")
-        self._js(f"api.setLineHeight({self._line})")
+        self._js(f"api.setSpacing({self._line})")
+        self._js(f"api.setJustify({str(bool(self._justify)).lower()})")
+        self._js(f"api.setHyphenate({str(bool(self._hyphenate)).lower()})")
         self._js(f"api.setZoom({self._pt})")
 
     def _on_opened(self, _payload: str) -> None:
@@ -221,7 +225,15 @@ class WebEngineBackend(QWidget):
 
     def set_line_height(self, value: float) -> None:
         self._line = float(value)
-        self._js_when_ready(f"api.setLineHeight({self._line})")
+        self._js_when_ready(f"api.setSpacing({self._line})")
+
+    def set_justify(self, on: bool) -> None:
+        self._justify = bool(on)
+        self._js_when_ready(f"api.setJustify({str(bool(on)).lower()})")
+
+    def set_hyphenate(self, on: bool) -> None:
+        self._hyphenate = bool(on)
+        self._js_when_ready(f"api.setHyphenate({str(bool(on)).lower()})")
 
     def set_spread(self, on: bool) -> None:
         self._js_when_ready(f"api.setSpread({str(bool(on)).lower()})")

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QComboBox, QHBoxLayout, QPushButton, QSplitter, QTreeWidget,
     QTreeWidgetItem, QVBoxLayout, QWidget)
@@ -38,6 +39,7 @@ class ReaderWidget(QWidget):
         self._syncing = False
         self._toc_mode = "read"
         self._toc_items: list = []
+        self._current_toc_item = None
         self._parallel = False
 
         from . import create_backend
@@ -145,6 +147,49 @@ class ReaderWidget(QWidget):
                 backend.set_line_height(value)
             except Exception:  # noqa: BLE001
                 pass
+
+    def set_justify(self, on: bool) -> None:
+        for backend in (self.backend, self.second):
+            try:
+                backend.set_justify(bool(on))
+            except Exception:  # noqa: BLE001
+                pass
+
+    def set_hyphenate(self, on: bool) -> None:
+        for backend in (self.backend, self.second):
+            try:
+                backend.set_hyphenate(bool(on))
+            except Exception:  # noqa: BLE001
+                pass
+
+    def expand_all(self) -> None:
+        self.toc.expandAll()
+
+    def collapse_all(self) -> None:
+        self.toc.collapseAll()
+
+    def _mark_current(self, href: str | None) -> None:
+        """Bold the TOC entry of the chapter currently shown."""
+        if not href or not self._toc_items:
+            return
+        base = href.split("#", 1)[0]
+        target = None
+        for item in self._toc_items:
+            if item.data(0, Qt.ItemDataRole.UserRole) == base:
+                target = item
+                break
+        if target is self._current_toc_item:
+            return
+        if self._current_toc_item is not None:
+            font = self._current_toc_item.font(0)
+            font.setBold(False)
+            self._current_toc_item.setFont(0, font)
+        self._current_toc_item = target
+        if target is not None:
+            font = target.font(0)
+            font.setBold(True)
+            target.setFont(0, font)
+            self.toc.scrollToItem(target)
 
     def set_flow(self, mode: str) -> None:
         """Set the flow (``paginated``/``scrolled``) on both viewports."""
@@ -257,6 +302,7 @@ class ReaderWidget(QWidget):
     def _on_position(self, href: str, fraction: float) -> None:
         if self.document is not None:
             self.session.set_position(self.document.path, href, fraction)
+        self._mark_current(href)
         if self._parallel and self._translated is not None and not self._syncing:
             self._syncing = True
             try:

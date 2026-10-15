@@ -253,6 +253,10 @@ class MainWindow(QMainWindow):
         self._reduce_motion = bool(settings.get("reduce_motion", False))
         self.progress.set_reduce_motion(self._reduce_motion)
         self.chapter_bar.set_reduce_motion(self._reduce_motion)
+        theme_index = self.cmb_theme_reader.findText(
+            T(f"theme.{settings.get('ui_theme', 'system')}"))
+        if theme_index >= 0:
+            self.cmb_theme_reader.setCurrentIndex(theme_index)
         for fmt in exporter_mod.supported_exports():
             self.cmb_export_format.addItem(T(f"format.{fmt}"), fmt)
         self._on_engine_changed(self.cmb_engine.currentText())
@@ -425,6 +429,18 @@ class MainWindow(QMainWindow):
         except ValueError:
             value = 1.5
         self.reader.set_line_height(value)
+
+    def on_justify_toggled(self, checked: bool) -> None:
+        self.reader.set_justify(bool(checked))
+
+    def on_hyphenate_toggled(self, checked: bool) -> None:
+        self.reader.set_hyphenate(bool(checked))
+
+    def on_expand_all(self) -> None:
+        self.reader.expand_all()
+
+    def on_collapse_all(self) -> None:
+        self.reader.collapse_all()
 
     def on_print_pdf(self) -> None:
         backend = self.reader.backend

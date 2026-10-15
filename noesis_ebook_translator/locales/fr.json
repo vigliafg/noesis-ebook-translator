@@ -263,5 +263,9 @@
   "label.output_folder": "Dossier",
   "label.select_chapters": "Sélectionner les chapitres",
   "action.browse": "Parcourir…",
-  "label.book": "Livre"
+  "label.book": "Livre",
+  "label.justify": "Justifié",
+  "label.hyphenate": "Césure",
+  "action.expand_all": "Tout développer",
+  "action.collapse_all": "Tout réduire"
 }

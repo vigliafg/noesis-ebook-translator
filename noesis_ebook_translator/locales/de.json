@@ -263,5 +263,9 @@
   "label.output_folder": "Ordner",
   "label.select_chapters": "Kapitel auswählen",
   "action.browse": "Durchsuchen…",
-  "label.book": "Buch"
+  "label.book": "Buch",
+  "label.justify": "Blocksatz",
+  "label.hyphenate": "Silbentrennung",
+  "action.expand_all": "Alle erweitern",
+  "action.collapse_all": "Alle einklappen"
 }
