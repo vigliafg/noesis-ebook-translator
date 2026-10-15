@@ -36,7 +36,7 @@ class WorkflowButton(QWidget):
                  checkable: bool = False, on_toggle=None, parent=None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -97,8 +97,10 @@ class SectionPage(QWidget):
         self.key = key
         self.setObjectName("sectionPage")
         self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(8, 5, 8, 5)
+        self._layout.setContentsMargins(8, 2, 8, 2)
         self._layout.setSpacing(5)
+        self._layout.setAlignment(Qt.AlignmentFlag.AlignLeft
+                                  | Qt.AlignmentFlag.AlignVCenter)
 
     def _add(self, widget: QWidget, stretch: int = 0) -> QWidget:
         self._layout.addWidget(widget, stretch)
@@ -155,6 +157,23 @@ class SectionPage(QWidget):
         return self._add(frame)
 
 
+class _HeightStack(QStackedWidget):
+    """QStackedWidget that sizes to the *current* page (no big empty gaps)."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.currentChanged.connect(lambda *_: self.updateGeometry())
+
+    def sizeHint(self):  # noqa: N802 - Qt naming
+        page = self.currentWidget()
+        return page.sizeHint() if page is not None else super().sizeHint()
+
+    def minimumSizeHint(self):  # noqa: N802 - Qt naming
+        page = self.currentWidget()
+        return (page.minimumSizeHint() if page is not None
+                else super().minimumSizeHint())
+
+
 class WorkflowBar(QWidget):
     sectionChanged = pyqtSignal(int)
 
@@ -189,7 +208,7 @@ class WorkflowBar(QWidget):
         tl.addWidget(self.btn_settings)
         root.addWidget(top)
 
-        self.stack = QStackedWidget()
+        self.stack = _HeightStack()
         root.addWidget(self.stack)
 
         self._pages: list[SectionPage] = []
