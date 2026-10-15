@@ -18,7 +18,7 @@ from pathlib import Path
 from ebooklib import epub
 from lxml import etree
 
-from .chapters import Chapter, chapter_files
+from .chapters import Chapter, chapter_files, isolate_chapters
 from .extract import Figure, Table, extract_figures, extract_tables, extract_text
 
 __all__ = [
@@ -128,6 +128,7 @@ def export_epub(input_path: str, output_path: str,
     book = _read(input_path)
     if selected:
         restrict_book(book, chapter_files(selected))
+        isolate_chapters(book, selected)
     _ensure_toc_uids(book.toc)
     epub.write_epub(output_path, book)
     return [output_path]
@@ -168,6 +169,8 @@ def export_html(input_path: str, output_path: str,
                 title: str | None = None) -> list[str]:
     book = _read(input_path)
     files = chapter_files(selected) if selected else None
+    if selected:
+        isolate_chapters(book, selected)
     parts = ["<!DOCTYPE html>", '<html><head><meta charset="utf-8">',
              f"<title>{title or os.path.basename(input_path)}</title>",
              "<style>body{font-family:serif;line-height:1.5;margin:2rem;} "
@@ -194,6 +197,8 @@ def export_markdown(input_path: str, output_path: str,
                     selected: list[Chapter] | None = None) -> list[str]:
     book = _read(input_path)
     files = chapter_files(selected) if selected else None
+    if selected:
+        isolate_chapters(book, selected)
     assets = Path(output_path).with_suffix("")
     assets = assets.parent / (assets.name + "_files")
     written: list[str] = []

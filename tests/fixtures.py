@@ -87,6 +87,32 @@ def build_rich_epub(path: str) -> str:
     return path
 
 
+def build_anchored_epub(path: str) -> str:
+    """Create an EPUB whose 3 TOC entries are anchors inside one XHTML file."""
+    book = epub.EpubBook()
+    book.set_identifier("noesis-anchor-1")
+    book.set_title("Anchored Test")
+    book.set_language("en")
+    doc = epub.EpubHtml(title="Book", file_name="book.xhtml", lang="en")
+    doc.content = (
+        "<html xmlns='http://www.w3.org/1999/xhtml'><head/><body>"
+        "<h1 id='ch1'>Chapter One</h1><p>UNIQUE1 content of chapter one.</p>"
+        "<h1 id='ch2'>Chapter Two</h1><p>UNIQUE2 content of chapter two.</p>"
+        "<h1 id='ch3'>Chapter Three</h1><p>UNIQUE3 content of chapter three.</p>"
+        "</body></html>")
+    book.add_item(doc)
+    book.toc = (
+        epub.Link("book.xhtml#ch1", "Chapter 1", "ch1"),
+        epub.Link("book.xhtml#ch2", "Chapter 2", "ch2"),
+        epub.Link("book.xhtml#ch3", "Chapter 3", "ch3"),
+    )
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", doc]
+    epub.write_epub(path, book)
+    return path
+
+
 def make_fake_engine():
     """Return an offline engine class that marks the text it receives."""
     from noesis_ebook_translator.engines.base import Base

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ebooklib import epub
 
-from .chapters import Chapter, chapter_files, flatten, load_chapters
+from .chapters import Chapter, chapter_files, flatten, isolate_chapters, load_chapters
 from .exporter import restrict_book, _ensure_toc_uids
 
 __all__ = ["split_epub", "merge_epubs", "sanitize_name", "part_filename"]
@@ -71,6 +71,7 @@ def split_epub(input_path: str, out_dir: str,
             continue
         book = epub.read_epub(input_path)
         restrict_book(book, files)
+        isolate_chapters(book, [chapter])
         _ensure_toc_uids(book.toc)
         target = os.path.join(out_dir, part_filename(len(written) + 1, chapter.name))
         epub.write_epub(target, book)

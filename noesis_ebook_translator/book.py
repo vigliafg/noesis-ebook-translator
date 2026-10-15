@@ -18,7 +18,8 @@ from lxml import etree
 from . import EbookTranslator
 from .appconfig import ensure_defaults
 from .chapters import (
-    chapter_files, chapters_from_book, load_chapters, resolve_selection)
+    chapter_files, chapters_from_book, isolate_chapters, load_chapters,
+    resolve_selection)
 from .exporter import restrict_book
 from .lib.cache import get_cache
 from .lib.config import get_config
@@ -175,6 +176,7 @@ def translate_epub(
         all_chapters = chapters_from_book(book)
         selected = resolve_selection(all_chapters, chapters)
         restrict_book(book, chapter_files(selected))
+        isolate_chapters(book, selected)
     pages = _parse_pages(book)
     toc_nodes = _parse_toc(book.toc)
 
@@ -261,6 +263,7 @@ def preview_translation(
     if chapters:
         selected = resolve_selection(chapters_from_book(book), chapters)
         restrict_book(book, chapter_files(selected))
+        isolate_chapters(book, selected)
     pages = _parse_pages(book)
 
     handler = get_element_handler(

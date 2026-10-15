@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from ebooklib import epub
 from lxml import etree
 
-from .chapters import Chapter, chapter_files
+from .chapters import Chapter, chapter_files, isolate_chapters
 
 __all__ = [
     "Figure", "Table", "TextBlock",
@@ -146,6 +146,8 @@ def extract_figures(epub_path: str, chapters: list[Chapter] | None = None,
                     selected: list[Chapter] | None = None) -> list[Figure]:
     book = epub.read_epub(epub_path)
     files = chapter_files(selected) if selected else None
+    if selected:
+        isolate_chapters(book, selected)
     figures: list[Figure] = []
     for doc in _ordered_documents(book, files):
         doc_chapter, doc_name = _chapter_index(chapters, doc.file_name)
@@ -170,6 +172,8 @@ def extract_tables(epub_path: str, chapters: list[Chapter] | None = None,
                    selected: list[Chapter] | None = None) -> list[Table]:
     book = epub.read_epub(epub_path)
     files = chapter_files(selected) if selected else None
+    if selected:
+        isolate_chapters(book, selected)
     tables: list[Table] = []
     for doc in _ordered_documents(book, files):
         doc_chapter, doc_name = _chapter_index(chapters, doc.file_name)
@@ -208,6 +212,8 @@ def extract_text(epub_path: str, chapters: list[Chapter] | None = None,
     """Return ``[(chapter_index, chapter_name, segment_text), ...]``."""
     book = epub.read_epub(epub_path)
     files = chapter_files(selected) if selected else None
+    if selected:
+        isolate_chapters(book, selected)
     out: list[tuple[int, str, str]] = []
     for doc in _ordered_documents(book, files):
         doc_chapter, doc_name = _chapter_index(chapters, doc.file_name)

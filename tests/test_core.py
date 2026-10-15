@@ -6,7 +6,8 @@ import zipfile
 
 from ebooklib import epub
 
-from tests.fixtures import build_rich_epub, build_sample_epub, register_fake_engine
+from tests.fixtures import (
+    build_anchored_epub, build_rich_epub, build_sample_epub, register_fake_engine)
 
 
 class TestChapters(unittest.TestCase):
@@ -121,6 +122,62 @@ class TestExport(unittest.TestCase):
         self.assertEqual(len(img_files), 1)
         self.assertTrue(img_files[0].endswith(".png"))
         self.assertTrue(csv_files[0].endswith(".csv"))
+
+
+class TestAnchorChapters(unittest.TestCase):
+    """Chapters that share one XHTML file (TOC anchors) must isolate correctly."""
+
+    @classmethod
+    def setUpClass(cls):
+        register_fake_engine()
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="noesis-anchor-")
+        self.epub = build_anchored_epub(os.path.join(self.tmp, "a.epub"))
+
+    def _body(self, path):
+        with zipfile.ZipFile(path) as archive:
+            return "\n".join(
+                archive.read(n).decode("utf-8", "replace")
+                for n in archive.namelist() if n.endswith(".xhtml"))
+
+    def test_translate_single_anchored_chapter(self):
+        from noesis_ebook_translator import book
+
+        out = os.path.join(self.tmp, "ch2.epub")
+        book.translate_epub(self.epub, out, engine="Fake", chapters=["book.xhtml#ch2"],
+                            settings={"translation_position": "only",
+                                      "cache_enabled": False})
+        body = self._body(out)
+        self.assertIn("UNIQUE2", body)
+        self.assertNotIn("UNIQUE1", body)
+        self.assertNotIn("UNIQUE3", body)
+
+    def test_export_single_anchored_chapter(self):
+        from noesis_ebook_translator import chapters, exporter
+
+        tree = chapters.load_chapters(self.epub)
+        selected = chapters.resolve_selection(tree, ["book.xhtml#ch2"])
+        out = os.path.join(self.tmp, "ch2_export.epub")
+        exporter.export_epub(self.epub, out, selected)
+        body = self._body(out)
+        self.assertIn("UNIQUE2", body)
+        self.assertNotIn("UNIQUE1", body)
+        self.assertNotIn("UNIQUE3", body)
+
+    def test_split_isolates_anchored_chapters(self):
+        from noesis_ebook_translator import segment
+
+        parts = segment.split_epub(self.epub, os.path.join(self.tmp, "parts"),
+                                   mode="flat")
+        self.assertEqual(len(parts), 3)
+        bodies = [self._body(p) for p in parts]
+        self.assertIn("UNIQUE1", bodies[0])
+        self.assertNotIn("UNIQUE2", bodies[0])
+        self.assertIn("UNIQUE2", bodies[1])
+        self.assertNotIn("UNIQUE1", bodies[1])
+        self.assertIn("UNIQUE3", bodies[2])
+        self.assertNotIn("UNIQUE2", bodies[2])
 
 
 class TestChapterTranslation(unittest.TestCase):
