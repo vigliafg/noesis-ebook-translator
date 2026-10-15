@@ -21,6 +21,8 @@ __all__ = ["build_ribbon"]
 
 def build_ribbon(window) -> None:
     ribbon = RibbonBar()
+    # Half-height ribbon: smaller buttons and icons (default is 150 px).
+    ribbon.setRibbonHeight(92)
     window.setMenuWidget(ribbon)
     window.ribbon = ribbon
 
@@ -33,8 +35,8 @@ def build_ribbon(window) -> None:
 
     def big(p, key: str, ic: str, slot, shortcut: str | None = None,
             tooltip: str | None = None):
-        return p.addLargeButton(T(key), icon=icon(ic), slot=slot,
-                                shortcut=shortcut, tooltip=tooltip)
+        return p.addMediumButton(T(key), icon=icon(ic), slot=slot,
+                                 shortcut=shortcut, tooltip=tooltip)
 
     def small(p, key: str, ic: str, slot, shortcut: str | None = None,
               tooltip: str | None = None):
