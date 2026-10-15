@@ -104,7 +104,6 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ UI
     def _build_workflow(self) -> None:
         self.workflow = build_workflow(self)
-        self.setMenuWidget(self.workflow)
         self.workflow.sectionChanged.connect(self._on_section_changed)
 
     def _build_body(self) -> None:
@@ -170,7 +169,13 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.preview, T("tab.preview"))
         self._translate_tab = central
 
-        self.setCentralWidget(self.tabs)
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        container_layout.addWidget(self.workflow)
+        container_layout.addWidget(self.tabs, 1)
+        self.setCentralWidget(container)
         self.resize(1180, 780)
 
     # ------------------------------------------------------------- helpers
