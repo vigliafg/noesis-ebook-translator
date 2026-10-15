@@ -43,13 +43,20 @@ def _cover_icon(path: str) -> QIcon | None:
 
 
 class LibraryWidget(QWidget):
-    """Multi-book library backed by the SQLite session store."""
+    """Multi-book library backed by the SQLite session store.
+
+    Three views: ``original`` (all books), ``translated`` (books with a
+    translation) and ``chapters`` (extracted chapters across books).
+    """
 
     openRequested = pyqtSignal(str)
 
     def __init__(self, session, parent=None) -> None:
         super().__init__(parent)
         self.session = session
+        self._view = "original"
+        from ..chapter_store import ChapterStore
+        self.store = ChapterStore()
         layout = QVBoxLayout(self)
 
         bar = QHBoxLayout()
@@ -72,10 +79,22 @@ class LibraryWidget(QWidget):
         self.list.itemDoubleClicked.connect(self._open_item)
         self.refresh()
 
+    def set_view(self, view: str) -> None:
+        self._view = view if view in ("original", "translated", "chapters") else "original"
+        self.refresh()
+
+    def view(self) -> str:
+        return self._view
+
     def refresh(self) -> None:
         self.list.clear()
         needle = self.edt_filter.text().strip().lower()
+        if self._view == "chapters":
+            self._refresh_chapters(needle)
+            return
         for entry in self.session.recent():
+            if self._view == "translated" and not entry.get("translated_path"):
+                continue
             title = entry.get("title") or entry.get("path", "")
             if needle and needle not in title.lower():
                 continue
@@ -85,6 +104,20 @@ class LibraryWidget(QWidget):
             item = (QListWidgetItem(icon, title) if icon is not None
                     else QListWidgetItem(title))
             item.setData(Qt.ItemDataRole.UserRole, entry["path"])
+            self.list.addItem(item)
+
+    def _refresh_chapters(self, needle: str) -> None:
+        try:
+            rows = self.store.all()
+        except Exception:  # noqa: BLE001
+            rows = []
+        for row in rows:
+            label = f"{os.path.basename(row.get('book_path', ''))}: " \
+                    f"{row.get('name') or row.get('chapter_index')}"
+            if needle and needle not in label.lower():
+                continue
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, row.get("book_path", ""))
             self.list.addItem(item)
 
     def add_book(self, path: str, title: str = "") -> None:

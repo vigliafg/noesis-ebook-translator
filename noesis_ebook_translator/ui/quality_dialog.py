@@ -51,9 +51,11 @@ class QualityDialog(QDialog):
         layout.addWidget(self.chk_judge)
 
         bar = QHBoxLayout()
-        self.btn_run = QPushButton(T("quality.run"))
+        self.btn_run = QPushButton(T("action.evaluate"))
+        self.btn_save = QPushButton(T("action.report_save"))
         self.btn_close = QPushButton(T("action.close"))
         bar.addWidget(self.btn_run)
+        bar.addWidget(self.btn_save)
         bar.addStretch(1)
         bar.addWidget(self.btn_close)
         layout.addLayout(bar)
@@ -62,22 +64,43 @@ class QualityDialog(QDialog):
         self.output.setReadOnly(True)
         layout.addWidget(self.output, 1)
 
+        self._last_text = ""
         self.btn_run.clicked.connect(self.run)
+        self.btn_save.clicked.connect(self._save_report)
         self.btn_close.clicked.connect(self.accept)
+
+    def _save_report(self) -> None:
+        from PyQt6.QtWidgets import QFileDialog
+        if not self._last_text:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, T("action.report_save"), "quality.md",
+            "Markdown (*.md);;JSON (*.json)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(self._last_text)
+        except OSError:
+            pass
+
+    def _set_output(self, text: str) -> None:
+        self._last_text = text
+        self.output.setPlainText(text)
 
     def run(self) -> None:
         if not (self._source and self._translated):
-            self.output.setPlainText(T("msg.no_input"))
+            self._set_output(T("msg.no_input"))
             return
         judge = None
         if self.chk_judge.isChecked() and self._judge_factory is not None:
             try:
                 judge = self._judge_factory()
             except Exception as exc:  # noqa: BLE001
-                self.output.setPlainText(str(exc))
+                self._set_output(str(exc))
                 judge = None
-        self.output.setPlainText("…")
+        self._set_output("…")
         self._worker = QualityWorker(self._source, self._translated, judge)
-        self._worker.done.connect(self.output.setPlainText)
-        self._worker.failed.connect(self.output.setPlainText)
+        self._worker.done.connect(self._set_output)
+        self._worker.failed.connect(self._set_output)
         self._worker.start()

@@ -116,6 +116,12 @@ class ChapterStore:
             (like, like, like)).fetchall()
         return [dict(row) for row in rows]
 
+    def all(self, limit: int = 1000) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM chapters ORDER BY book_path, chapter_index "
+            "LIMIT ?", (int(limit),)).fetchall()
+        return [dict(row) for row in rows]
+
     # -- sync from an EPUB ------------------------------------------------
     def sync_from_epub(self, epub_path: str, chapters=None) -> int:
         """Populate/refresh rows from an EPUB's chapters; return the count."""

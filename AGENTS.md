@@ -101,7 +101,9 @@ Questi moduli sono **desktop-only** (non inlineati nel repo gemello):
   qualità (metriche + giudice AI).
 - `noesis_ebook_translator/help.py` — URL guida + fallback offline.
 - `noesis_ebook_translator/ui/` — temi, wizard, impostazioni, help, export,
-  animazioni, dialog qualità.
+  animazioni, dialog qualità, **ribbon** (`ribbon.py`) e **icone** (`icons.py`).
+- `assets/icons/` — icone colorate da **Microsoft Fluent Emoji** (MIT),
+  generate da `tools/build_icons.py`; incluse nel bundle (`--add-data`).
 - `noesis_ebook_translator/locales/*.json` — cataloghi interfaccia (5 lingue) e
   `main.py` (ribbon/tab). **Inclusi nel bundle** via `package-data` e
   `--collect-all noesis_ebook_translator` in `release.yml`.

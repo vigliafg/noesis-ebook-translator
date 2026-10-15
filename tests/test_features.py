@@ -27,7 +27,7 @@ class TestFeatureHarness(unittest.TestCase):
         self.assertTrue(report.available, report.summary())
         self.assertTrue(report.window_built, report.summary())
         self.assertEqual(report.tabs, 8, report.summary())
-        self.assertEqual(report.categories, 8, report.summary())
+        self.assertEqual(report.categories, 9, report.summary())
         self.assertGreaterEqual(report.figures, 1, report.summary())
         self.assertGreaterEqual(report.tables, 1, report.summary())
         self.assertGreaterEqual(report.texts, 1, report.summary())
@@ -103,6 +103,40 @@ class TestWidgets(unittest.TestCase):
             self.assertEqual(dialog.cmb_edition.count(), 1)
         finally:
             dialog.close()
+
+    def test_icons_available(self):
+        from noesis_ebook_translator.ui import icons
+
+        names = icons.available()
+        for expected in ("library", "reader", "assets", "translate", "quality",
+                         "export", "tools", "info"):
+            self.assertIn(expected, names, expected)
+            self.assertTrue(icons.has_icon(expected))
+            self.assertFalse(icons.icon(expected).isNull())
+
+    def test_toc_modes_by_category(self):
+        from PyQt6.QtCore import Qt
+        from noesis_ebook_translator import appconfig
+        import main
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-tocmode-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = main.MainWindow()
+        try:
+            window._apply_source(book)
+            # Translate category (index 4) → selectable checkboxes
+            window._on_ribbon_category(4)
+            self.assertEqual(window.reader.toc_mode(), "select")
+            item = window.reader.toc.topLevelItem(0)
+            self.assertTrue(bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable))
+            # Reader category (index 2) → no checkboxes
+            window._on_ribbon_category(2)
+            self.assertEqual(window.reader.toc_mode(), "read")
+            item = window.reader.toc.topLevelItem(0)
+            self.assertFalse(bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable))
+        finally:
+            window.close()
 
 
 class TestPaths(unittest.TestCase):

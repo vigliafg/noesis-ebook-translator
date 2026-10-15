@@ -23,7 +23,7 @@ class TestGui(unittest.TestCase):
 
         window = main.MainWindow()
         try:
-            self.assertEqual(len(window.ribbon.categories()), 8)
+            self.assertEqual(len(window.ribbon.categories()), 9)
             self.assertGreater(window.cmb_engine.count(), 10)
             self.assertGreater(window.cmb_target.count(), 100)
         finally:

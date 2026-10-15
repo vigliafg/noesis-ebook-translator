@@ -88,6 +88,24 @@ I motori LLM e le API a pagamento richiedono una **chiave API** (e a volte un
 *Motore* del ribbon e vengono salvati tra le sessioni. I motori Google gratuiti,
 DeepL Free e Microsoft Edge funzionano senza chiave.
 
+## Barra degli strumenti (workflow)
+
+Il ribbon segue il flusso di lavoro con **9 schede**, ognuna con i suoi pannelli
+e bottoni **con icone colorate** (Microsoft Fluent Emoji, MIT):
+
+`Home · Library · Reader · Assets · Translate · Quality · Export · Tools · Info`
+
+- **Library**: libri originali, copie tradotte e capitoli (viste a toggle).
+- **Reader**: navigazione, vista, ricerca, confronto, note, stampa/PDF.
+- **Assets**: testi, figure e tavole estratti (con editor e salvataggio nell'EPUB).
+- **Translate**: motore, lingue, opzioni, anteprima e avvio.
+- **Quality**: valutazione (metriche + giudice AI) e report.
+- **Export**: contenuto/edizione, formato e destinazione.
+- **Tools**: split, merge e manutenzione.
+
+Nel **TOC**: in modalità *Reader* l'albero è cliccabile (solo bookmark); nella
+scheda *Translate* è cliccabile **con le caselle di selezione** dei capitoli.
+
 ## Lingue
 
 - **Origine**: rilevamento automatico (`Auto detect`) oppure una lingua esplicita.

@@ -25,6 +25,9 @@ class ReaderWidget(QWidget):
         self.document: EpubDocument | None = None
         self._translated: EpubDocument | None = None
         self._syncing = False
+        #: "read" (clickable bookmarks only) or "select" (click + checkboxes).
+        self._toc_mode = "read"
+        self._toc_items: list = []
 
         from . import create_backend
         self.mode = backend_mode
@@ -107,6 +110,7 @@ class ReaderWidget(QWidget):
 
     def _populate_toc(self) -> None:
         self.toc.clear()
+        self._toc_items = []
         if self.document is None:
             return
         items: list[QTreeWidgetItem] = []
@@ -127,7 +131,34 @@ class ReaderWidget(QWidget):
 
         for chapter in self.document.chapters:
             add(chapter)
+        self._toc_items = items
         self.toc.expandAll()
+        self._apply_toc_mode()
+
+    def set_toc_mode(self, mode: str) -> None:
+        """Set the TOC behaviour: ``"read"`` (click only) or ``"select"``.
+
+        In ``"read"`` mode the checkboxes are hidden (the tree stays clickable);
+        in ``"select"`` mode the checkboxes are shown for chapter selection.
+        """
+        self._toc_mode = "select" if mode == "select" else "read"
+        self._apply_toc_mode()
+
+    def toc_mode(self) -> str:
+        return self._toc_mode
+
+    def _apply_toc_mode(self) -> None:
+        selectable = self._toc_mode == "select"
+        for item in self._toc_items:
+            flags = item.flags() | Qt.ItemFlag.ItemIsUserCheckable
+            if selectable:
+                flags |= Qt.ItemFlag.ItemIsUserCheckable
+                if item.checkState(0) == Qt.CheckState.PartiallyChecked:
+                    item.setCheckState(0, Qt.CheckState.Unchecked)
+            else:
+                flags &= ~Qt.ItemFlag.ItemIsUserCheckable
+                item.setCheckState(0, Qt.CheckState.Unchecked)
+            item.setFlags(flags)
 
     def selected_files(self) -> list[str]:
         """Files of the checked chapters (a checked parent selects its subtree)."""

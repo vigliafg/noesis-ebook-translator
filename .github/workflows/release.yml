@@ -72,6 +72,7 @@ jobs:
             --collect-submodules calibre \
             --hidden-import calibre \
             --add-data "assets/noesis-ebook-translator.png${SEP}assets" \
+            --add-data "assets/icons${SEP}assets/icons" \
             main.py
 
       - name: Build NSIS installer (Windows)
@@ -153,6 +154,7 @@ jobs:
             --collect-submodules calibre \
             --hidden-import calibre \
             --add-data "assets/noesis-ebook-translator.png:assets" \
+            --add-data "assets/icons:assets/icons" \
             main.py
 
       - name: Package AppImage
