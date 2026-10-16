@@ -25,7 +25,7 @@ from .lib.cache import get_cache
 from .lib.config import get_config
 from .lib.element import (
     get_element_handler, get_page_elements, get_toc_elements)
-from .lib.exception import TranslationCanceled
+from .lib.exception import TranslationCanceled, TranslationFailed
 from .lib.translation import get_engine_class, get_translation, get_translator
 from .lib.utils import log, uid
 
@@ -181,7 +181,16 @@ def translate_epub(
     config = get_config()
     direction = direction or config.get("target_direction") or "auto"
 
-    book = epub.read_epub(input_path)
+    try:
+        book = epub.read_epub(input_path)
+    except Exception as exc:
+        # A real case: a "slim" re-pack whose package document still lists files
+        # it no longer ships. Say what is wrong instead of surfacing a KeyError.
+        raise TranslationFailed(
+            "Impossibile leggere il file EPUB: "
+            f"{type(exc).__name__}: {exc}\n"
+            "Il file sembra incompleto o malformato (il suo package document "
+            "elenca risorse che non sono nell'archivio).") from exc
     if chapters:
         all_chapters = chapters_from_book(book)
         selected = resolve_selection(all_chapters, chapters)

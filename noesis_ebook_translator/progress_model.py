@@ -21,7 +21,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from .chapters import flatten, load_chapters
+from .chapters import ChapterError, flatten, load_chapters
 from .lib.utils import sorted_mixed_keys
 
 __all__ = [
@@ -94,6 +94,8 @@ def build_units(input_path: str | None, selected=None) -> list[ChapterUnit]:
         return []
     try:
         tree = flatten(load_chapters(input_path))
+    except ChapterError:
+        raise                      # the caller has to be able to *report* it
     except Exception:  # noqa: BLE001 - a broken TOC must not break the view
         return []
     wanted = {str(s) for s in selected} if selected else None

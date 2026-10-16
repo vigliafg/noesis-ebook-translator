@@ -159,11 +159,15 @@ class TestProgressModel(unittest.TestCase):
         self.assertTrue(model.exported)
 
     def test_missing_input_is_an_empty_list(self):
+        from noesis_ebook_translator.chapters import ChapterError
         from noesis_ebook_translator.progress_model import build_units
 
         self.assertEqual(build_units(None), [])
         self.assertEqual(build_units(""), [])
-        self.assertEqual(build_units("/does/not/exist.epub"), [])
+        # A path whose TOC cannot be read raises, so the caller can *report* it
+        # (the band shows the reason instead of pretending there are no chapters).
+        with self.assertRaises(ChapterError):
+            build_units("/does/not/exist.epub")
 
     def test_set_units_resets_the_run(self):
         from noesis_ebook_translator.progress_model import (

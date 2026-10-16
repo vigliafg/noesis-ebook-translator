@@ -150,9 +150,11 @@ class TranslateView(QWidget):
 
     # -- wiring -----------------------------------------------------------
     def set_model(self, model: ProgressModel | None, *,
-                  selection: bool = False) -> None:
+                  selection: bool = False,
+                  toc_error: str | None = None) -> None:
         self._model = model
         self._selection = bool(selection)
+        self.track.set_error(toc_error)
         self.track.set_model(model)
         self.lbl_glass_title.setText(
             T("translate.selection") if selection else T("label.book"))

@@ -158,6 +158,53 @@ def build_partitioned_epub(path: str) -> str:
     return path
 
 
+def build_broken_manifest_epub(path: str) -> str:
+    """A valid book whose package document lists a file that is not in the archive.
+
+    That is how real "slim" re-packs are broken: the OPF still declares fonts or
+    scripts that were stripped. :mod:`ebooklib` then refuses to read the book, but
+    the table of contents is intact and has to be recovered from the archive.
+    """
+    import zipfile
+
+    tmp = f"{path}.tmp"
+    build_rich_epub(tmp)
+    with zipfile.ZipFile(tmp) as source, zipfile.ZipFile(path, "w") as target:
+        for info in source.infolist():
+            data = source.read(info.filename)
+            if info.filename.endswith("content.opf"):
+                data = data.replace(
+                    b"</manifest>",
+                    b'<item id="ghost" href="fonts/ghost.woff" '
+                    b'media-type="font/woff"/></manifest>')
+            target.writestr(info, data)
+    os.remove(tmp)
+    return path
+
+
+def build_nav_only_epub(path: str) -> str:
+    """An EPUB 3 with a navigation document and no NCX at all."""
+    book = epub.EpubBook()
+    book.set_identifier("noesis-nav-1")
+    book.set_title("The Nav Test")
+    book.set_language("en")
+
+    c1 = epub.EpubHtml(title="Intro", file_name="c1.xhtml", lang="en")
+    c1.content = ("<html xmlns='http://www.w3.org/1999/xhtml'><head/><body>"
+                  "<h1>Intro</h1><p>Text one.</p></body></html>")
+    c2 = epub.EpubHtml(title="Body", file_name="c2.xhtml", lang="en")
+    c2.content = ("<html xmlns='http://www.w3.org/1999/xhtml'><head/><body>"
+                  "<h1>Body</h1><p>Text two.</p></body></html>")
+    book.add_item(c1)
+    book.add_item(c2)
+    book.toc = (epub.Link("c1.xhtml", "Intro", "c1"),
+                (epub.Section("Part"), (epub.Link("c2.xhtml", "Body", "c2"),)))
+    book.add_item(epub.EpubNav())      # no EpubNcx: EPUB 3 only
+    book.spine = ["nav", c1, c2]
+    epub.write_epub(path, book)
+    return path
+
+
 def make_fake_engine():
     """Return an offline engine class that marks the text it receives."""
     from noesis_ebook_translator.engines.base import Base

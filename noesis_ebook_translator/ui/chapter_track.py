@@ -188,6 +188,8 @@ class ChapterTrackWidget(QWidget):
         self._rebuild_pending = True
         self._revision = -1
         self._last_running: list[str] = []
+        #: Why the list is empty (a TOC that could not be read), if anything.
+        self._error = ""
         self._colors = self._theme_colors("light", False)
 
         layout = QVBoxLayout(self)
@@ -261,6 +263,14 @@ class ChapterTrackWidget(QWidget):
         self._last_running = []
         self._list.clear()
         self.refresh()
+
+    def set_error(self, text: str | None) -> None:
+        """Say why the chapter list is not available (empty string clears it)."""
+        self._error = (text or "").strip()
+        # Without a model refresh() returns early, so update the hint directly.
+        self._update_empty([])
+        if self._model is not None:
+            self.refresh()
 
     def row_data(self, row: int) -> dict | None:
         """Payload for one visible row, built on demand by the delegate."""
@@ -385,6 +395,9 @@ class ChapterTrackWidget(QWidget):
 
     def _update_empty(self, units) -> None:
         empty = not units
+        # When the TOC could not be read at all, say so instead of hinting that
+        # the filter simply matched nothing.
+        self.lbl_empty.setText(self._error or T("track.empty"))
         self.lbl_empty.setVisible(empty)
         self._list.setVisible(not empty)
 

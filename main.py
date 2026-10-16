@@ -30,6 +30,7 @@ from noesis_ebook_translator.reader.panels import (
     TextsWidget)
 from noesis_ebook_translator.ui.workflow_bar import build_workflow
 from noesis_ebook_translator.engines.languages import google as GOOGLE_LANGUAGES
+from noesis_ebook_translator.chapters import ChapterError
 from noesis_ebook_translator.lib.exception import TranslationCanceled
 
 
@@ -348,15 +349,21 @@ class MainWindow(QMainWindow):
 
         Called as soon as a book is opened, so the trail is already there (in
         reading order, hierarchy visible, no numbers yet) instead of being filled
-        in later -- or worse, left over from the previous book.
+        in later -- or worse, left over from the previous book. When the TOC
+        cannot be read at all, the reason is shown in the band.
         """
         model = None
+        error = None
         if path:
             try:
                 model = ProgressModel(build_units(path))
+            except ChapterError as exc:
+                error = str(exc)
             except Exception:  # noqa: BLE001 - a broken TOC must not break the UI
                 model = None
-        self.translate_view.set_model(model)
+        self.translate_view.set_model(model, toc_error=error)
+        if error:
+            self.log.appendPlainText(error)
 
     @staticmethod
     def _book_label(path: str) -> str:
@@ -1217,7 +1224,12 @@ class MainWindow(QMainWindow):
         # estimate in _on_progress is only used when _chapter_names is filled).
         self._chapter_names = []
         self._refresh_choices(cfg)
-        units = build_units(self._input_path)
+        try:
+            units = build_units(self._input_path)
+        except ChapterError:
+            # The engine will fail on the same book and report it; the band just
+            # stays empty instead of taking the window down.
+            units = []
         model = ProgressModel(units)
         # The whole TOC is listed; only the wizard selection is translated and
         # the other chapters stay dimmed for context.

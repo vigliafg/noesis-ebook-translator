@@ -111,6 +111,17 @@ warning di Chromium.
 > contenuto, e un annullamento veniva riportato come traduzione riuscita con un
 > file parziale scritto su disco.
 
+### TOC di libri con manifest rotto
+
+`chapters.py` (**condiviso**) legge l'indice con `ebooklib`. Alcuni libri reali sono
+re-pack "slim" con il **package document che mente**: dichiara font/script che non
+sono più nell'archivio (nel corpus reale: Davidson's, 48 font MathJax assenti), e
+`ebooklib` si rifiuta di leggere il libro. In quel caso l'indice viene letto
+**direttamente dallo zip** (NCX, o il documento di navigazione EPUB 3). Se anche
+questo fallisce, `load_chapters` solleva `ChapterError` con un messaggio leggibile:
+la banda 2 lo **mostra** al posto del generico «nessuna voce», e `book.py` solleva
+`TranslationFailed` spiegando che il file è incompleto/malformato.
+
 ### Corpus Project Gutenberg
 
 `tests/data/corpus/` contiene **13 EPUB reali** di Project Gutenberg (pubblico
