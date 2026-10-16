@@ -68,7 +68,8 @@ APP_DEFAULTS: dict[str, Any] = {
 }
 
 #: Preference keys surfaced by the GUI for the selected engine.
-_ENGINE_PREFERENCE_KEYS = ("api_keys", "model", "prompt", "target_lang")
+_ENGINE_PREFERENCE_KEYS = (
+    "api_keys", "model", "prompt", "target_lang", "concurrency_limit")
 
 
 def ensure_defaults() -> None:
@@ -130,10 +131,23 @@ def get_engine_preference(engine_name: str) -> dict[str, Any]:
 
 
 def set_engine_preference(engine_name: str, **values: Any) -> None:
+    """Store per-engine preferences (``api_keys``, ``model``, …).
+
+    A value of ``None`` **removes** the key: this matters for
+    ``concurrency_limit``, where ``0`` is meaningful ("as many workers as
+    segments") and is *not* the neutral value -- removing the key lets the engine
+    class default apply again.
+    """
     config = get_config()
     preferences = config.get("engine_preferences") or {}
     data = dict(preferences.get(engine_name) or {})
-    data.update({k: v for k, v in values.items() if k in _ENGINE_PREFERENCE_KEYS})
+    for key, value in values.items():
+        if key not in _ENGINE_PREFERENCE_KEYS:
+            continue
+        if value is None:
+            data.pop(key, None)
+        else:
+            data[key] = value
     preferences[engine_name] = data
     config.set("engine_preferences", preferences)
     config.commit()

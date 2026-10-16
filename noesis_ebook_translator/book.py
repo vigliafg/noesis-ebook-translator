@@ -152,6 +152,7 @@ def translate_epub(
     on_progress: Callable[[float, str], None] | None = None,
     on_log: Callable[[str, bool], None] | None = None,
     on_paragraph: Callable[[Any], None] | None = None,
+    on_plan: Callable[[dict[str, int]], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> str:
     """Translate ``input_path`` and return the path of the written EPUB."""
@@ -188,6 +189,20 @@ def translate_epub(
     elements.extend(get_toc_elements(toc_nodes, []))
     elements.extend(get_page_elements(pages))
     originals = handler.prepare_original(elements)
+
+    # Report the per-document segment totals *before* translating: the GUI uses
+    # them to show real per-chapter progress (and chapter completion) instead of
+    # a linear estimate. ``originals`` entries are
+    # ``(id, md5, raw, content, ignored, attributes, page_id)``.
+    if on_plan is not None:
+        counts: dict[str, int] = {}
+        for entry in originals:
+            if entry[4]:      # ignored element
+                continue
+            page = entry[6]   # page_id = XHTML file name (or "toc.ncx")
+            if page and page != "toc.ncx":
+                counts[page] = counts.get(page, 0) + 1
+        on_plan(counts)
 
     # Cache persists translations across runs (deduplicated by content).
     encoding = ""
