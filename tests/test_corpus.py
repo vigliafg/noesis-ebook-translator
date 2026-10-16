@@ -122,16 +122,45 @@ class TestGutenbergCorpus(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("NOESIS_ONLINE_TESTS"), "online tests disabled")
 class TestCorpusOnline(unittest.TestCase):
     def test_google_translates_a_real_book(self):
+        """A real provider, for real: the segments must come back translated.
+
+        A file that merely exists is not proof: the free endpoint answers HTTP 400
+        for very long segments (17 kB of raw text in a GET url), so a check on the
+        size alone would pass even if *everything* failed.
+        """
         from noesis_ebook_translator import book
 
         entry = min(MANIFEST, key=lambda e: e["bytes"])
         out = os.path.join(tempfile.mkdtemp(prefix="noesis-online-"),
                            entry["file"])
+        stats = {"translated": 0, "errors": 0, "other": 0}
+
+        def on_paragraph(paragraph):
+            if getattr(paragraph, "ignored", False):
+                return
+            source = (paragraph.original or "").strip()
+            translation = (paragraph.translation or "").strip()
+            if paragraph.error:
+                stats["errors"] += 1
+            elif translation and translation != source:
+                stats["translated"] += 1
+            else:
+                stats["other"] += 1
+
         book.translate_epub(
             str(CORPUS / entry["file"]), out, engine="Google(Free)New",
             source_lang="English", target_lang="Italian",
-            settings={"translation_position": "only", "cache_enabled": False})
+            settings={"translation_position": "only", "cache_enabled": False},
+            on_paragraph=on_paragraph)
+
         self.assertGreater(os.path.getsize(out), 0)
+        total = sum(stats.values())
+        self.assertGreater(total, 0, "no segment was processed")
+        self.assertGreater(stats["translated"], total / 2,
+                           f"the provider translated too little: {stats}")
+        # A handful of very long segments is the known free-endpoint limitation.
+        self.assertLess(stats["errors"], total / 10,
+                        f"too many segments failed: {stats}")
 
 
 if __name__ == "__main__":

@@ -132,8 +132,22 @@ multilivello** (profondità ≥ 2) **e illustrazioni** (≥ 15): trattati e manu
 che testo tradotto, `<img>`, link e **profondità del TOC** sopravvivano. Vedi
 `tests/data/corpus/SOURCE.md` e `MANIFEST.json`.
 Per (ri)scaricare: `python tools/fetch_corpus_fixtures.py`. I test online
-opzionali (`NOESIS_ONLINE_TESTS=1`) traducono davvero con Google. Questo corpus è
-**condiviso** col repo engine gemello (copiato dal suo `tools/sync_from_desktop.py`).
+opzionali (`NOESIS_ONLINE_TESTS=1`) traducono davvero con Google e **verificano che
+i segmenti tornino tradotti** (non solo che il file esista: controllare la dimensione
+passerebbe anche se fallisse tutto). Limite noto del motore gratuito: i segmenti
+molto lunghi (~17 kB) fanno rispondere **HTTP 400** all'endpoint GET e restano in
+**errore** in banda 2; con `request_attempt` di default ogni fallimento costa 5-10 s
+di backoff. Questo corpus è **condiviso** col repo engine gemello (copiato dal suo
+`tools/sync_from_desktop.py`).
+
+### Test dei comportamenti "da motore reale" (offline)
+
+`tests/test_real_engines.py` copre ciò che il motore fittizio non può: latenza,
+**concorrenza** (`concurrency_limit>1`, misurata con un contatore di richieste in
+volo), **errori per segmento** (una riga in errore, le altre completano),
+**generatori/stream** (i motori GenAI restituiscono un generatore), **batching**
+(`translate_batch`) e **rate limit** (`request_interval`). Usa il motore `Realistic`
+di `tests/fixtures.py` (knob nel dict `REALISTIC`): tutto **offline, nessuna chiave**.
 
 ## Funzionalità desktop (solo GUI, fuori dal sync motore)
 
