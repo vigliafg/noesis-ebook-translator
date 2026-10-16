@@ -330,6 +330,56 @@ class TestTranslateViewWidget(unittest.TestCase):
             view.hide()
             view.close()
 
+    def test_filters_switch_the_visible_rows(self):
+        """Mini-toolbar in band 2: all / to translate / translated."""
+        from noesis_ebook_translator.progress_model import ProgressModel
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml",
+                                        "d.xhtml"]))
+            model = view.model()
+            model.set_plan({"a.xhtml": 2, "b.xhtml": 2, "c.xhtml": 2,
+                            "d.xhtml": 2})
+            model.apply({"counts": {"a.xhtml": 2, "b.xhtml": 1},
+                         "errors": {}, "cached": 0, "last": None})
+            view.refresh()
+            track = view.track
+
+            self.assertEqual(track.filter_name(), "all")
+            self.assertEqual([u.file for u in track.visible_units()],
+                             ["a.xhtml", "b.xhtml", "c.xhtml", "d.xhtml"])
+            # Buttons: three, exclusive, the first one checked.
+            self.assertEqual(len(track._filter_buttons), 3)
+            self.assertTrue(track._filter_buttons["all"].isChecked())
+
+            track.set_filter("todo")
+            self.assertEqual([u.file for u in track.visible_units()],
+                             ["b.xhtml", "c.xhtml", "d.xhtml"])
+            self.assertTrue(track._filter_buttons["todo"].isChecked())
+            self.assertFalse(track._filter_buttons["all"].isChecked())
+            # The list holds exactly the filtered rows (so the hint is hidden).
+            self.assertEqual(track._list.count(), 3)
+            self.assertTrue(track.lbl_empty.isHidden())
+
+            track.set_filter("done")
+            self.assertEqual([u.file for u in track.visible_units()],
+                             ["a.xhtml"])
+            self.assertEqual(track._list.count(), 1)
+
+            # An empty filter shows the hint instead of an empty list.
+            model.plan = {}
+            model.done.clear()
+            view.refresh()
+            track.set_filter("done")
+            self.assertEqual(track.visible_units(), [])
+            self.assertFalse(track.lbl_empty.isHidden())
+            track.set_filter("all")
+            self.assertTrue(track.lbl_empty.isHidden())
+        finally:
+            view.close()
+
     def test_log_collapse_and_state_round_trip(self):
         from noesis_ebook_translator.ui.translate_view import TranslateView
 
@@ -498,14 +548,15 @@ class TestTranslationThroughTheGui(unittest.TestCase):
 
     def test_single_chapter_selection_lists_the_whole_toc(self):
         """A selection lists the whole TOC: chosen rows translate, the rest stay
-        dimmed (excluded) for context. Criterion 9."""
+        dimmed (excluded) for context."""
         from noesis_ebook_translator.i18n import T
         from noesis_ebook_translator.progress_model import (
             STATE_DONE, STATE_EXCLUDED)
 
         window, model = self._run(self._cfg("one.epub", chapters=["c2.xhtml"]))
         try:
-            self.assertEqual(window.translate_view.track.mode(), "detail")
+            # A chapter selection keeps the list (filters + context).
+            self.assertEqual(window.translate_view.track.mode(), "list")
             self.assertEqual([u.file for u in model.units],
                              ["c1.xhtml", "c2.xhtml", "c3.xhtml"])
             self.assertEqual(model.state("c2.xhtml"), STATE_DONE)
@@ -514,6 +565,13 @@ class TestTranslationThroughTheGui(unittest.TestCase):
             self.assertEqual(model.overall_percent(), 100.0)
             self.assertEqual(window.translate_view.lbl_glass_title.text(),
                              T("translate.selection"))
+            # ... and the filter isolates it.
+            window.translate_view.track.set_filter("todo")
+            self.assertEqual(window.translate_view.track.visible_units(), [])
+            window.translate_view.track.set_filter("done")
+            self.assertEqual([u.file for u in
+                              window.translate_view.track.visible_units()],
+                             ["c2.xhtml"])
         finally:
             window.close()
 

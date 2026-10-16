@@ -91,6 +91,11 @@ QHeaderView::section { background: #eceef2; border: 0; padding: 4px; }
 #workflowBar QToolButton:checked { background: #c9d6f2; }
 #translateView { background: #f6f7f9; }
 #panelCaption { color: #6b7684; font-size: 11px; }
+#trackFilter { color: #5c6674; border: 1px solid transparent; border-radius: 4px;
+    padding: 1px 7px; font-size: 11px; }
+#trackFilter:hover { background: #e3e6ec; }
+#trackFilter:checked { background: #d8e2f7; color: #1c1e21;
+    border-color: #b9c9ea; }
 #panelDivider { background: #d5d8de; }
 #panelLauncher { color: #6b7684; border: none; padding: 0; font-size: 9px; }
 #panelLauncher:hover { color: #2d6cdf; }
@@ -137,6 +142,11 @@ QPlainTextEdit { font-family: monospace; }
 #workflowBar QToolButton:checked { background: #2f4772; }
 #translateView { background: #1f2227; }
 #panelCaption { color: #9aa4b2; font-size: 11px; }
+#trackFilter { color: #9aa4b2; border: 1px solid transparent; border-radius: 4px;
+    padding: 1px 7px; font-size: 11px; }
+#trackFilter:hover { background: #313640; }
+#trackFilter:checked { background: #2f4772; color: #e8eaed;
+    border-color: #3f5a8f; }
 #panelDivider { background: #3a3f47; }
 #panelLauncher { color: #9aa4b2; border: none; padding: 0; font-size: 9px; }
 #panelLauncher:hover { color: #4c8bf5; }
@@ -181,6 +191,11 @@ QHeaderView::section { background: #ecdfc2; border: 0; padding: 4px; }
 #workflowBar QToolButton:checked { background: #dcc79b; }
 #translateView { background: #f4ecd8; }
 #panelCaption { color: #7a6a52; font-size: 11px; }
+#trackFilter { color: #7a6a52; border: 1px solid transparent; border-radius: 4px;
+    padding: 1px 7px; font-size: 11px; }
+#trackFilter:hover { background: #e5d5b3; }
+#trackFilter:checked { background: #e0cba0; color: #4a3f2f;
+    border-color: #cbb894; }
 #panelDivider { background: #d8c9a6; }
 #panelLauncher { color: #7a6a52; border: none; padding: 0; font-size: 9px; }
 #panelLauncher:hover { color: #a06a2c; }

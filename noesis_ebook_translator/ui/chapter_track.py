@@ -15,8 +15,8 @@ from __future__ import annotations
 from PyQt6.QtCore import QRect, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QStackedWidget,
-    QStyledItemDelegate, QVBoxLayout, QWidget)
+    QButtonGroup, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+    QStackedWidget, QStyledItemDelegate, QToolButton, QVBoxLayout, QWidget)
 
 from .. import theme as theme_mod
 from ..i18n import T
@@ -173,6 +173,32 @@ class ChapterTrackWidget(QWidget):
         self.lbl_subtitle.setObjectName("bandHint")
         header.addWidget(self.lbl_subtitle, 1)
         layout.addLayout(header)
+        #: Filter of the list: the whole book, what is still to do, or what is
+        #: already translated (the running chapter always stays visible).
+        self._filter = "all"
+        self.toolbar = QHBoxLayout()
+        self.toolbar.setContentsMargins(0, 2, 0, 0)
+        self.toolbar.setSpacing(2)
+        self._filter_buttons: dict[str, QToolButton] = {}
+        self._filter_group = QButtonGroup(self)
+        self._filter_group.setExclusive(True)
+        for key, widget_key in (("all", "track.all"),
+                                ("todo", "track.to_translate"),
+                                ("done", "view.translated")):
+            button = QToolButton()
+            button.setObjectName("trackFilter")
+            button.setText(T(widget_key))
+            button.setCheckable(True)
+            button.setAutoRaise(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            button.clicked.connect(lambda _=False, name=key: self.set_filter(name))
+            self._filter_group.addButton(button)
+            self._filter_buttons[key] = button
+            self.toolbar.addWidget(button)
+        self.toolbar.addStretch(1)
+        self._filter_buttons["all"].setChecked(True)
+        layout.addLayout(self.toolbar)
         #: Progress bar of the unit being translated.
         self.bar_current = ShimmerBar(reduce_motion=self._reduce_motion)
         layout.addWidget(self.bar_current)
@@ -190,6 +216,11 @@ class ChapterTrackWidget(QWidget):
         self._list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._list.setItemDelegate(_UnitDelegate(self))
         list_layout.addWidget(self._list)
+        self.lbl_empty = QLabel(T("track.empty"))
+        self.lbl_empty.setObjectName("bandHint")
+        self.lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_empty.hide()
+        list_layout.addWidget(self.lbl_empty)
         self._stack.addWidget(page_list)
 
         # page 1: detail
@@ -230,12 +261,51 @@ class ChapterTrackWidget(QWidget):
         self._snapshot.clear()
         self._last_running = []
         self._list.clear()
+        # The card is only for tiny books (no list to filter); a chapter
+        # selection inside a normal book keeps the list + the filter toolbar.
         self.set_mode("detail" if model and len(model.units) <= 2 else "list")
         self.refresh()
 
     def set_mode(self, mode: str) -> None:
         self._mode = "detail" if mode == "detail" else "list"
         self._stack.setCurrentIndex(1 if self._mode == "detail" else 0)
+        # No list, nothing to filter.
+        self._set_toolbar_visible(self._mode == "list")
+
+    def _set_toolbar_visible(self, visible: bool) -> None:
+        for button in self._filter_buttons.values():
+            button.setVisible(visible)
+
+    def set_filter(self, name: str) -> None:
+        """Show every chapter, only the pending ones, or only the done ones."""
+        if name not in ("all", "todo", "done"):
+            name = "all"
+        self._filter = name
+        button = self._filter_buttons.get(name)
+        if button is not None and not button.isChecked():
+            button.setChecked(True)
+        self._files = []          # force a rebuild of the visible rows
+        self.refresh()
+
+    def filter_name(self) -> str:
+        return self._filter
+
+    def visible_units(self) -> list[ChapterUnit]:
+        model = self._model
+        if model is None:
+            return []
+        return self._filtered(model)
+
+    def _filtered(self, model: ProgressModel) -> list[ChapterUnit]:
+        if self._filter == "todo":
+            # Still to do: pending + running + failed (excluded chapters and
+            # already translated ones drop out as the run progresses).
+            return [u for u in model.units
+                    if model.state(u.file) in (STATE_PENDING, STATE_RUNNING,
+                                               STATE_ERROR)]
+        if self._filter == "done":
+            return [u for u in model.units if model.state(u.file) == STATE_DONE]
+        return list(model.units)
 
     def mode(self) -> str:
         return self._mode
@@ -270,18 +340,21 @@ class ChapterTrackWidget(QWidget):
         model = self._model
         if model is None:
             return
-        files = [unit.file for unit in model.units]
+        units = self._filtered(model)
+        files = [unit.file for unit in units]
         if files != self._files:
-            self._rebuild()
-        # The layout follows the *selected* chapters: a single chosen chapter
-        # still gets the detail card even when the whole TOC is listed.
-        selected = (len(model.selection) if model.selection is not None
-                    else len(model.units))
-        self.set_mode("detail" if selected <= 2 else "list")
-        self._update_rows()
+            self._rebuild(units)
+        self.set_mode("detail" if len(model.units) <= 2 else "list")
+        self._update_rows(units)
+        self._update_empty(units)
         self._update_detail(model)
         self._update_header(model)
         self._update_timer()
+
+    def _update_empty(self, units: list[ChapterUnit]) -> None:
+        empty = self._mode == "list" and not units
+        self.lbl_empty.setVisible(empty)
+        self._list.setVisible(not empty)
 
     def _current_file(self, model: ProgressModel) -> str | None:
         running = model.running_units()
@@ -306,13 +379,11 @@ class ChapterTrackWidget(QWidget):
         self.bar_current.setValue(int(done / total * 100) if total else 0)
         self.bar_current.set_busy(model.state(current) == STATE_RUNNING)
 
-    def _rebuild(self) -> None:
-        model = self._model
-        assert model is not None
+    def _rebuild(self, units: list[ChapterUnit]) -> None:
         self._list.clear()
         self._snapshot.clear()
         self._files = []
-        for unit in model.units:
+        for unit in units:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole,
                          {"name": unit.label(), "depth": unit.depth,
@@ -321,12 +392,12 @@ class ChapterTrackWidget(QWidget):
             self._list.addItem(item)
             self._files.append(unit.file)
 
-    def _update_rows(self) -> None:
+    def _update_rows(self, units: list[ChapterUnit]) -> None:
         model = self._model
         assert model is not None
         running = model.running_units()
         scroll_to: QListWidgetItem | None = None
-        for index, unit in enumerate(model.units):
+        for index, unit in enumerate(units):
             item = self._list.item(index)
             if item is None:  # pragma: no cover - defensive
                 continue
