@@ -2,42 +2,58 @@
 
 It sits in the top strip of the workflow bar, in the empty area between the last
 tab and the settings gear, and must read as something *outside* the toolbar: a
-larger, bolder label with its own colours (yellow on the dark theme, bright blue
-on the light one) and a soft pulsing halo while a translation is running.
+larger, bolder label with its own colours (yellow with black text on the dark
+theme, bright blue with white text on the light one) and, while a translation is
+running, a **sweeping sheen** -- the same reflection used by the sibling project
+``noesis-pdf-cloner`` for its floating action button: a diagonal light band that
+crosses the surface, reaching the far edge at 55% of a 2.4 s cycle and then
+resting off-screen before the next pass.
 
 Qt cannot animate a stylesheet, so the pill is painted by hand and the animation
-drives a ``pulse`` property (0..1) read by :meth:`paintEvent`. ``reduce_motion``
-keeps the pill static.
+drives a ``sheenPos`` property (0..1) read by :meth:`paintEvent`.
+``reduce_motion`` keeps the pill still.
 """
 from __future__ import annotations
 
 from PyQt6.QtCore import (
     QEasingCurve, QPropertyAnimation, QRectF, QSize, Qt, pyqtProperty)
-from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter
+from PyQt6.QtGui import (
+    QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPainterPath)
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 from .icons import icon
 
 __all__ = ["BookToast"]
 
-#: Per-theme palette: background (optionally two stops for a soft gradient),
-#: foreground and the halo colour used by the pulse.
+#: Per-theme palette: the pill background (two gradient stops), the foreground
+#: and the sheen colour. The sheen is white with alpha -- on both pills the
+#: surface is saturated, so a white reflection is what reads as glossy (the
+#: cloner's ``fab_spark``: white on dark, tinted on light).
 PALETTES = {
     "dark": {"bg": "#ffd60a", "bg2": "#ffc300", "fg": "#101418",
-             "halo": "#ffd60a", "dot": "#101418"},
+             "dot": "#101418", "sheen": "#f2ffffff"},
     "light": {"bg": "#5b9bff", "bg2": "#2f6fe0", "fg": "#ffffff",
-              "halo": "#3b82f6", "dot": "#ffffff"},
+              "dot": "#ffffff", "sheen": "#d9ffffff"},
 }
+
+#: Painting metrics, shared by :meth:`BookToast.paintEvent` and
+#: :meth:`BookToast.sizeHint` so the label never has to be elided when the pill
+#: is at its natural width. The status dot's space is always reserved, so the
+#: pill does not resize when a translation starts.
+PAD_LEFT = 12.0
+PAD_RIGHT = 12.0
+DOT_W = 12.0
+ICON = 18.0
+ICON_GAP = 7.0
+PERCENT_GAP = 8.0
 
 
 class BookToast(QWidget):
-    """Pill with the book title; pulses while the book is being translated."""
+    """Pill with the book title; a sheen sweeps it while translating."""
 
-    #: One pulse cycle (ms) and how far the halo grows (px).
-    PULSE_MS = 1900
-    HALO = 6
-    #: Padding around the pill so the halo has room inside the widget bounds.
-    PAD = 6
+    #: Sheen timing, copied from the cloner: it crosses the pill by 55% of the
+    #: cycle, then rests off-screen until the next pass.
+    SHEEN_MS = 2400
     HEIGHT = 30
     RADIUS = 15
 
@@ -46,31 +62,30 @@ class BookToast(QWidget):
         self._text = ""
         self._percent: int | None = None
         self._working = False
-        self._pulse = 0.0
+        self._sheen = 0.0
         self._reduce_motion = bool(reduce_motion)
         self._mode = "light"
-        self._system_dark = False
         self._colors = dict(PALETTES["light"])
-        self.setFixedHeight(self.HEIGHT + 2 * self.PAD)
+        self._sheen_visible = False
+        self.setFixedHeight(self.HEIGHT)
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-        self.setCursor(Qt.CursorShape.ArrowCursor)
-        self._anim = QPropertyAnimation(self, b"pulse", self)
-        self._anim.setDuration(self.PULSE_MS)
-        self._anim.setStartValue(0.0)
-        self._anim.setKeyValueAt(0.5, 1.0)
-        self._anim.setEndValue(0.0)
+        self._anim = QPropertyAnimation(self, b"sheenPos", self)
+        self._anim.setDuration(self.SHEEN_MS)
         self._anim.setLoopCount(-1)
-        self._anim.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self._anim.setStartValue(0.0)
+        self._anim.setKeyValueAt(0.55, 1.0)
+        self._anim.setEndValue(1.0)
+        self._anim.setEasingCurve(QEasingCurve.Type.Linear)
 
     # -- animated property ------------------------------------------------
-    def _get_pulse(self) -> float:
-        return self._pulse
+    def _get_sheen_pos(self) -> float:
+        return self._sheen
 
-    def _set_pulse(self, value: float) -> None:
-        self._pulse = max(0.0, min(1.0, float(value)))
+    def _set_sheen_pos(self, value: float) -> None:
+        self._sheen = max(0.0, min(1.0, float(value)))
         self.update()
 
-    pulse = pyqtProperty(float, _get_pulse, _set_pulse)
+    sheenPos = pyqtProperty(float, _get_sheen_pos, _set_sheen_pos)
 
     # -- API --------------------------------------------------------------
     def set_text(self, text: str) -> None:
@@ -96,7 +111,7 @@ class BookToast(QWidget):
         return self._percent
 
     def set_working(self, working: bool) -> None:
-        """Pulse while the book is being worked on, stay still otherwise."""
+        """Sweep the sheen while the book is being worked on, rest otherwise."""
         working = bool(working)
         if working == self._working:
             return
@@ -117,12 +132,14 @@ class BookToast(QWidget):
 
         dark = theme_mod.is_dark(mode, system_dark)
         self._mode = "dark" if dark else "light"
-        self._system_dark = system_dark
         self._colors = dict(PALETTES[self._mode])
         self.update()
 
     def is_animating(self) -> bool:
         return self._anim.state() == QPropertyAnimation.State.Running
+
+    def sheen_color(self) -> QColor:
+        return QColor(self._colors["sheen"])
 
     def _sync_animation(self) -> None:
         if self._working and not self._reduce_motion and self.isVisible():
@@ -130,7 +147,8 @@ class BookToast(QWidget):
                 self._anim.start()
             return
         self._anim.stop()
-        self._pulse = 0.0
+        self._sheen = 0.0
+        self.update()
 
     # -- geometry ---------------------------------------------------------
     def _label_font(self) -> QFont:
@@ -141,14 +159,14 @@ class BookToast(QWidget):
         return font
 
     def sizeHint(self) -> QSize:  # noqa: N802 - Qt naming
-        from PyQt6.QtGui import QFontMetrics
-
         metrics = QFontMetrics(self._label_font())
-        width = metrics.horizontalAdvance(self._text) + 58
+        width = (PAD_LEFT + DOT_W + ICON + ICON_GAP
+                 + metrics.horizontalAdvance(self._text))
         if self._percent is not None:
-            width += metrics.horizontalAdvance(f"{self._percent}%") + 8
-        return QSize(min(width, 420) + 2 * self.PAD,
-                     self.HEIGHT + 2 * self.PAD)
+            width += (metrics.horizontalAdvance(f"{self._percent}%")
+                      + PERCENT_GAP)
+        width += PAD_RIGHT
+        return QSize(min(int(width), 460), self.HEIGHT)
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
         super().showEvent(event)
@@ -162,57 +180,55 @@ class BookToast(QWidget):
     def paintEvent(self, _event) -> None:  # noqa: N802 - Qt naming
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pill = QRectF(self.rect()).adjusted(self.PAD, self.PAD,
-                                            -self.PAD, -self.PAD)
+        pill = QRectF(self.rect())
         colors = self._colors
 
-        # Pulsing halo: a soft ring growing out of the pill while translating.
-        if self._working and self._pulse > 0 and not self._reduce_motion:
-            halo = QColor(colors["halo"])
-            halo.setAlpha(int(90 * (1.0 - self._pulse)))
-            spread = self.HALO * self._pulse
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(halo)
-            painter.drawRoundedRect(pill.adjusted(-spread, -spread,
-                                                  spread, spread),
-                                    self.RADIUS + spread, self.RADIUS + spread)
-
         gradient = QLinearGradient(0.0, pill.top(), 0.0, pill.bottom())
-        top = QColor(colors["bg"])
-        bottom = QColor(colors["bg2"])
-        if self._working and not self._reduce_motion:
-            # ... plus a gentle brightness breathing, so the pulse reads even
-            # where a halo would be lost against a busy background.
-            lift = 0.10 * self._pulse
-            top = _lighten(top, lift)
-            bottom = _lighten(bottom, lift)
-        gradient.setColorAt(0.0, top)
-        gradient.setColorAt(1.0, bottom)
+        gradient.setColorAt(0.0, QColor(colors["bg"]))
+        gradient.setColorAt(1.0, QColor(colors["bg2"]))
         painter.setBrush(gradient)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(pill, self.RADIUS, self.RADIUS)
+
+        # Sweeping reflection (same as the cloner's FAB): a diagonal band that
+        # crosses the pill and then stays off-screen until the next pass.
+        if self._working and not self._reduce_motion:
+            width = float(self.width())
+            height = float(self.height())
+            path = QPainterPath()
+            path.addRoundedRect(QRectF(pill).adjusted(1.0, 1.0, -1.0, -1.0),
+                                self.RADIUS, self.RADIUS)
+            painter.setClipPath(path)
+            band = max(24.0, width * 0.5)
+            x = -band + (width + 2.0 * band) * self._sheen
+            sheen = self.sheen_color()
+            edge = QColor(sheen)
+            edge.setAlpha(0)
+            shine = QLinearGradient(x, 0.0, x + band, height)
+            shine.setColorAt(0.0, edge)
+            shine.setColorAt(0.5, sheen)
+            shine.setColorAt(1.0, edge)
+            painter.fillRect(self.rect(), shine)
+            painter.setClipping(False)
 
         font = self._label_font()
         painter.setFont(font)
         metrics = painter.fontMetrics()
 
-        x = pill.left() + 12.0
+        x = pill.left() + PAD_LEFT
         if self._working:
-            dot = QColor(colors["dot"])
-            dot.setAlpha(255 if self._pulse > 0.5 else 130)
-            painter.setBrush(dot)
+            painter.setBrush(QColor(colors["dot"]))
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(QRectF(x, pill.center().y() - 3.5, 7.0, 7.0))
-            x += 12.0
-        icon_size = 18
-        pixmap = icon("closed_book").pixmap(icon_size, icon_size)
+        x += DOT_W
+        pixmap = icon("closed_book").pixmap(int(ICON), int(ICON))
         if not pixmap.isNull():
             painter.drawPixmap(int(x),
-                               int(pill.center().y() - icon_size / 2), pixmap)
-        x += icon_size + 7
+                               int(pill.center().y() - ICON / 2), pixmap)
+        x += ICON + ICON_GAP
 
         painter.setPen(QColor(colors["fg"]))
-        right = pill.right() - 12.0
+        right = pill.right() - PAD_RIGHT
         if self._percent is not None:
             percent = f"{self._percent}%"
             width = metrics.horizontalAdvance(percent)
@@ -220,20 +236,10 @@ class BookToast(QWidget):
                                     pill.height()),
                              int(Qt.AlignmentFlag.AlignVCenter
                                  | Qt.AlignmentFlag.AlignRight), percent)
-            right -= width + 8.0
+            right -= width + PERCENT_GAP
         text = metrics.elidedText(self._text, Qt.TextElideMode.ElideRight,
                                   int(max(10.0, right - x)))
         painter.drawText(QRectF(x, pill.top(), right - x, pill.height()),
                          int(Qt.AlignmentFlag.AlignVCenter
                              | Qt.AlignmentFlag.AlignLeft), text)
         painter.end()
-
-
-def _lighten(color: QColor, amount: float) -> QColor:
-    """Blend ``color`` towards white by ``amount`` (0..1)."""
-    light = QColor(color)
-    light.setRed(min(255, int(color.red() + (255 - color.red()) * amount)))
-    light.setGreen(min(255, int(color.green()
-                                + (255 - color.green()) * amount)))
-    light.setBlue(min(255, int(color.blue() + (255 - color.blue()) * amount)))
-    return light

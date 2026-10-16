@@ -40,7 +40,7 @@ class TestBookToast(unittest.TestCase):
         finally:
             toast.close()
 
-    def test_pulse_runs_only_while_working(self):
+    def test_sheen_sweeps_only_while_working(self):
         toast = self._toast()
         try:
             toast.set_text("Libro")
@@ -50,16 +50,42 @@ class TestBookToast(unittest.TestCase):
             toast.set_working(True)
             self.app.processEvents()
             self.assertTrue(toast.is_animating())
-            seen = set()
-            deadline = time.time() + 2.5
-            while time.time() < deadline and len(seen) < 2:
+            # The reflection must actually travel (0 -> 1, same as the cloner).
+            lowest = highest = toast.sheenPos
+            deadline = time.time() + 3.0
+            while time.time() < deadline and (highest - lowest) < 0.6:
                 self.app.processEvents()
-                seen.add(toast._pulse > 0.5)
+                lowest = min(lowest, toast.sheenPos)
+                highest = max(highest, toast.sheenPos)
                 time.sleep(0.02)
-            self.assertEqual(len(seen), 2, "the pill must pulse")
+            self.assertGreater(highest - lowest, 0.6, "the sheen must sweep")
             toast.set_working(False)
             self.assertFalse(toast.is_animating())
-            self.assertEqual(toast._pulse, 0.0)
+            self.assertEqual(toast.sheenPos, 0.0)
+        finally:
+            toast.hide()
+            toast.close()
+
+    def test_sheen_is_visible_in_the_painted_pill(self):
+        """The reflection must change the pixels (a real, visible band)."""
+        toast = self._toast()
+        try:
+            toast.set_text("Storia illustrata del libro")
+            toast.resize(toast.sizeHint())
+            toast.set_working(True)
+            toast.show()
+            self.app.processEvents()
+            toast._set_sheen_pos(0.0)
+            self.app.processEvents()
+            start = toast.grab().toImage()
+            toast._set_sheen_pos(0.55)      # the band right on the pill
+            self.app.processEvents()
+            middle = toast.grab().toImage()
+            toast._set_sheen_pos(0.99)
+            self.app.processEvents()
+            end = toast.grab().toImage()
+            self.assertNotEqual(start, middle)
+            self.assertNotEqual(middle, end)
         finally:
             toast.hide()
             toast.close()
@@ -72,7 +98,7 @@ class TestBookToast(unittest.TestCase):
             toast.show()
             self.app.processEvents()
             self.assertFalse(toast.is_animating())
-            self.assertEqual(toast._pulse, 0.0)
+            self.assertEqual(toast.sheenPos, 0.0)
         finally:
             toast.hide()
             toast.close()
