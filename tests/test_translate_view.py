@@ -228,6 +228,88 @@ class TestTranslateViewWidget(unittest.TestCase):
         finally:
             view.close()
 
+    def test_liquid_glides_and_reaches_the_target(self):
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=False)
+        try:
+            view.resize(900, 600)
+            view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml"]))
+            view.show()
+            self.app.processEvents()
+            view.glass.set_level(80.0)
+            samples = []
+            deadline = time.time() + 1.5
+            while time.time() < deadline:
+                self.app.processEvents()
+                samples.append(view.glass.level_value())
+                if abs(samples[-1] - 80.0) < 0.2 and len(samples) > 5:
+                    break
+                time.sleep(0.03)
+            self.assertAlmostEqual(view.glass.level_value(), 80.0, delta=0.5)
+            # It really glided: some sample sits strictly between start and end.
+            self.assertTrue(any(1.0 < s < 78.0 for s in samples), samples[:8])
+        finally:
+            view.hide()
+            view.close()
+
+    def test_pulse_runs_while_a_chapter_is_translating(self):
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=False)
+        try:
+            view.resize(900, 600)
+            view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml"]))
+            model = view.model()
+            model.set_plan({"a.xhtml": 4, "b.xhtml": 4, "c.xhtml": 4})
+            model.apply({"counts": {"a.xhtml": 4, "b.xhtml": 2}, "errors": {},
+                         "cached": 0, "last": None})
+            view.refresh()
+            view.show()
+            self.app.processEvents()
+            self.assertTrue(view.track.is_animating())
+            first = view.track.pulse_alpha()
+            seen = {first}
+            deadline = time.time() + 1.5
+            while time.time() < deadline and len(seen) < 2:
+                self.app.processEvents()
+                seen.add(view.track.pulse_alpha())
+                time.sleep(0.03)
+            self.assertEqual(len(seen), 2, "the running chapter must blink")
+            # ... and it stops once nothing is running any more.
+            model.apply({"counts": {"b.xhtml": 2, "c.xhtml": 4}, "errors": {},
+                         "cached": 0, "last": None})
+            view.refresh()
+            self.assertEqual(model.running_units(), [])
+            self.assertFalse(view.track.is_animating())
+        finally:
+            view.hide()
+            view.close()
+
+    def test_reduce_motion_keeps_everything_still(self):
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            view.resize(900, 600)
+            view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml"]))
+            model = view.model()
+            model.set_plan({"a.xhtml": 4, "b.xhtml": 4, "c.xhtml": 4})
+            model.apply({"counts": {"a.xhtml": 4, "b.xhtml": 2}, "errors": {},
+                         "cached": 0, "last": None})
+            view.refresh()
+            view.show()
+            self.app.processEvents()
+            # No blink, no shimmer, liquid jumps straight to the value.
+            self.assertFalse(view.track.is_animating())
+            self.assertEqual(view.track.pulse_alpha(), 255)
+            self.assertFalse(view.track.bar_current.is_animating())
+            view.glass.set_level(80.0)
+            self.assertEqual(view.glass.level_value(), 80.0)
+        finally:
+            view.hide()
+            view.close()
+
     def test_log_collapse_and_state_round_trip(self):
         from noesis_ebook_translator.ui.translate_view import TranslateView
 

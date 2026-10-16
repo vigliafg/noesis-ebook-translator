@@ -100,7 +100,11 @@ class _UnitDelegate(QStyledItemDelegate):
         text_width = max(10, rect.right() - count_width - badge - text_left - 6)
 
         if state == STATE_RUNNING:
+            # Blink the whole row (name + marker), not just the dot, so the
+            # chapter being translated is unmistakable at a glance.
+            alpha = self._track.pulse_alpha()
             name_color = QColor(accent)
+            name_color.setAlpha(alpha)
         elif state in (STATE_PENDING, STATE_SKIPPED):
             name_color = colors["muted"]
         else:
@@ -358,6 +362,16 @@ class ChapterTrackWidget(QWidget):
         if model.exported:
             bits.append(T("translate.exported"))
         self.lbl_cached.setText(" · ".join(bits))
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Re-evaluate the pulse when the band becomes visible.
+
+        The pulse is skipped while hidden (nothing to animate), so becoming
+        visible has to restart it: otherwise it would only come back on the next
+        progress update.
+        """
+        super().showEvent(event)
+        self._update_timer()
 
     def _update_timer(self) -> None:
         model = self._model
