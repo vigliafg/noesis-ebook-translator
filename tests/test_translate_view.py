@@ -493,6 +493,29 @@ class TestTranslateViewWidget(unittest.TestCase):
             view.hide()
             view.close()
 
+    def test_two_chapters_can_run_together_in_the_list(self):
+        """Parallel workers: two rows are "running" at once, both with a bar."""
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=False)
+        try:
+            view.resize(1200, 520)
+            view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml"]))
+            model = view.model()
+            model.set_plan({"a.xhtml": 4, "b.xhtml": 4, "c.xhtml": 4})
+            model.apply({"counts": {"a.xhtml": 2, "b.xhtml": 2}, "errors": {},
+                         "cached": 0, "last": None})
+            view.refresh()
+            view.show()
+            self.app.processEvents()
+            self.assertEqual(model.running_units(), ["a.xhtml", "b.xhtml"])
+            self.assertTrue(view.track.is_animating())
+            self.assertFalse(view.grab().isNull())
+            self.assertIn(view.track.lbl_subtitle.text(), ("Ch 0", "Ch 1"))
+        finally:
+            view.hide()
+            view.close()
+
     def test_painting_headings_and_skipped_rows(self):
         """The delegate must paint headings, excluded and skipped rows too."""
         from noesis_ebook_translator.progress_model import (

@@ -252,6 +252,16 @@ def translate_epub(
     if should_cancel is not None:
         translation.set_cancel_request(should_cancel)
 
+    # The engine marks a paragraph served from the cache inside
+    # ``translate_paragraph()``. The online-batching path never calls it, so a warm
+    # cache would look freshly translated there (the "already in cache" notice and
+    # the per-chapter accounting would be wrong). Mark them here for both paths:
+    # the engine decides what to skip on ``translation``, not on this flag.
+    if not translation.fresh:
+        for paragraph in paragraphs:
+            if paragraph.translation:
+                paragraph.is_cache = True
+
     translation.handle(paragraphs)
     # A cancelled run returns normally from the engine's handler (it drains the
     # queue), so check explicitly: writing a half-translated EPUB and reporting

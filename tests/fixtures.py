@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import base64
 import os
+import threading
+import time
 
 from ebooklib import epub
 
@@ -203,6 +205,86 @@ def build_nav_only_epub(path: str) -> str:
     book.spine = ["nav", c1, c2]
     epub.write_epub(path, book)
     return path
+
+
+#: Knobs the realistic engine reads at call time (tests mutate this).
+#: ``max_in_flight`` records how many requests overlapped (parallel workers).
+REALISTIC = {"delay": 0.0, "fail_on": None, "stream": False,
+             "in_flight": 0, "max_in_flight": 0}
+_REALISTIC_LOCK = threading.Lock()
+
+
+def make_realistic_engine():
+    """Return an offline engine that behaves like a real one.
+
+    The fake engine is instant and always succeeds, so it never exercises what real
+    services do: latency, parallel workers (``concurrency_limit``), per-segment
+    failures with retries, streaming generators (the GenAI engines return one when
+    ``stream`` is on) and the online-batching path (``translate_batch``).
+
+    :data:`REALISTIC` configures it: ``delay`` seconds per request, ``fail_on``
+    makes any segment containing that text fail, ``stream`` returns a generator,
+    and ``max_in_flight`` records the highest number of overlapping requests.
+    """
+    from noesis_ebook_translator.engines.base import Base
+    from noesis_ebook_translator.engines.languages import google
+
+    class RealisticEngine(Base):
+        name = "Realistic"
+        alias = "Realistic"
+        free = True
+        need_api_key = False
+        lang_codes = Base.load_lang_codes(google)
+        endpoint = ""
+
+        @staticmethod
+        def _chunks(text: str):
+            for index in range(0, len(text), 8):
+                yield text[index:index + 8]
+
+        def _reply(self, content: str, stream: bool = True):
+            with _REALISTIC_LOCK:
+                REALISTIC["in_flight"] += 1
+                REALISTIC["max_in_flight"] = max(REALISTIC["max_in_flight"],
+                                                 REALISTIC["in_flight"])
+            try:
+                if REALISTIC["delay"]:
+                    time.sleep(REALISTIC["delay"])
+                if REALISTIC["fail_on"] and REALISTIC["fail_on"] in content:
+                    raise RuntimeError("engine refused this segment")
+                text = "IT<" + content + ">"
+                return self._chunks(text) if (stream and REALISTIC["stream"]) \
+                    else text
+            finally:
+                with _REALISTIC_LOCK:
+                    REALISTIC["in_flight"] -= 1
+
+        def translate(self, content):
+            return self._reply(content)
+
+        def translate_batch(self, texts):
+            # Batching never streams: the engine hands back one string per segment.
+            return [self._reply(text, stream=False) for text in texts]
+
+    return RealisticEngine
+
+
+def register_realistic_engine():
+    """Inject the realistic engine into the registry and return its class."""
+    import noesis_ebook_translator.engines as engines
+    from noesis_ebook_translator.lib import translation as translation_mod
+    from noesis_ebook_translator.lib import utils as utils_mod
+
+    utils_mod.log.level = utils_mod.log.ERROR
+    for engine in engines.builtin_engines:
+        if getattr(engine, "name", None) == "Realistic":
+            return engine
+
+    engine = make_realistic_engine()
+    extended = tuple(engines.builtin_engines) + (engine,)
+    engines.builtin_engines = extended
+    translation_mod.builtin_engines = extended
+    return engine
 
 
 def make_fake_engine():
