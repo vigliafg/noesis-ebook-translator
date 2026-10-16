@@ -21,12 +21,15 @@ __all__ = ["ShimmerBar", "DotsLabel"]
 class ShimmerBar(QWidget):
     """A slim progress bar with an animated shimmer highlight."""
 
-    def __init__(self, parent=None, reduce_motion: bool = False) -> None:
+    def __init__(self, parent=None, reduce_motion: bool = False,
+                 track: str = "#3a3f47", fill: str = "#4c8bf5") -> None:
         super().__init__(parent)
         self._value = 0  # 0..100
         self._offset = 0
         self._busy = False
         self._reduce_motion = reduce_motion
+        self._track = QColor(track)
+        self._fill = QColor(fill)
         self.setMinimumHeight(14)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._timer = QTimer(self)
@@ -34,6 +37,12 @@ class ShimmerBar(QWidget):
         self._timer.timeout.connect(self._tick)
 
     # -- API --------------------------------------------------------------
+    def set_colors(self, track: str, fill: str) -> None:
+        """Match the bar to the active app theme."""
+        self._track = QColor(track)
+        self._fill = QColor(fill)
+        self.update()
+
     def setValue(self, value: int) -> None:
         self._value = max(0, min(100, int(value)))
         self.update()
@@ -67,11 +76,11 @@ class ShimmerBar(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = QRectF(0, 0, self.width(), self.height())
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#3a3f47"))
+        painter.setBrush(self._track)
         painter.drawRoundedRect(rect, 4, 4)
 
         fill_width = rect.width() * (self._value / 100.0)
-        painter.setBrush(QColor("#4c8bf5"))
+        painter.setBrush(self._fill)
         painter.drawRoundedRect(QRectF(0, 0, fill_width, rect.height()), 4, 4)
 
         if self._busy and not self._reduce_motion:

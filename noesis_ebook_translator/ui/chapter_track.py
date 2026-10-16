@@ -21,7 +21,8 @@ from PyQt6.QtWidgets import (
 from .. import theme as theme_mod
 from ..i18n import T
 from ..progress_model import (
-    STATE_DONE, STATE_ERROR, STATE_RUNNING, STATE_SKIPPED, ProgressModel)
+    STATE_DONE, STATE_ERROR, STATE_PENDING, STATE_RUNNING, STATE_SKIPPED,
+    ProgressModel)
 from .animations import ShimmerBar
 from .icons import icon
 
@@ -238,6 +239,10 @@ class ChapterTrackWidget(QWidget):
 
     def set_theme(self, mode: str, system_dark: bool = True) -> None:
         self._colors = self._theme_colors(mode, system_dark)
+        track = "#3a3f47" if theme_mod.is_dark(mode, system_dark) else "#d9dde4"
+        fill = theme_mod.palette(mode, system_dark)["accent"]
+        self.bar_current.set_colors(track, fill)
+        self.bar_detail.set_colors(track, fill)
         self._list.viewport().update()
 
     def colors(self) -> dict:

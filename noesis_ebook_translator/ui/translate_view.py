@@ -168,6 +168,10 @@ class TranslateView(QWidget):
         self.track.set_theme(mode, system_dark)
         self.glass.set_colors(theme_mod.liquid(mode, system_dark))
         self.glass.update()
+        dark = theme_mod.is_dark(mode, system_dark)
+        palette = theme_mod.palette(mode, system_dark)
+        self.progress.set_colors("#3a3f47" if dark else "#d9dde4",
+                                 palette["accent"])
 
     def set_reduce_motion(self, reduce: bool) -> None:
         self._reduce_motion = bool(reduce)

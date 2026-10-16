@@ -260,6 +260,37 @@ class TestTranslateViewWidget(unittest.TestCase):
         finally:
             view.close()
 
+    def test_painting_the_rows_works_for_every_state(self):
+        """Smoke the delegate: every state (and the export badge) must paint."""
+        from noesis_ebook_translator.progress_model import ProgressModel
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml", "d.xhtml"]))
+            model = view.model()
+            model.set_plan({"a.xhtml": 2, "b.xhtml": 2, "c.xhtml": 2,
+                            "d.xhtml": 2})
+            model.apply({"counts": {"a.xhtml": 2, "b.xhtml": 1, "c.xhtml": 1},
+                         "errors": {"c.xhtml": 1}, "cached": 3,
+                         "last": ("b.xhtml", "testo")})
+            view.glass.set_level(50, animate=False)
+            view.refresh()
+            view.resize(1200, 700)
+            view.show()
+            self.app.processEvents()
+            pixmap = view.grab()          # forces the delegate to paint
+            self.assertFalse(pixmap.isNull())
+            self.assertEqual(view.track._list.count(), 4)
+            # The export badge paints too.
+            model.mark_exported()
+            view.refresh()
+            self.app.processEvents()
+            self.assertFalse(view.grab().isNull())
+        finally:
+            view.hide()
+            view.close()
+
     def test_title_switches_to_selection(self):
         from noesis_ebook_translator.i18n import T
         from noesis_ebook_translator.ui.translate_view import TranslateView
