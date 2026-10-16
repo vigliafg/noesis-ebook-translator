@@ -113,6 +113,51 @@ def build_anchored_epub(path: str) -> str:
     return path
 
 
+def build_partitioned_epub(path: str) -> str:
+    """Two top-level parts (one with nested sub-parts), shared documents too.
+
+    The corpus has no section entries at all, so this is the fixture that covers
+    headings (nested, and with siblings) *and* several chapters anchored inside
+    one XHTML document.
+    """
+    book = epub.EpubBook()
+    book.set_identifier("noesis-partitioned-1")
+    book.set_title("The Partitioned Test")
+    book.set_language("en")
+
+    part = epub.EpubHtml(title="Part", file_name="part.xhtml", lang="en")
+    part.content = (
+        "<html xmlns='http://www.w3.org/1999/xhtml'><head/><body>"
+        "<h1 id='ch1'>Chapter One</h1><p>UNIQUE1 content one.</p>"
+        "<h1 id='ch2'>Chapter Two</h1><p>UNIQUE2 content two.</p>"
+        "</body></html>")
+    c3 = epub.EpubHtml(title="Chapter Three", file_name="c3.xhtml", lang="en")
+    c3.content = ("<html xmlns='http://www.w3.org/1999/xhtml'><head/><body>"
+                  "<h1>Chapter Three</h1><p>UNIQUE3 content three.</p>"
+                  "</body></html>")
+    c4 = epub.EpubHtml(title="Chapter Four", file_name="c4.xhtml", lang="en")
+    c4.content = ("<html xmlns='http://www.w3.org/1999/xhtml'><head/><body>"
+                  "<h1>Chapter Four</h1><p>UNIQUE4 content four.</p>"
+                  "</body></html>")
+    for item in (part, c3, c4):
+        book.add_item(item)
+    book.toc = (
+        (epub.Section("Part One"),
+         ((epub.Section("Part One-A"),
+           (epub.Link("part.xhtml#ch1", "Chapter 1", "ch1"),
+            epub.Link("part.xhtml#ch2", "Chapter 2", "ch2"))),
+          (epub.Section("Part One-B"),
+           (epub.Link("c3.xhtml", "Chapter 3", "c3"),)))),
+        (epub.Section("Part Two"),
+         (epub.Link("c4.xhtml", "Chapter 4", "c4"),)),
+    )
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", part, c3, c4]
+    epub.write_epub(path, book)
+    return path
+
+
 def make_fake_engine():
     """Return an offline engine class that marks the text it receives."""
     from noesis_ebook_translator.engines.base import Base

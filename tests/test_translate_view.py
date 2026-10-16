@@ -158,6 +158,55 @@ class TestProgressModel(unittest.TestCase):
         model.mark_exported()
         self.assertTrue(model.exported)
 
+    def test_missing_input_is_an_empty_list(self):
+        from noesis_ebook_translator.progress_model import build_units
+
+        self.assertEqual(build_units(None), [])
+        self.assertEqual(build_units(""), [])
+        self.assertEqual(build_units("/does/not/exist.epub"), [])
+
+    def test_set_units_resets_the_run(self):
+        from noesis_ebook_translator.progress_model import (
+            ChapterUnit, ProgressModel)
+
+        model = ProgressModel([ChapterUnit("a.xhtml", "A")])
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 1})
+        model.apply({"counts": {"a.xhtml": 2}, "errors": {}, "cached": 0,
+                     "last": None})
+        model.finish(ok=True)
+        model.mark_exported()
+        model.set_units([ChapterUnit("z.xhtml", "Z")])
+        self.assertEqual([u.file for u in model.units], ["z.xhtml"])
+        self.assertEqual(model.done, {})
+        self.assertFalse(model.finished)
+        self.assertFalse(model.exported)
+        self.assertEqual(model.overall_percent(), 0.0)
+
+    def test_finish_never_completes_an_excluded_row(self):
+        from noesis_ebook_translator.progress_model import STATE_EXCLUDED
+
+        model = self._model()
+        model.set_selection(["a.xhtml"])
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 2})
+        model.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0,
+                     "last": None})
+        model.finish(ok=True)
+        self.assertEqual(model.done.get("a.xhtml"), 2)      # started -> done
+        self.assertIsNone(model.done.get("b.xhtml"))        # excluded: untouched
+        self.assertEqual(model.state("b.xhtml"), STATE_EXCLUDED)
+
+    def test_finish_leaves_a_contentless_document_alone(self):
+        from noesis_ebook_translator.progress_model import (
+            ChapterUnit, ProgressModel)
+
+        model = ProgressModel([ChapterUnit("a.xhtml"), ChapterUnit("empty.xhtml")])
+        model.set_plan({"a.xhtml": 2, "empty.xhtml": 0})
+        model.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0,
+                     "last": None})
+        model.finish(ok=True)
+        self.assertEqual(model.done.get("a.xhtml"), 2)
+        self.assertIsNone(model.done.get("empty.xhtml"))
+
     def test_cached_chapters_and_summary(self):
         """Chapters served entirely from the cache are reported as cached."""
         from noesis_ebook_translator.progress_model import ProgressModel
@@ -439,6 +488,67 @@ class TestTranslateViewWidget(unittest.TestCase):
         finally:
             view.hide()
             view.close()
+
+    def test_painting_headings_and_skipped_rows(self):
+        """The delegate must paint headings, excluded and skipped rows too."""
+        from noesis_ebook_translator.progress_model import (
+            ProgressModel, build_units)
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        tmp = tempfile.mkdtemp(prefix="noesis-paint-")
+        units = build_units(build_rich_epub(os.path.join(tmp, "rich.epub")))
+        model = ProgressModel(units)
+        model.set_selection(["c2.xhtml", "c3.xhtml"])
+        model.set_plan({"c1.xhtml": 2, "c2.xhtml": 2, "c3.xhtml": 0})
+        model.apply({"counts": {"c2.xhtml": 1}, "errors": {}, "cached": 0,
+                     "last": None})
+        view = TranslateView(reduce_motion=True)
+        try:
+            # Wide enough that the four bands stay side by side (< 980 they stack),
+            # so every row is really painted.
+            view.resize(1200, 520)
+            view.set_theme("light", False)
+            view.set_model(model, selection=True)
+            view.show()
+            self.app.processEvents()
+            vp = view.track._list.viewport()
+            last = view.track._list.visualItemRect(
+                view.track._list.item(view.track._list.count() - 1))
+            self.assertLess(last.bottom(), vp.height(),
+                            "not every row is visible: the paint test is blind")
+            states = {model.unit_state(u) for u in model.units}
+            self.assertEqual(states,
+                             {"header", "excluded", "running", "skipped"})
+            self.assertFalse(view.grab().isNull())
+            self.assertEqual(view.track._list.count(), len(model.units))
+        finally:
+            view.hide()
+            view.close()
+
+    def test_empty_track_helpers(self):
+        """No model yet: the list is empty, the filter falls back to "all"."""
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        track = ChapterTrackWidget(reduce_motion=True)
+        try:
+            self.assertEqual(track.visible_units(), [])
+            track.set_filter("bogus")
+            self.assertEqual(track.filter_name(), "all")
+        finally:
+            track.close()
+
+    def test_header_without_units(self):
+        from noesis_ebook_translator.progress_model import ProgressModel
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        track = ChapterTrackWidget(reduce_motion=True)
+        try:
+            track.set_model(ProgressModel())
+            track.refresh()
+            self.assertEqual(track.lbl_subtitle.text(), "—")
+            self.assertFalse(track.lbl_empty.isHidden())
+        finally:
+            track.close()
 
     def test_done_rows_are_bold(self):
         """A translated chapter's name is drawn bold.
@@ -767,6 +877,63 @@ class TestChapterTrackContract(unittest.TestCase):
                              ["Part Two", "Chapter 2"])
             track.set_filter("done")
             self.assertEqual(track.visible_units(), [])
+        finally:
+            window.close()
+
+    def test_rows_leaving_the_todo_filter_rebuild_the_list_safely(self):
+        """With "to translate" a finished chapter drops out while the run goes on:
+        the list rebuilds, keeps the running row and stays consistent."""
+        from noesis_ebook_translator.progress_model import (
+            ProgressModel, build_units)
+
+        window = self._open()
+        try:
+            track = window.translate_view.track
+            units = build_units(self.book)
+            model = ProgressModel(units)
+            model.set_selection([u.key() for u in units if u.file])
+            model.set_plan({u.file: 2 for u in units if u.file})
+            window.translate_view.set_model(model, selection=True)
+            track.set_filter("todo")
+            before = [u.key() for u in track.visible_units()]
+            self.assertGreaterEqual(len(before), 3)
+            files = [u.file for u in units if u.file]
+            running = next(u for u in units if u.file == files[1])
+            # One chapter finishes while the next one is running.
+            model.apply({"counts": {files[0]: 2, files[1]: 1}, "errors": {},
+                         "cached": 0, "last": None})
+            window.translate_view.refresh()
+            after = [u.key() for u in track.visible_units()]
+            self.assertEqual(len(after), len(before) - 1)
+            self.assertNotIn(units[0].key(), after)      # done -> gone
+            self.assertIn(running.key(), after)          # running -> stays
+            self.assertEqual(track._list.count(), len(after))
+            self.assertEqual(track._files, after)
+            self.assertEqual(model.running_units(), [files[1]])
+        finally:
+            window.close()
+
+    def test_a_cancelled_run_does_not_look_finished(self):
+        """An interrupted chapter must not be shown as translated."""
+        from noesis_ebook_translator.progress_model import (
+            STATE_DONE, STATE_RUNNING)
+
+        window = self._open()
+        try:
+            model = window.translate_view.model()
+            model.set_selection(["c2.xhtml"])
+            model.set_plan({"c1.xhtml": 4, "c2.xhtml": 4, "c3.xhtml": 4})
+            model.apply({"counts": {"c2.xhtml": 2}, "errors": {}, "cached": 0,
+                         "last": None})
+            window.translate_view.refresh()
+            window._on_cancelled()
+            states = {u.label(): model.unit_state(u) for u in model.units}
+            self.assertEqual(states["Chapter 2"], STATE_RUNNING)
+            self.assertNotEqual(model.overall_percent(), 100.0)
+            # Nothing is marked done, so no row shows a check.
+            self.assertEqual(
+                [u.label() for u in window.translate_view.track.visible_units()
+                 if model.unit_state(u) == STATE_DONE], [])
         finally:
             window.close()
 

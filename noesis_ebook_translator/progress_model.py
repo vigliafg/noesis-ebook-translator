@@ -64,13 +64,20 @@ class ChapterUnit:
     depth: int = 0
     href: str | None = None
     kind: str = "document"          # "document" | "section"
+    #: 1-based position in the TOC (from :func:`chapters.flatten`).
+    index: int = 0
 
     def label(self) -> str:
         return self.name or self.file or self.href or ""
 
     def key(self) -> str:
-        """Identity of the entry: the href (anchor included) when there is one."""
-        return self.href or self.file or ""
+        """Stable identity of the entry: the href (anchor included) when there is
+        one, else the document.
+
+        A heading has neither, so it falls back to its TOC position: two headings
+        must never share a key, or the list would treat them as the same row.
+        """
+        return self.href or self.file or f"#{self.index}"
 
 
 def build_units(input_path: str | None, selected=None) -> list[ChapterUnit]:
@@ -98,7 +105,8 @@ def build_units(input_path: str | None, selected=None) -> list[ChapterUnit]:
             continue
         units.append(ChapterUnit(
             file=file, name=chapter.name or file or "", depth=chapter.depth,
-            href=href, kind="document" if file else "section"))
+            href=href, kind="document" if file else "section",
+            index=chapter.index))
     return units
 
 
