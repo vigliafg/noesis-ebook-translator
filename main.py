@@ -15,18 +15,19 @@ from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QIcon
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWidgets import (
-    QApplication, QDialog, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
-    QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit,
-    QPushButton, QTabWidget, QVBoxLayout, QWidget)
+    QApplication, QDialog, QFileDialog, QInputDialog, QLabel, QLineEdit,
+    QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QTabWidget,
+    QVBoxLayout, QWidget)
 
 from noesis_ebook_translator import APP_NAME, __version__, appconfig, book, theme
 from noesis_ebook_translator import exporter as exporter_mod
 from noesis_ebook_translator.i18n import T, get_language, set_language
+from noesis_ebook_translator.progress_model import (
+    DeltaBatch, ProgressModel, TransferThrottle, build_units)
 from noesis_ebook_translator.reader import ReaderWidget, resolve_backend
 from noesis_ebook_translator.reader.panels import (
     ChaptersWidget, FiguresWidget, LibraryWidget, PreviewWidget, TablesWidget,
     TextsWidget)
-from noesis_ebook_translator.ui.animations import DotsLabel, ShimmerBar
 from noesis_ebook_translator.ui.workflow_bar import build_workflow
 from noesis_ebook_translator.engines.languages import google as GOOGLE_LANGUAGES
 
@@ -37,11 +38,21 @@ def _resource(*parts: str) -> str:
 
 
 class TranslationWorker(QThread):
-    """Runs :func:`book.translate_epub` off the UI thread."""
+    """Runs :func:`book.translate_epub` off the UI thread.
 
-    progressed = pyqtSignal(float, str)
+    Progress reaches the GUI **coalesced**: the engine reports one callback per
+    segment, but the worker accumulates them into small deltas and emits at most
+    ``1 / FLUSH_INTERVAL`` times per second, and never while the previous delta is
+    still pending in the GUI (:class:`TransferThrottle` single-flight). A
+    20k-segment book therefore costs ~20 UI updates per second instead of 20k
+    queued events, and no ``Paragraph`` objects are kept alive in the queue.
+    """
+
+    FLUSH_INTERVAL = 0.05
+
+    plan = pyqtSignal(object)
+    delta = pyqtSignal(object)
     logged = pyqtSignal(str, bool)
-    paragraph = pyqtSignal(object)
     finished_ok = pyqtSignal(str)
     failed = pyqtSignal(str)
 
@@ -56,9 +67,41 @@ class TranslationWorker(QThread):
         self.settings = settings
         self.chapters = chapters
         self._cancel = threading.Event()
+        self._batch = DeltaBatch()
+        self._throttle = TransferThrottle(self.FLUSH_INTERVAL)
 
     def cancel(self) -> None:
         self._cancel.set()
+
+    # -- worker -> GUI ----------------------------------------------------
+    def release_flush(self) -> None:
+        """Called by the GUI thread once a delta has been applied."""
+        self._throttle.release()
+
+    def _emit_plan(self, counts) -> None:
+        self.plan.emit(dict(counts or {}))
+
+    def _on_paragraph(self, paragraph) -> None:
+        self._batch.add_paragraph(paragraph)
+        self._flush()
+
+    def _on_log(self, text: str, error: bool = False) -> None:
+        if error:
+            # Errors are rare and worth showing immediately.
+            self.logged.emit(text, True)
+        else:
+            self._batch.add_log(text)
+
+    def _flush(self, force: bool = False) -> None:
+        if not force and not self._throttle.due():
+            return
+        payload = self._batch.payload()
+        if payload is None and not force:
+            return
+        self._batch.reset()
+        self._throttle.emitted()
+        self.delta.emit(payload or {"counts": {}, "errors": {}, "cached": 0,
+                                    "last": None, "log": []})
 
     def run(self) -> None:  # noqa: D401 - QThread entry point
         try:
@@ -70,13 +113,15 @@ class TranslationWorker(QThread):
                 target_lang=self.target,
                 chapters=self.chapters,
                 settings=self.settings,
-                on_progress=lambda frac, msg: self.progressed.emit(frac, msg),
-                on_log=lambda text, error=False: self.logged.emit(text, error),
-                on_paragraph=lambda p: self.paragraph.emit(p),
+                on_log=self._on_log,
+                on_paragraph=self._on_paragraph,
+                on_plan=self._emit_plan,
                 should_cancel=self._cancel.is_set,
             )
+            self._flush(force=True)
             self.finished_ok.emit(path)
         except Exception:  # noqa: BLE001 - surfaced to the UI
+            self._flush(force=True)
             self.failed.emit(traceback.format_exc())
 
 
@@ -97,6 +142,7 @@ class MainWindow(QMainWindow):
         self._initializing = False
         self._ribbon_index = 0
         self._pending_split = None
+        self._chapters_total = 0
         self._build_workflow()
         self._build_body()
         self._load_settings()
@@ -110,42 +156,20 @@ class MainWindow(QMainWindow):
         self.workflow.sectionChanged.connect(self._on_section_changed)
 
     def _build_body(self) -> None:
-        central = QWidget()
-        outer = QVBoxLayout(central)
+        from noesis_ebook_translator.ui.translate_view import TranslateView
 
-        form_box = QGroupBox(T("panel.file"))
-        form = QFormLayout(form_box)
-        self.lbl_input = QLabel("—")
-        self.lbl_output = QLabel("—")
-        form.addRow(T("label.input") + ":", self.lbl_input)
-        form.addRow(T("label.output") + ":", self.lbl_output)
-        outer.addWidget(form_box)
-
-        self.progress = ShimmerBar(reduce_motion=self._reduce_motion)
-        outer.addWidget(self.progress)
-
-        self.book_label = QLabel("0%")
-        book_row = QHBoxLayout()
-        book_row.addWidget(QLabel(T("label.book") + ":"))
-        book_row.addWidget(self.book_label)
-        outer.addLayout(book_row)
-
-        self.chapter_bar = ShimmerBar(reduce_motion=self._reduce_motion)
-        outer.addWidget(self.chapter_bar)
-
-        chapter_row = QHBoxLayout()
-        chapter_row.addWidget(QLabel(T("tab.chapters") + ":"))
-        self.chapter_label = QLabel("—")
-        chapter_row.addWidget(self.chapter_label, 1)
-        outer.addLayout(chapter_row)
-
-        self.status = DotsLabel(T("status.ready"), reduce_motion=self._reduce_motion)
-        outer.addWidget(self.status)
+        central = TranslateView(reduce_motion=self._reduce_motion)
+        self.translate_view = central
+        self._translate_tab = central
+        # The four bands own these widgets; the window keeps referring to them.
+        self.progress = central.progress
+        self.book_label = central.book_label
+        self.status = central.status
+        self.log = central.log
+        self.chapter_bar = central.track.bar_current
+        self.chapter_label = central.track.lbl_subtitle
         self._chapter_names: list[str] = []
-
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        outer.addWidget(self.log, 1)
+        central.layoutChanged.connect(self._save_view_state)
 
         self.reader = ReaderWidget(session=None, backend_mode=self._reader_mode())
         self.reader.statusMessage.connect(self.status.set_base_text)
@@ -174,7 +198,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.tables, T("tab.tables"))
         self.tabs.addTab(self.texts, T("assets.texts"))
         self.tabs.addTab(self.preview, T("tab.preview"))
-        self._translate_tab = central
 
         container = QWidget()
         container_layout = QVBoxLayout(container)
@@ -188,6 +211,59 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------- helpers
     def _engine_names(self) -> list[str]:
         return appconfig.engine_names()
+
+    # -------------------------------------------------- translate view state
+    def _choice_rows(self, cfg: dict | None = None) -> list[tuple[str, str]]:
+        """Rows for band 1: what the wizard collected (never the API key)."""
+        cfg = cfg or {}
+        engine = cfg.get("engine") or self.cmb_engine.currentText()
+        source = cfg.get("source") or self.cmb_source.currentText()
+        target = cfg.get("target") or self.cmb_target.currentText()
+        rows = [
+            (T("panel.engine"), engine),
+            (T("label.model"), cfg.get("model") or "—"),
+            (T("label.source"), source),
+            (T("label.target"), target),
+            (T("label.input"), self._input_path or "—"),
+            (T("label.output"), self._output_path or "—"),
+        ]
+        chapters = cfg.get("chapters")
+        if chapters:
+            label = T("translate.chapters_count").format(
+                selected=len(chapters), total=self._chapters_total or "?")
+            rows.append((T("tab.chapters"), label))
+        flags = []
+        if cfg.get("bilingual"):
+            flags.append(T("label.bilingual"))
+        if cfg.get("cache", True):
+            flags.append(T("label.cache"))
+        if cfg.get("batching"):
+            flags.append(T("label.batch"))
+        if cfg.get("sequential", True):
+            flags.append(T("label.sequential"))
+        if flags:
+            rows.append((T("panel.options"), " · ".join(flags)))
+        return rows
+
+    def _refresh_choices(self, cfg: dict | None = None) -> None:
+        self.translate_view.set_choices(self._choice_rows(cfg))
+
+    def _refresh_chapters_total(self) -> None:
+        try:
+            self._chapters_total = len(build_units(self._input_path))
+        except Exception:  # noqa: BLE001 - best effort
+            self._chapters_total = 0
+
+    def _save_view_state(self) -> None:
+        if getattr(self, "_initializing", False):
+            return
+        try:
+            appconfig.save_settings(
+                {"translate_view": self.translate_view.state()})
+        except Exception:  # noqa: BLE001 - persistence is best effort
+            pass
+
+    # ------------------------------------------------------------- helpers
 
     @staticmethod
     def _google_languages():
@@ -222,8 +298,8 @@ class MainWindow(QMainWindow):
     def _apply_source(self, path: str) -> None:
         self._input_path = path
         self._output_path = book.default_output_path(path, self.cmb_target.currentText())
-        self.lbl_input.setText(path)
-        self.lbl_output.setText(self._output_path)
+        self._refresh_chapters_total()
+        self._refresh_choices()
         self.status.set_base_text(T("status.ready"))
         source = self._assets_source()
         for panel in (self.figures, self.tables, self.texts, self.chapters,
@@ -260,6 +336,10 @@ class MainWindow(QMainWindow):
         self._reduce_motion = bool(settings.get("reduce_motion", False))
         self.progress.set_reduce_motion(self._reduce_motion)
         self.chapter_bar.set_reduce_motion(self._reduce_motion)
+        self.translate_view.set_reduce_motion(self._reduce_motion)
+        self.translate_view.restore_state(settings.get("translate_view"))
+        self._apply_view_theme(settings.get("ui_theme", "system"))
+        self._refresh_choices()
         # Reader defaults (theme is separate from the app theme) + quick controls
         reader_themes = ("light", "sepia", "dark")
         rt = settings.get("reader_theme", "light")
@@ -315,7 +395,18 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             apply_theme(app, mode)
+        self._apply_view_theme(mode)
         appconfig.save_settings({"ui_theme": mode})
+
+    def _apply_view_theme(self, mode: str | None = None) -> None:
+        """Push the app palette to the painted bands (liquid, chapter list)."""
+        try:
+            from noesis_ebook_translator.ui.theme_manager import system_is_dark
+            app = QApplication.instance()
+            mode = mode or self._settings.get("ui_theme", "system")
+            self.translate_view.set_theme(mode, system_is_dark(app))
+        except Exception:  # noqa: BLE001 - theming is best effort
+            pass
 
     def _set_reader_theme(self, mode: str) -> None:
         self.reader.set_theme(mode)
@@ -330,6 +421,7 @@ class MainWindow(QMainWindow):
         self._reduce_motion = bool(checked)
         self.progress.set_reduce_motion(self._reduce_motion)
         self.chapter_bar.set_reduce_motion(self._reduce_motion)
+        self.translate_view.set_reduce_motion(self._reduce_motion)
         appconfig.save_settings({"reduce_motion": self._reduce_motion})
 
     def _set_reader_backend(self, backend: str) -> None:
@@ -883,6 +975,7 @@ class MainWindow(QMainWindow):
             self._start_translation(cfg)
 
     def _chapter_labels(self, files) -> list[str]:
+        """Backwards-compatible helper: labels for the given chapter files."""
         if not self._input_path:
             return []
         try:
@@ -915,7 +1008,7 @@ class MainWindow(QMainWindow):
         if not name.lower().endswith(".epub"):
             name += ".epub"
         self._output_path = os.path.join(folder, name)
-        self.lbl_output.setText(self._output_path)
+        self._refresh_choices(cfg if cfg else None)
 
         api_key = cfg.get("api_key", "")
         # "Sequential" pins concurrency_limit=1 (one segment at a time) so the
@@ -943,12 +1036,20 @@ class MainWindow(QMainWindow):
             self._pending_split = {"folder": folder,
                                    "name": os.path.splitext(name)[0]}
 
-        self._chapter_names = self._chapter_labels(chapters)
+        # Band 1 recap + band 2/3 model. ``_chapter_names`` stays empty: the
+        # per-unit display is owned by the progress model (the legacy linear
+        # estimate in _on_progress is only used when _chapter_names is filled).
+        self._chapter_names = []
+        self._refresh_choices(cfg)
+        units = build_units(self._input_path, chapters)
+        model = ProgressModel(units)
+        self.translate_view.set_model(model, selection=bool(chapters))
 
         self.worker = TranslationWorker(
             self._input_path, self._output_path, engine, source, target, settings,
             chapters=chapters)
-        self.worker.progressed.connect(self._on_progress)
+        self.worker.plan.connect(self._on_plan)
+        self.worker.delta.connect(self._on_delta)
         self.worker.logged.connect(self._on_log)
         self.worker.finished_ok.connect(self._on_finished)
         self.worker.failed.connect(self._on_failed)
@@ -969,12 +1070,36 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     # --------------------------------------------------------------- slots
+    def _on_plan(self, counts) -> None:
+        """The engine reported how many segments each document holds."""
+        model = self.translate_view.model()
+        if model is None:  # pragma: no cover - defensive
+            return
+        model.set_plan(counts)
+        self.translate_view.refresh()
+
+    def _on_delta(self, payload: dict) -> None:
+        """A coalesced batch of progress (counts, cached, last text, log lines)."""
+        model = self.translate_view.model()
+        if model is None:  # pragma: no cover - defensive
+            return
+        model.apply(payload)
+        if payload.get("log"):
+            self.log.appendPlainText("\n".join(payload["log"]))
+        self.translate_view.refresh()
+        percent = model.overall_percent()
+        self._on_progress(percent / 100.0, "")
+        if self.worker is not None:
+            self.worker.release_flush()
+
     def _on_progress(self, fraction: float, message: str) -> None:
         fraction = max(0.0, min(1.0, fraction))
         self.progress.setValue(int(fraction * 100))
         self.book_label.setText(f"{int(fraction * 100)}%")
         names = self._chapter_names
         if names:
+            # Legacy linear estimate; the progress model owns the per-unit view
+            # when it is in charge (``_chapter_names`` stays empty then).
             index = min(len(names) - 1, int(fraction * len(names)))
             inner = fraction * len(names) - index
             self.chapter_bar.setValue(int(max(0.0, min(1.0, inner)) * 100))
@@ -1008,16 +1133,19 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001
                 pass
         message = T("msg.done").format(path)
+        exported = False
         if self._pending_split:
             try:
                 from noesis_ebook_translator import segment
                 written = segment.split_epub(
                     path, self._pending_split["folder"], mode="flat")
                 message += "\n" + T("msg.export_done").format("\n".join(written))
+                exported = True
             except Exception as exc:  # noqa: BLE001
                 message += "\n" + T("msg.export_failed").format(exc)
             finally:
                 self._pending_split = None
+        self.translate_view.set_finished(ok=True, exported=exported)
         self._status_message(message)
 
     def _on_failed(self, message: str) -> None:
@@ -1026,6 +1154,7 @@ class MainWindow(QMainWindow):
         self.status.stop_busy()
         self.status.set_base_text(T("status.failed"))
         self.log.appendPlainText(message)
+        self.translate_view.set_finished(ok=False)
         self._status_message(message.splitlines()[-1])
 
     def _on_worker_done(self) -> None:

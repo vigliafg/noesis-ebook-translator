@@ -9,6 +9,7 @@ from __future__ import annotations
 __all__ = [
     "THEMES", "MODES", "THEME_LABELS", "normalize_mode", "is_dark",
     "reader_theme", "stylesheet", "theme_choices", "theme_label", "palette",
+    "liquid",
 ]
 
 #: Ordered theme ids shown in the UI.
@@ -44,6 +45,18 @@ _PALETTES = {
               "accent": "#a06a2c", "surface": "#fbf3e0"},
 }
 
+#: Colours of the "liquid" progress fill (cover + rising water). Copied from the
+#: sibling project ``noesis-pdf-cloner`` (``LiquidOverlay`` /
+#: ``.liquid``) so the two apps look alike: same blue, same soft transition.
+_LIQUID = {
+    "dark": {"bg": "#ee0b0e13", "caption_bg": "#e6141414",
+             "text": "#ffffff", "accent": "#4f8cff"},
+    "light": {"bg": "#e6f2f3f5", "caption_bg": "#e6ffffff",
+              "text": "#1c2430", "accent": "#4f8cff"},
+    "sepia": {"bg": "#e6f4ecd8", "caption_bg": "#e6fbf3e0",
+              "text": "#4a3f2f", "accent": "#4f8cff"},
+}
+
 _LIGHT = """
 QWidget { background: #f6f7f9; color: #1c1e21; }
 QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QTextEdit, QTextBrowser {
@@ -76,6 +89,12 @@ QHeaderView::section { background: #eceef2; border: 0; padding: 4px; }
 #workflowBar QToolButton { color: #1c1e21; padding: 4px 8px; border-radius: 5px; }
 #workflowBar QToolButton:hover { background: #e3e6ec; }
 #workflowBar QToolButton:checked { background: #c9d6f2; }
+#translateView { background: #f6f7f9; }
+#bandTitle { color: #5c6674; font-weight: 600; }
+#bandHint { color: #5c6674; }
+#detailTitle { font-size: 15px; font-weight: 600; }
+#detailCount { font-size: 19px; font-weight: 600; }
+#detailText { color: #5c6674; }
 """
 
 _DARK = """
@@ -112,6 +131,12 @@ QPlainTextEdit { font-family: monospace; }
 #workflowBar QToolButton { color: #e8eaed; padding: 4px 8px; border-radius: 5px; }
 #workflowBar QToolButton:hover { background: #313640; }
 #workflowBar QToolButton:checked { background: #2f4772; }
+#translateView { background: #1f2227; }
+#bandTitle { color: #9aa4b2; font-weight: 600; }
+#bandHint { color: #9aa4b2; }
+#detailTitle { font-size: 15px; font-weight: 600; }
+#detailCount { font-size: 19px; font-weight: 600; }
+#detailText { color: #9aa4b2; }
 """
 
 _SEPIA = """
@@ -146,6 +171,12 @@ QHeaderView::section { background: #ecdfc2; border: 0; padding: 4px; }
 #workflowBar QToolButton { color: #4a3f2f; padding: 4px 8px; border-radius: 5px; }
 #workflowBar QToolButton:hover { background: #e5d5b3; }
 #workflowBar QToolButton:checked { background: #dcc79b; }
+#translateView { background: #f4ecd8; }
+#bandTitle { color: #7a6a52; font-weight: 600; }
+#bandHint { color: #7a6a52; }
+#detailTitle { font-size: 15px; font-weight: 600; }
+#detailCount { font-size: 19px; font-weight: 600; }
+#detailText { color: #7a6a52; }
 """
 
 _SHEETS = {"light": _LIGHT, "dark": _DARK, "sepia": _SEPIA}
@@ -176,6 +207,13 @@ def palette(mode: str, system_dark: bool = True) -> dict:
     effective = "dark" if is_dark(mode, system_dark) else (
         "sepia" if normalize_mode(mode) == "sepia" else "light")
     return dict(_PALETTES[effective])
+
+
+def liquid(mode: str, system_dark: bool = True) -> dict:
+    """Colours for the liquid progress widget (app theme, not reader theme)."""
+    effective = "dark" if is_dark(mode, system_dark) else (
+        "sepia" if normalize_mode(mode) == "sepia" else "light")
+    return dict(_LIQUID[effective])
 
 
 def stylesheet(mode: str, system_dark: bool = True) -> str:

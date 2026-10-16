@@ -103,6 +103,12 @@ class DotsLabel(QLabel):
         if not self._timer.isActive():
             super().setText(text)
 
+    def set_reduce_motion(self, reduce: bool) -> None:
+        self._reduce_motion = bool(reduce)
+        if self._reduce_motion:
+            self._timer.stop()
+            super().setText(self._base)
+
     def start_busy(self) -> None:
         if self._reduce_motion:
             super().setText(self._base)
