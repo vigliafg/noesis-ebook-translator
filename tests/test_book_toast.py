@@ -178,6 +178,28 @@ class TestBookToast(unittest.TestCase):
         finally:
             window.close()
 
+    def test_chapters_message_with_and_without_cache(self):
+        import main
+
+        app = QApplication.instance() or QApplication(["noesis-toast"])
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        try:
+            plain = window._chapters_message({"done": 3, "total": 3,
+                                              "cached": 0})
+            self.assertIn("3/3", plain)
+            cached = window._chapters_message({"done": 3, "total": 3,
+                                               "cached": 2})
+            self.assertIn("3/3", cached)
+            self.assertIn("2", cached)
+            self.assertNotEqual(plain, cached)
+            # Nothing to report on an empty/unknown model.
+            self.assertEqual(window._chapters_message({}), "")
+            self.assertEqual(window._chapters_message({"done": 0, "total": 0}),
+                             "")
+        finally:
+            window.close()
+
     def test_translation_run_drives_the_pill(self):
         import main
         from tests.fixtures import register_fake_engine
@@ -205,6 +227,11 @@ class TestBookToast(unittest.TestCase):
             toast = window.workflow.book_toast
             self.assertFalse(toast.is_working())
             self.assertEqual(toast.percent(), 100)
+            # The completion notice tells the user how many chapters were
+            # translated and how many came from the cache.
+            summary = window.translate_view.model().summary()
+            self.assertEqual(summary["done"], summary["total"])
+            self.assertGreaterEqual(summary["total"], 1)
         finally:
             window.close()
 

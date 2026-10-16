@@ -158,6 +158,28 @@ class TestProgressModel(unittest.TestCase):
         model.mark_exported()
         self.assertTrue(model.exported)
 
+    def test_cached_chapters_and_summary(self):
+        """Chapters served entirely from the cache are reported as cached."""
+        from noesis_ebook_translator.progress_model import ProgressModel
+
+        model = ProgressModel()
+        model.set_plan({"a.xhtml": 4, "b.xhtml": 2, "c.xhtml": 3})
+        model.apply({"counts": {"a.xhtml": 4, "b.xhtml": 2, "c.xhtml": 1},
+                     "errors": {}, "cached": 6,
+                     "cached_pages": {"a.xhtml": 4, "b.xhtml": 2},
+                     "last": None})
+        self.assertEqual(model.cached_chapters(), 2)
+        self.assertEqual(model.done_chapters(), 2)
+        self.assertEqual(model.selection_size(), 3)
+        self.assertEqual(model.summary(), {"done": 2, "total": 3, "cached": 2,
+                                          "segments": 6})
+        # Not finished yet: it is not "done", so it is not "cached" either.
+        self.assertEqual(model.state("c.xhtml"), "running")
+        model.apply({"counts": {"c.xhtml": 2}, "errors": {}, "cached": 0,
+                     "cached_pages": {}, "last": None})
+        self.assertEqual(model.summary(),
+                         {"done": 3, "total": 3, "cached": 2, "segments": 6})
+
     def test_error_state_and_finish(self):
         from noesis_ebook_translator.progress_model import (
             STATE_DONE, STATE_ERROR, STATE_PENDING, STATE_RUNNING)
@@ -464,6 +486,49 @@ class TestTranslateViewWidget(unittest.TestCase):
             view.refresh()
             self.app.processEvents()
             self.assertFalse(view.grab().isNull())
+        finally:
+            view.hide()
+            view.close()
+
+    def test_chapter_row_bars_reflect_the_state(self):
+        """Every chapter shows its own bar: done = full, running = partial."""
+        from noesis_ebook_translator.progress_model import ProgressModel
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml"]))
+            model = view.model()
+            model.set_plan({"a.xhtml": 4, "b.xhtml": 4, "c.xhtml": 4})
+            model.apply({"counts": {"a.xhtml": 4, "b.xhtml": 2},
+                         "errors": {}, "cached": 0, "last": None})
+            view.resize(800, 400)
+            view.set_theme("light", False)
+            view.refresh()
+            view.show()
+            self.app.processEvents()
+            image = view.track._list.viewport().grab().toImage()
+            done_fill = view.track.colors()["done"].name()
+            accent = view.track.colors()["accent"].name()
+            # The bar sits on the row's last two pixels; sample its middle.
+            rect_a = view.track._list.visualItemRect(view.track._list.item(0))
+            rect_b = view.track._list.visualItemRect(view.track._list.item(1))
+            y_a = rect_a.bottom() - 1
+            y_b = rect_b.bottom() - 1
+            x = rect_a.left() + 60
+            # Row a is done -> the whole bar is painted in the "done" colour...
+            self.assertEqual(image.pixelColor(x, y_a).name(), done_fill)
+            # ... while row b is half done -> the fill is the accent colour and
+            # the right half is still the (empty) track.
+            self.assertEqual(image.pixelColor(rect_b.left() + 20, y_b).name(),
+                             accent)
+            self.assertNotEqual(
+                image.pixelColor(rect_b.right() - 20, y_b).name(), accent)
+            # The third row has no progress: the track only, never the fill.
+            rect_c = view.track._list.visualItemRect(view.track._list.item(2))
+            self.assertNotEqual(
+                image.pixelColor(rect_c.left() + 20,
+                                 rect_c.bottom() - 1).name(), accent)
         finally:
             view.hide()
             view.close()

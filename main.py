@@ -170,6 +170,7 @@ class MainWindow(QMainWindow):
         self._split_worker = None
         self._split_ok = False
         self._split_message = ""
+        self._summary_message = ""
         self._chapters_total = 0
         self._build_workflow()
         self._build_body()
@@ -1231,13 +1232,36 @@ class MainWindow(QMainWindow):
         self.translate_view.set_finished(ok=True, exported=False)
         self.workflow.set_book(self._book_label(self._input_path), percent=100,
                                working=False)
+        summary = self.translate_view.model().summary() if (
+            self.translate_view.model() is not None) else {}
+        self._summary_message = self._chapters_message(summary)
+        if self._summary_message:
+            self.log.appendPlainText(self._summary_message)
         if self._pending_split:
             # One EPUB per chapter: keep the message for when the split is done.
             self._split_ok = False
             self._split_message = ""
             self._start_split(path)
         else:
-            self._status_message(T("msg.done").format(path))
+            self._status_message(self._done_message(path))
+
+    def _chapters_message(self, summary: dict) -> str:
+        """'Capitoli tradotti: 3/3 — 2 erano già in cache' (empty if unknown)."""
+        total = int(summary.get("total") or 0)
+        if total < 1:
+            return ""
+        done = int(summary.get("done") or 0)
+        cached = int(summary.get("cached") or 0)
+        if cached:
+            return T("msg.chapters_cached").format(done=done, total=total,
+                                                   cached=cached)
+        return T("msg.chapters_done").format(done=done, total=total)
+
+    def _done_message(self, path: str) -> str:
+        message = T("msg.done").format(path)
+        if self._summary_message:
+            message += "\n" + self._summary_message
+        return message
 
     def _start_split(self, path: str) -> None:
         """Split the translated EPUB in the background (chapter mode)."""
@@ -1265,7 +1289,7 @@ class MainWindow(QMainWindow):
         self.status.stop_busy()
         self.status.set_base_text(T("status.done"))
         self.translate_view.set_finished(ok=True, exported=self._split_ok)
-        message = T("msg.done").format(self._output_path)
+        message = self._done_message(self._output_path)
         if self._split_message:
             message += "\n" + self._split_message
         self._status_message(message)

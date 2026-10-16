@@ -163,6 +163,8 @@
   "anim.translating_book": "Translating book…",
   "anim.translating_chapter": "Translating chapter {current}/{total}",
   "msg.no_input": "Please choose an EPUB file first.",
+  "msg.chapters_done": "Chapters translated: {done}/{total}",
+  "msg.chapters_cached": "Chapters translated: {done}/{total} — {cached} were already cached",
   "msg.done": "Translation finished:\n{}",
   "msg.wizard_done": "Setup complete.",
   "msg.restart_language": "The interface language will change after a restart.",

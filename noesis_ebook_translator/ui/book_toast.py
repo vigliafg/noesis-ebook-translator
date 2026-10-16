@@ -15,6 +15,8 @@ drives a ``sheenPos`` property (0..1) read by :meth:`paintEvent`.
 """
 from __future__ import annotations
 
+import math
+
 from PyQt6.QtCore import (
     QEasingCurve, QPropertyAnimation, QRectF, QSize, Qt, pyqtProperty)
 from PyQt6.QtGui import (
@@ -40,12 +42,13 @@ PALETTES = {
 #: :meth:`BookToast.sizeHint` so the label never has to be elided when the pill
 #: is at its natural width. The status dot's space is always reserved, so the
 #: pill does not resize when a translation starts.
-PAD_LEFT = 12.0
-PAD_RIGHT = 12.0
-DOT_W = 12.0
-ICON = 18.0
-ICON_GAP = 7.0
-PERCENT_GAP = 8.0
+_SCALE = 0.75
+PAD_LEFT = 12.0 * _SCALE
+PAD_RIGHT = 12.0 * _SCALE
+DOT_W = 12.0 * _SCALE
+ICON = 18.0 * _SCALE
+ICON_GAP = 7.0 * _SCALE
+PERCENT_GAP = 8.0 * _SCALE
 
 
 class BookToast(QWidget):
@@ -54,8 +57,11 @@ class BookToast(QWidget):
     #: Sheen timing, copied from the cloner: it crosses the pill by 55% of the
     #: cycle, then rests off-screen until the next pass.
     SHEEN_MS = 2400
-    HEIGHT = 30
-    RADIUS = 15
+    #: Size factor used for both the pill and its label (0.75 = 25% smaller
+    #: than the first version). Kept in sync with the painting metrics below.
+    SCALE = _SCALE
+    HEIGHT = int(round(30 * SCALE))
+    RADIUS = int(round(15 * SCALE))
 
     def __init__(self, parent=None, reduce_motion: bool = False) -> None:
         super().__init__(parent)
@@ -152,9 +158,9 @@ class BookToast(QWidget):
 
     # -- geometry ---------------------------------------------------------
     def _label_font(self) -> QFont:
-        """The (larger, bold) font used for the book name."""
+        """The label font: bigger and bold, 25% smaller than the first version."""
         font = QFont(self.font())
-        font.setPointSizeF(max(11.5, font.pointSizeF() + 2.5))
+        font.setPointSizeF(max(8.5, (font.pointSizeF() + 2.5) * self.SCALE))
         font.setBold(True)
         return font
 
@@ -166,7 +172,9 @@ class BookToast(QWidget):
             width += (metrics.horizontalAdvance(f"{self._percent}%")
                       + PERCENT_GAP)
         width += PAD_RIGHT
-        return QSize(min(int(width), 460), self.HEIGHT)
+        # Ceil + a 2px slack: truncating the fraction (or a sub-pixel font
+        # difference) would make the label elide by a hair.
+        return QSize(min(int(math.ceil(width)) + 2, 460), self.HEIGHT)
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
         super().showEvent(event)

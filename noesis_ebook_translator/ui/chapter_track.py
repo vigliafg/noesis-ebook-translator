@@ -136,13 +136,23 @@ class _UnitDelegate(QStyledItemDelegate):
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawRect(box.adjusted(4, 4, -4, -4))
 
-        if state == STATE_RUNNING and total > 0:
+        if total > 0 and state not in (STATE_SKIPPED, STATE_EXCLUDED):
+            # A bar on every chapter, not only the running one: chapters served
+            # from the cache (or already finished) show a full bar + check.
             bar = QRect(rect.left() + 6 + depth * 12, rect.bottom() - 2,
                         max(10, rect.width() - 12), 2)
             painter.fillRect(bar, colors["track"])
-            filled = QRect(bar.left(), bar.top(),
-                           int(bar.width() * min(1.0, done / total)), 2)
-            painter.fillRect(filled, accent)
+            if done > 0:
+                fraction = min(1.0, done / total)
+                if state == STATE_RUNNING:
+                    fill = QColor(accent)
+                elif state == STATE_ERROR:
+                    fill = colors["error"]
+                else:
+                    fill = colors["done"]
+                painter.fillRect(QRect(bar.left(), bar.top(),
+                                       int(bar.width() * fraction),
+                                       bar.height()), fill)
         painter.restore()
 
 

@@ -163,6 +163,8 @@
   "anim.translating_book": "Buch wird übersetzt…",
   "anim.translating_chapter": "Kapitel {current}/{total} wird übersetzt",
   "msg.no_input": "Bitte wählen Sie zuerst eine EPUB-Datei.",
+  "msg.chapters_done": "Übersetzte Kapitel: {done}/{total}",
+  "msg.chapters_cached": "Übersetzte Kapitel: {done}/{total} — {cached} waren schon im Cache",
   "msg.done": "Übersetzung abgeschlossen:\n{}",
   "msg.wizard_done": "Einrichtung abgeschlossen.",
   "msg.restart_language": "Die Oberflächensprache ändert sich nach einem Neustart.",

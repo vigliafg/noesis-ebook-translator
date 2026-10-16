@@ -129,6 +129,7 @@ class DeltaBatch:
         self.counts: dict[str, int] = {}
         self.errors: dict[str, int] = {}
         self.cached = 0
+        self.cached_pages: dict[str, int] = {}
         self.last: tuple[str, str] | None = None
         self.log: list[str] = []
 
@@ -148,6 +149,10 @@ class DeltaBatch:
                 self.errors[page] = self.errors.get(page, 0) + 1
         if getattr(paragraph, "is_cache", False):
             self.cached += 1
+            if page and page != TOC_PAGE:
+                # Per-document too: a chapter served entirely from the cache was
+                # already translated in an earlier run.
+                self.cached_pages[page] = self.cached_pages.get(page, 0) + 1
         text = (getattr(paragraph, "translation", None) or "").strip()
         if text and page and page != TOC_PAGE:
             self.last = (page, text)
@@ -157,8 +162,8 @@ class DeltaBatch:
             self.log.append(text)
 
     def empty(self) -> bool:
-        return not (self.counts or self.errors or self.cached or self.last
-                    or self.log)
+        return not (self.counts or self.errors or self.cached
+                    or self.cached_pages or self.last or self.log)
 
     def payload(self) -> dict | None:
         if self.empty():
@@ -167,6 +172,7 @@ class DeltaBatch:
             "counts": dict(self.counts),
             "errors": dict(self.errors),
             "cached": self.cached,
+            "cached_pages": dict(self.cached_pages),
             "last": self.last,
             "log": list(self.log),
         }
@@ -181,6 +187,7 @@ class ProgressModel:
         self.done: dict[str, int] = {}
         self.errors: dict[str, int] = {}
         self.cached = 0
+        self.cached_pages: dict[str, int] = {}
         self.last: tuple[str, str] | None = None
         self.finished = False
         self.exported = False
@@ -263,6 +270,28 @@ class ProgressModel:
         return [u.file for u in self.tracked()
                 if self.state(u.file) in (STATE_RUNNING, STATE_ERROR)]
 
+    def done_chapters(self) -> int:
+        """Chapters of the selection that are fully translated."""
+        return sum(1 for unit in self.tracked()
+                   if self.state(unit.file) == STATE_DONE)
+
+    def cached_chapters(self) -> int:
+        """Finished chapters whose segments all came from the cache."""
+        return sum(1 for unit in self.tracked()
+                   if self.state(unit.file) == STATE_DONE
+                   and self.cached_pages.get(unit.file, 0) >= self.total(unit.file))
+
+    def selection_size(self) -> int:
+        """How many chapters the run is about (the ones with content)."""
+        return len(self.tracked())
+
+    def summary(self) -> dict[str, int]:
+        """Counts for the completion notice."""
+        return {"done": self.done_chapters(),
+                "total": self.selection_size(),
+                "cached": self.cached_chapters(),
+                "segments": self.cached}
+
     def error_count(self) -> int:
         return sum(self.errors.values())
 
@@ -281,6 +310,10 @@ class ProgressModel:
         cached = int(delta.get("cached") or 0)
         if cached:
             self.cached += cached
+            changed = True
+        for file_name, count in (delta.get("cached_pages") or {}).items():
+            self.cached_pages[file_name] = (self.cached_pages.get(file_name, 0)
+                                            + int(count))
             changed = True
         if delta.get("last"):
             self.last = tuple(delta["last"])  # type: ignore[assignment]
