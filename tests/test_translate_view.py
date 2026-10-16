@@ -1,0 +1,393 @@
+"""Tests for the four-band Translate view (progress model, throttle, widgets)."""
+import os
+import tempfile
+import time
+import unittest
+
+try:
+    from PyQt6.QtWidgets import QApplication
+    _HAS_GUI = True
+except Exception:  # noqa: BLE001
+    _HAS_GUI = False
+
+from tests.fixtures import build_rich_epub, build_sample_epub
+
+
+class _FakeClock:
+    """Deterministic clock for the throttle (no sleeping in tests)."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+class _FakeParagraph:
+    def __init__(self, page, translation="x", error=None, ignored=False,
+                 is_cache=False):
+        self.page = page
+        self.translation = translation
+        self.error = error
+        self.ignored = ignored
+        self.is_cache = is_cache
+
+
+class TestDeltaBatch(unittest.TestCase):
+    def test_counts_per_page_and_skips_toc_and_ignored(self):
+        from noesis_ebook_translator.progress_model import DeltaBatch
+
+        batch = DeltaBatch()
+        batch.add_paragraph(_FakeParagraph("a.xhtml"))
+        batch.add_paragraph(_FakeParagraph("a.xhtml", is_cache=True))
+        batch.add_paragraph(_FakeParagraph("b.xhtml"))
+        batch.add_paragraph(_FakeParagraph("a.xhtml", error="boom"))
+        # Not counted: the TOC pseudo-document and ignored (empty) elements.
+        batch.add_paragraph(_FakeParagraph("toc.ncx"))
+        batch.add_paragraph(_FakeParagraph("a.xhtml", ignored=True))
+
+        payload = batch.payload()
+        self.assertEqual(payload["counts"], {"a.xhtml": 3, "b.xhtml": 1})
+        self.assertEqual(payload["errors"], {"a.xhtml": 1})
+        self.assertEqual(payload["cached"], 1)
+        self.assertEqual(payload["last"][0], "a.xhtml")
+        self.assertEqual(batch.payload()["counts"], payload["counts"])
+        batch.reset()
+        self.assertIsNone(batch.payload())
+
+    def test_log_accumulates(self):
+        from noesis_ebook_translator.progress_model import DeltaBatch
+
+        batch = DeltaBatch()
+        batch.add_log("one\n")
+        batch.add_log("two\n")
+        self.assertEqual(batch.payload()["log"], ["one\n", "two\n"])
+
+
+class TestTransferThrottle(unittest.TestCase):
+    def test_rate_and_single_flight(self):
+        from noesis_ebook_translator.progress_model import TransferThrottle
+
+        clock = _FakeClock()
+        throttle = TransferThrottle(interval=0.05, clock=clock)
+        # First event always goes through.
+        self.assertTrue(throttle.due())
+        throttle.emitted()
+        # Single-flight: nothing until the GUI releases it, even much later.
+        clock.advance(10.0)
+        self.assertFalse(throttle.due())
+        throttle.release()
+        # Released, and the interval has long passed.
+        self.assertTrue(throttle.due())
+        throttle.emitted()
+        clock.advance(0.04)
+        self.assertFalse(throttle.due())   # still in flight
+        throttle.release()
+        self.assertFalse(throttle.due())   # released but too early
+        clock.advance(0.02)
+        self.assertTrue(throttle.due())
+
+    def test_twenty_thousand_segments_stay_under_the_rate(self):
+        """Acceptance criterion 12: ~20 UI updates/s, not one per segment."""
+        from noesis_ebook_translator.progress_model import TransferThrottle
+
+        clock = _FakeClock()
+        throttle = TransferThrottle(interval=0.05, clock=clock)
+        emissions = 0
+        # The GUI is instant here, so only the interval limits the emissions.
+        for _ in range(20000):
+            clock.advance(0.0005)  # 20k segments in 10 simulated seconds
+            if throttle.due():
+                throttle.emitted()
+                emissions += 1
+                throttle.release()
+        self.assertLessEqual(emissions, 200)   # 10 s / 0.05 s
+        self.assertGreaterEqual(emissions, 150)
+
+
+class TestProgressModel(unittest.TestCase):
+    def _model(self):
+        from noesis_ebook_translator.progress_model import ChapterUnit, ProgressModel
+
+        units = [ChapterUnit("a.xhtml", "Chapter 1"), ChapterUnit("b.xhtml", "Chapter 2")]
+        return ProgressModel(units)
+
+    def test_states_and_totals(self):
+        from noesis_ebook_translator.progress_model import (
+            STATE_DONE, STATE_PENDING, STATE_RUNNING, STATE_SKIPPED)
+
+        model = self._model()
+        self.assertEqual(model.state("a.xhtml"), STATE_PENDING)
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 1})
+        self.assertEqual(model.overall(), (0, 3))
+        model.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0, "last": None})
+        self.assertEqual(model.state("a.xhtml"), STATE_RUNNING)
+        model.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0,
+                     "last": ("a.xhtml", "ciao")})
+        self.assertEqual(model.state("a.xhtml"), STATE_DONE)
+        self.assertEqual(model.last, ("a.xhtml", "ciao"))
+        self.assertAlmostEqual(model.overall_percent(), 2 / 3 * 100)
+        # A plan document missing from the chapter list becomes a unit itself.
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 1, "cover.xhtml": 4})
+        self.assertIn("cover.xhtml", [u.file for u in model.units])
+        # A chapter with no translatable content is tracked but skipped.
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 1, "empty.xhtml": 0})
+        self.assertEqual(model.state("empty.xhtml"), STATE_SKIPPED)
+        self.assertEqual(model.overall(), (2, 3))
+
+    def test_error_state_and_finish(self):
+        from noesis_ebook_translator.progress_model import (
+            STATE_DONE, STATE_ERROR, STATE_PENDING, STATE_RUNNING)
+
+        model = self._model()
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 2})
+        model.apply({"counts": {"a.xhtml": 2, "b.xhtml": 1},
+                     "errors": {"b.xhtml": 1}, "cached": 0, "last": None})
+        self.assertEqual(model.state("a.xhtml"), STATE_DONE)
+        self.assertEqual(model.state("b.xhtml"), STATE_ERROR)
+        self.assertEqual(model.error_count(), 1)
+        self.assertTrue(model.apply({"counts": {"b.xhtml": 1}, "errors": {},
+                                     "cached": 0, "last": None}))
+        self.assertFalse(model.apply(None))
+
+        # A failed run must not pretend the interrupted work completed.
+        model2 = self._model()
+        model2.set_plan({"a.xhtml": 2, "b.xhtml": 2})
+        model2.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0, "last": None})
+        model2.finish(ok=False)
+        self.assertEqual(model2.state("a.xhtml"), STATE_RUNNING)
+        self.assertEqual(model2.overall(), (1, 4))
+        # A closing (successful) finish completes the units that were started.
+        model2.finish(ok=True)
+        self.assertEqual(model2.state("a.xhtml"), STATE_DONE)
+        self.assertEqual(model2.state("b.xhtml"), STATE_PENDING)
+        self.assertEqual(model2.overall(), (2, 4))
+
+
+class TestBuildUnits(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="noesis-units-")
+        cls.book = build_sample_epub(os.path.join(cls.tmp, "sample.epub"))
+
+    def test_units_follow_engine_order(self):
+        from noesis_ebook_translator.progress_model import build_units
+
+        units = build_units(self.book)
+        files = [u.file for u in units]
+        self.assertEqual(files, ["chap_01.xhtml", "chap_02.xhtml"])
+        self.assertEqual(units[0].name, "Chapter 1")
+
+    def test_selection_filters_units(self):
+        from noesis_ebook_translator.progress_model import build_units
+
+        units = build_units(self.book, ["chap_02.xhtml"])
+        self.assertEqual([u.file for u in units], ["chap_02.xhtml"])
+
+    def test_natural_sort_keeps_numeric_order(self):
+        from noesis_ebook_translator.progress_model import ChapterUnit, ProgressModel
+
+        model = ProgressModel([ChapterUnit("c10.xhtml"), ChapterUnit("c2.xhtml")])
+        model.set_plan({"c10.xhtml": 1, "c2.xhtml": 1})
+        self.assertEqual([u.file for u in model.units], ["c2.xhtml", "c10.xhtml"])
+
+
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+class TestTranslateViewWidget(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication(["noesis-view"])
+
+    def _model(self, files):
+        from noesis_ebook_translator.progress_model import ChapterUnit, ProgressModel
+
+        return ProgressModel([ChapterUnit(f, f"Ch {i}") for i, f in enumerate(files)])
+
+    def test_modes_and_liquid_level(self):
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml"]))
+            self.assertEqual(view.track.mode(), "list")
+            self.assertEqual(view.track._list.count(), 3)
+
+            view.model().set_plan({"a.xhtml": 4, "b.xhtml": 4, "c.xhtml": 4})
+            view.model().apply({"counts": {"a.xhtml": 4, "b.xhtml": 4},
+                                "errors": {}, "cached": 0, "last": None})
+            view.refresh()
+            self.assertAlmostEqual(view.glass.level_value(), 8 / 12 * 100)
+            self.assertEqual(view.book_label.text(), "0%")  # set by _on_progress
+
+            # One or two units switch to the single-chapter card.
+            view.set_model(self._model(["only.xhtml"]))
+            self.assertEqual(view.track.mode(), "detail")
+        finally:
+            view.close()
+
+    def test_log_collapse_and_state_round_trip(self):
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            self.assertTrue(view.log_visible())
+            view.set_log_visible(False)
+            self.assertFalse(view.log.isVisible() or view.log_visible())
+            state = view.state()
+            self.assertFalse(state["log_visible"])
+            self.assertEqual(len(state["sizes"]), 4)
+            view.restore_state({"sizes": [1, 2, 3, 4], "log_visible": True})
+            self.assertTrue(view.log_visible())
+        finally:
+            view.close()
+
+    def test_narrow_window_stacks_the_bands(self):
+        from PyQt6.QtCore import Qt
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            view.resize(1400, 700)
+            view.resizeEvent(None)
+            self.assertEqual(view.splitter.orientation(),
+                             Qt.Orientation.Horizontal)
+            view.resize(800, 700)
+            view.resizeEvent(None)
+            self.assertEqual(view.splitter.orientation(), Qt.Orientation.Vertical)
+        finally:
+            view.close()
+
+    def test_title_switches_to_selection(self):
+        from noesis_ebook_translator.i18n import T
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            view.set_model(self._model(["a.xhtml"]), selection=True)
+            self.assertEqual(view.lbl_glass_title.text(), T("translate.selection"))
+            view.set_model(self._model(["a.xhtml"]), selection=False)
+            self.assertEqual(view.lbl_glass_title.text(), T("label.book"))
+        finally:
+            view.close()
+
+
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+class TestTranslationThroughTheGui(unittest.TestCase):
+    """End-to-end: the GUI bands reflect a real (offline) translation run."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication(["noesis-bands"])
+        cls.tmp = tempfile.mkdtemp(prefix="noesis-bands-")
+        cls.book = build_rich_epub(os.path.join(cls.tmp, "rich.epub"))
+        from tests.fixtures import register_fake_engine
+        register_fake_engine()
+
+    def _run(self, cfg):
+        import main
+
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        main.QMessageBox.warning = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        try:
+            window._apply_source(self.book)
+            window._start_translation(cfg)
+            deadline = time.time() + 60
+            while window.worker is not None and time.time() < deadline:
+                self.app.processEvents()
+                time.sleep(0.005)
+            self.app.processEvents()
+            return window, window.translate_view.model()
+        except Exception:
+            window.close()
+            raise
+
+    def _cfg(self, name, **overrides):
+        cfg = {"engine": "Fake", "source": "English", "target": "Italian",
+               "batching": False, "cache": True, "sequential": True,
+               "chapters": [], "grouping": "grouped", "folder": self.tmp,
+               "name": name, "bilingual": False}
+        cfg.update(overrides)
+        return cfg
+
+    def test_whole_book_finishes_and_reports_100(self):
+        from noesis_ebook_translator.i18n import T
+        from noesis_ebook_translator.progress_model import STATE_DONE
+
+        window, model = self._run(self._cfg("whole.epub"))
+        try:
+            self.assertIsNone(window.worker)
+            self.assertGreaterEqual(len(model.units), 3)
+            self.assertTrue(all(model.state(u.file) == STATE_DONE
+                                for u in model.tracked()))
+            self.assertEqual(model.overall_percent(), 100.0)
+            self.assertEqual(window.book_label.text(), "100%")
+            self.assertEqual(window.translate_view.glass.level_value(), 100.0)
+            # The log arrives in batches, so it is far shorter than 5 lines/segment.
+            self.assertGreater(window.log.blockCount(), 0)
+            self.assertLess(window.log.blockCount(), 200)
+            # Band 1 recaps the wizard choices (never the API key).
+            labels = [row[0] for row in window.translate_view.choices.rows()]
+            self.assertIn(T("label.input"), labels)
+            self.assertIn(T("label.output"), labels)
+        finally:
+            window.close()
+
+    def test_single_chapter_uses_detail_mode_and_selection_label(self):
+        from noesis_ebook_translator.i18n import T
+        from noesis_ebook_translator.progress_model import STATE_DONE
+
+        window, model = self._run(self._cfg("one.epub", chapters=["c2.xhtml"]))
+        try:
+            self.assertEqual(window.translate_view.track.mode(), "detail")
+            self.assertEqual([u.file for u in model.units], ["c2.xhtml"])
+            self.assertEqual(model.state("c2.xhtml"), STATE_DONE)
+            self.assertEqual(window.translate_view.lbl_glass_title.text(),
+                             T("translate.selection"))
+            self.assertEqual(model.overall_percent(), 100.0)
+        finally:
+            window.close()
+
+
+class TestSequentialPreference(unittest.TestCase):
+    def test_engine_preference_sets_and_removes_concurrency_limit(self):
+        from noesis_ebook_translator import appconfig
+
+        appconfig.ensure_defaults()
+        appconfig.set_engine_preference("Fake", concurrency_limit=1)
+        self.assertEqual(
+            appconfig.get_engine_preference("Fake").get("concurrency_limit"), 1)
+        # None *removes* the key: 0 would mean "as many workers as segments".
+        appconfig.set_engine_preference("Fake", concurrency_limit=None)
+        self.assertNotIn("concurrency_limit",
+                         appconfig.get_engine_preference("Fake"))
+        # Keys outside the allow-list are ignored.
+        appconfig.set_engine_preference("Fake", unrelated="x")
+        self.assertNotIn("unrelated", appconfig.get_engine_preference("Fake"))
+
+
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+class TestWizardSequentialOption(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication(["noesis-seq"])
+
+    def test_config_exposes_sequential(self):
+        from noesis_ebook_translator import appconfig
+        from noesis_ebook_translator.ui import TranslateWizard
+
+        appconfig.ensure_defaults()
+        tmp = tempfile.mkdtemp(prefix="noesis-seq-")
+        book = build_sample_epub(os.path.join(tmp, "sample.epub"))
+        wizard = TranslateWizard(None, mode="book", input_path=book)
+        try:
+            cfg = wizard.config()
+            self.assertIn("sequential", cfg)
+            self.assertIsInstance(cfg["sequential"], bool)
+            wizard.chk_sequential.setChecked(False)
+            self.assertFalse(wizard.config()["sequential"])
+        finally:
+            wizard.close()
