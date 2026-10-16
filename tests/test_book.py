@@ -11,7 +11,6 @@ class TestTranslatePipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         register_fake_engine()
-
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="noesis-et-e2e-")
         self.src = build_sample_epub(os.path.join(self.tmp, "book.epub"))
@@ -52,6 +51,54 @@ class TestTranslatePipeline(unittest.TestCase):
 
         self.assertTrue(
             book.default_output_path("/x/Book.epub", "Italian").endswith("_ITALIAN.epub"))
+
+    def test_nested_toc_titles_are_translated_too(self):
+        """Every TOC level must be written back, not just the top one.
+
+        Regression: ``TocNode.write_back()`` did not recurse, so the sub-level
+        entries were translated but kept the original language in the output.
+        """
+        from ebooklib import epub as epub_mod
+
+        from noesis_ebook_translator import book
+        from tests.fixtures import build_rich_epub
+
+        # build_rich_epub has a two-level TOC:
+        #   Introduction
+        #   Part Two  ->  Chapter 2, Chapter 3
+        src = build_rich_epub(os.path.join(self.tmp, "nested.epub"))
+        out = os.path.join(self.tmp, "nested_out.epub")
+        book.translate_epub(
+            src, out, engine="Fake",
+            source_lang="English", target_lang="Italian",
+            settings={"translation_position": "only", "cache_enabled": False})
+
+        def titles(nodes):
+            found = []
+            for item in nodes or []:
+                if isinstance(item, (tuple, list)):
+                    node = item[0]
+                    title = getattr(node, "title", None)
+                    if title:
+                        found.append(title)
+                    if len(item) > 1:
+                        found.extend(titles(item[1]))
+                    continue
+                title = getattr(item, "title", None)
+                if title:
+                    found.append(title)
+            return found
+
+        written = titles(epub_mod.read_epub(out).toc)
+        self.assertTrue(written, "the output book has no TOC")
+        # Top level (already worked) and the sub-levels (the regression).
+        self.assertIn("IT<Introduction>", written)
+        self.assertIn("IT<Part Two>", written)
+        self.assertIn("IT<Chapter 2>", written)
+        self.assertIn("IT<Chapter 3>", written)
+        # Nothing is left in the source language.
+        self.assertNotIn("Chapter 2", written)
+        self.assertNotIn("Part Two", written)
 
 
 if __name__ == "__main__":

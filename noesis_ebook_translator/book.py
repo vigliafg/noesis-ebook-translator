@@ -62,11 +62,19 @@ class TocNode:
         self.nodes = nodes or []
 
     def write_back(self) -> None:
+        """Copy the translated title over the ebooklib entry, **recursively**.
+
+        Nested entries are translated like the top level (they go through
+        ``get_toc_elements``), so their titles must be written back too:
+        without the recursion the sub-levels stayed in the original language.
+        """
         if self.source is not None:
             try:
                 self.source.title = self.title
             except Exception:  # pragma: no cover - defensive
                 pass
+        for child in self.nodes:
+            child.write_back()
 
 
 def _parse_pages(book: epub.EpubBook) -> list[Page]:
