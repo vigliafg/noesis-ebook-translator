@@ -128,6 +128,9 @@ class TranslateView(QWidget):
         log_layout.addLayout(log_header)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
+        # The engine logs ~5 lines per segment; cap the document so a very large
+        # book cannot grow the widget without bound (the tail is what matters).
+        self.log.setMaximumBlockCount(50000)
         self.log.setSizePolicy(QSizePolicy.Policy.Expanding,
                                QSizePolicy.Policy.Expanding)
         log_layout.addWidget(self.log, 1)

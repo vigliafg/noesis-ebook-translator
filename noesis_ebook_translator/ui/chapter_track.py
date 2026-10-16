@@ -90,9 +90,13 @@ class _UnitDelegate(QStyledItemDelegate):
         metrics = painter.fontMetrics()
 
         count = f"{done}/{total}" if total else "—"
+        exported = bool(data.get("exported"))
+        badge = 0
+        if exported:
+            badge = 18
         count_width = metrics.horizontalAdvance(count) + 8
         text_left = marker.right() + 7
-        text_width = max(10, rect.right() - count_width - text_left - 6)
+        text_width = max(10, rect.right() - count_width - badge - text_left - 6)
 
         if state == STATE_RUNNING:
             name_color = QColor(accent)
@@ -107,10 +111,21 @@ class _UnitDelegate(QStyledItemDelegate):
                          int(Qt.AlignmentFlag.AlignVCenter), name)
 
         painter.setPen(colors["muted"])
-        painter.drawText(QRect(rect.right() - count_width - 6, rect.top(),
+        painter.drawText(QRect(rect.right() - count_width - badge - 6, rect.top(),
                                count_width, ROW_HEIGHT),
                          int(Qt.AlignmentFlag.AlignRight
                              | Qt.AlignmentFlag.AlignVCenter), count)
+
+        if exported:
+            export_icon = icon("export")
+            box = QRect(rect.right() - 18, rect.top() + (ROW_HEIGHT - 13) // 2,
+                        13, 13)
+            if not export_icon.isNull():
+                export_icon.paint(painter, box)
+            else:  # pragma: no cover - icon always shipped
+                painter.setBrush(colors["done"])
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.drawRect(box.adjusted(4, 4, -4, -4))
 
         if state == STATE_RUNNING and total > 0:
             bar = QRect(rect.left() + 6 + depth * 12, rect.bottom() - 2,
@@ -283,7 +298,8 @@ class ChapterTrackWidget(QWidget):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole,
                          {"name": unit.label(), "depth": unit.depth,
-                          "done": 0, "total": 0, "state": ""})
+                          "done": 0, "total": 0, "state": "",
+                          "exported": False})
             self._list.addItem(item)
             self._files.append(unit.file)
 
@@ -298,9 +314,10 @@ class ChapterTrackWidget(QWidget):
                 continue
             done, total = model.progress(unit.file)
             state = model.state(unit.file)
-            key = (done, state)
+            key = (done, state, model.exported)
             data = {"name": unit.label(), "depth": unit.depth,
-                    "done": done, "total": total, "state": state}
+                    "done": done, "total": total, "state": state,
+                    "exported": model.exported}
             item.setData(Qt.ItemDataRole.UserRole, data)
             if self._snapshot.get(unit.file) != key:
                 self._snapshot[unit.file] = key
@@ -330,8 +347,12 @@ class ChapterTrackWidget(QWidget):
         self.bar_detail.set_busy(model.state(current) == STATE_RUNNING)
         if model.last:
             self.lbl_last_text.setText(model.last[1])
-        self.lbl_cached.setText(f"{T('translate.cached')}: {model.cached}"
-                                if model.cached else "")
+        bits = []
+        if model.cached:
+            bits.append(f"{T('translate.cached')}: {model.cached}")
+        if model.exported:
+            bits.append(T("translate.exported"))
+        self.lbl_cached.setText(" · ".join(bits))
 
     def _update_timer(self) -> None:
         model = self._model

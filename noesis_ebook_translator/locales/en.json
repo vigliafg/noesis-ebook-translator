@@ -81,6 +81,7 @@
   "position.below": "Below the original",
   "position.above": "Above the original",
   "status.ready": "Ready",
+  "status.exporting": "Exporting…",
   "status.translating": "Translating…",
   "status.done": "Done",
   "status.failed": "Failed",

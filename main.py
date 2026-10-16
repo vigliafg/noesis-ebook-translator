@@ -125,6 +125,31 @@ class TranslationWorker(QThread):
             self.failed.emit(traceback.format_exc())
 
 
+class SplitWorker(QThread):
+    """Splits the translated EPUB into one file per chapter, off the UI thread.
+
+    ``segment.split_epub`` reads and writes every chapter, which used to block the
+    window for seconds; running it in a thread keeps the view responsive (and lets
+    the chapters show their "exported" state only when it is really done).
+    """
+
+    done = pyqtSignal(list)
+    failed = pyqtSignal(str)
+
+    def __init__(self, path: str, folder: str, parent=None) -> None:
+        super().__init__(parent)
+        self.path = path
+        self.folder = folder
+
+    def run(self) -> None:  # noqa: D401 - QThread entry point
+        try:
+            from noesis_ebook_translator import segment
+            written = segment.split_epub(self.path, self.folder, mode="flat")
+            self.done.emit(list(written))
+        except Exception:  # noqa: BLE001 - surfaced to the UI
+            self.failed.emit(traceback.format_exc())
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -142,6 +167,9 @@ class MainWindow(QMainWindow):
         self._initializing = False
         self._ribbon_index = 0
         self._pending_split = None
+        self._split_worker = None
+        self._split_ok = False
+        self._split_message = ""
         self._chapters_total = 0
         self._build_workflow()
         self._build_body()
@@ -1132,21 +1160,46 @@ class MainWindow(QMainWindow):
                 self.chapters.load_current()
             except Exception:  # noqa: BLE001
                 pass
-        message = T("msg.done").format(path)
-        exported = False
+        self.translate_view.set_finished(ok=True, exported=False)
         if self._pending_split:
-            try:
-                from noesis_ebook_translator import segment
-                written = segment.split_epub(
-                    path, self._pending_split["folder"], mode="flat")
-                message += "\n" + T("msg.export_done").format("\n".join(written))
-                exported = True
-            except Exception as exc:  # noqa: BLE001
-                message += "\n" + T("msg.export_failed").format(exc)
-            finally:
-                self._pending_split = None
-        self.translate_view.set_finished(ok=True, exported=exported)
+            # One EPUB per chapter: keep the message for when the split is done.
+            self._split_ok = False
+            self._split_message = ""
+            self._start_split(path)
+        else:
+            self._status_message(T("msg.done").format(path))
+
+    def _start_split(self, path: str) -> None:
+        """Split the translated EPUB in the background (chapter mode)."""
+        self.status.set_base_text(T("status.exporting"))
+        self.status.start_busy()
+        self._split_worker = SplitWorker(path, self._pending_split["folder"], self)
+        self._split_worker.done.connect(self._on_split_done)
+        self._split_worker.failed.connect(self._on_split_failed)
+        self._split_worker.finished.connect(self._on_split_finished)
+        self._split_worker.start()
+
+    def _on_split_done(self, written) -> None:
+        self._split_ok = True
+        self._split_message = T("msg.export_done").format("\n".join(written))
+
+    def _on_split_failed(self, message: str) -> None:
+        self._split_ok = False
+        self.log.appendPlainText(message)
+        self._split_message = T("msg.export_failed").format(
+            message.strip().splitlines()[-1] if message.strip() else message)
+
+    def _on_split_finished(self) -> None:
+        self._split_worker = None
+        self._pending_split = None
+        self.status.stop_busy()
+        self.status.set_base_text(T("status.done"))
+        self.translate_view.set_finished(ok=True, exported=self._split_ok)
+        message = T("msg.done").format(self._output_path)
+        if self._split_message:
+            message += "\n" + self._split_message
         self._status_message(message)
+        self._enable_actions()
 
     def _on_failed(self, message: str) -> None:
         self.progress.set_busy(False)
@@ -1157,11 +1210,16 @@ class MainWindow(QMainWindow):
         self.translate_view.set_finished(ok=False)
         self._status_message(message.splitlines()[-1])
 
-    def _on_worker_done(self) -> None:
-        self.worker = None
+    def _enable_actions(self) -> None:
         self.btn_translate.setEnabled(True)
         self.btn_translate_chapters.setEnabled(True)
         self.btn_cancel.setEnabled(False)
+
+    def _on_worker_done(self) -> None:
+        self.worker = None
+        # Keep the actions disabled while the per-chapter split is still running.
+        if self._split_worker is None:
+            self._enable_actions()
 
 
 def main(argv: list[str] | None = None) -> int:

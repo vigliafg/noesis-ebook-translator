@@ -296,7 +296,9 @@ class TestTranslationThroughTheGui(unittest.TestCase):
             window._apply_source(self.book)
             window._start_translation(cfg)
             deadline = time.time() + 60
-            while window.worker is not None and time.time() < deadline:
+            while ((window.worker is not None
+                    or window._split_worker is not None)
+                   and time.time() < deadline):
                 self.app.processEvents()
                 time.sleep(0.005)
             self.app.processEvents()
@@ -348,6 +350,24 @@ class TestTranslationThroughTheGui(unittest.TestCase):
             self.assertEqual(window.translate_view.lbl_glass_title.text(),
                              T("translate.selection"))
             self.assertEqual(model.overall_percent(), 100.0)
+        finally:
+            window.close()
+
+    def test_grouping_single_splits_in_background_and_marks_exported(self):
+        """Criterion 11: one EPUB per chapter, exported off the UI thread."""
+        from noesis_ebook_translator.progress_model import STATE_DONE
+
+        folder = tempfile.mkdtemp(prefix="noesis-split-")
+        window, model = self._run(self._cfg(
+            "split.epub", chapters=["c1.xhtml", "c2.xhtml", "c3.xhtml"],
+            grouping="single", folder=folder))
+        try:
+            self.assertIsNone(window.worker)
+            self.assertIsNone(window._split_worker)
+            self.assertTrue(model.exported)
+            self.assertEqual(model.state("c1.xhtml"), STATE_DONE)
+            produced = [f for f in os.listdir(folder) if f.endswith(".epub")]
+            self.assertGreaterEqual(len(produced), 3)
         finally:
             window.close()
 
