@@ -121,6 +121,16 @@ def run_reader_harness(mode: str, book_path: str, *, wait: float = 20.0,
     if not report.navigated and mode == "full" and not report.ready:
         report.notes.append("full backend not ready (headless/GPU?)")
 
+    # Hand the WebEngine page back before the process exits (otherwise Chromium
+    # warns that the profile was released with the page still alive).
+    teardown = getattr(backend, "shutdown", None)
+    if callable(teardown):
+        try:
+            teardown()
+            app.processEvents()
+        except Exception as exc:  # noqa: BLE001
+            report.notes.append(f"shutdown: {exc}")
+
     return report
 
 

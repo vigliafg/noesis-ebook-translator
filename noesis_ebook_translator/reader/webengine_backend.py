@@ -24,6 +24,23 @@ from .scheme import ReaderSchemeHandler, book_url, ensure_scheme
 
 _SUPPORTED = {".epub", ".mobi", ".azw", ".azw3", ".kf8", ".fb2", ".cbz", ".pdf"}
 
+#: Chromium console messages we know are harmless. foliate-js sandboxes each
+#: section iframe with "allow-same-origin allow-scripts" (it needs scripts for
+#: events, see ``foliate-js/paginator.js``), and Chromium reports that once per
+#: iframe. Everything else is forwarded to stderr as Qt does by default.
+_IGNORED_CONSOLE = (
+    "An iframe which has both allow-scripts and allow-same-origin",
+)
+
+
+class _ReaderPage(QWebEnginePage):
+    """Reader page that keeps the terminal free of known Chromium noise."""
+
+    def javaScriptConsoleMessage(self, level, message, line, source):  # noqa: N802
+        if any(needle in (message or "") for needle in _IGNORED_CONSOLE):
+            return
+        super().javaScriptConsoleMessage(level, message, line, source)
+
 
 class Bridge(QObject):
     """Receives events from the foliate reader page (JS → Python)."""
@@ -73,7 +90,7 @@ class WebEngineBackend(QWidget):
         self._profile.installUrlSchemeHandler(b"app", self._handler)
 
         self.view = QWebEngineView(self)
-        self._page = QWebEnginePage(self._profile, self.view)
+        self._page = _ReaderPage(self._profile, self.view)
         self.view.setPage(self._page)
         layout.addWidget(self.view)
 
@@ -107,6 +124,36 @@ class WebEngineBackend(QWidget):
         self._from_foliate: dict[str, str] = {}
 
         self._page.load(QUrl("app://reader/reader.html"))
+
+    def shutdown(self) -> None:
+        """Delete the page before its profile is released.
+
+        Otherwise Chromium prints "Release of profile requested but
+        WebEnginePage still not deleted. Expect troubles !" when the process
+        exits. ``deleteLater`` is not enough: deferred deletes are only handled
+        on a later event-loop iteration, which may never come at shutdown.
+        """
+        from PyQt6 import sip
+
+        for name in ("_page", "view"):
+            widget = getattr(self, name, None)
+            if widget is None or sip.isdeleted(widget):
+                continue
+            try:
+                widget.setParent(None)
+            except Exception:  # noqa: BLE001 - teardown must never raise
+                pass
+            sip.delete(widget)
+            setattr(self, name, None)
+        # The profile must outlive its pages.
+        profile = getattr(self, "_profile", None)
+        if profile is not None and not sip.isdeleted(profile):
+            try:
+                profile.setParent(None)
+            except Exception:  # noqa: BLE001
+                pass
+            sip.delete(profile)
+        self._profile = None
 
     # ------------------------------------------------------------------ JS
     def _load_book(self, url: str) -> None:

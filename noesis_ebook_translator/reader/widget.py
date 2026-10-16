@@ -56,6 +56,20 @@ class ReaderWidget(QWidget):
         self.second.positionChanged.connect(self._on_second_scroll)
 
     # ------------------------------------------------------------------ UI
+    def shutdown(self) -> None:
+        """Tear the readers down (called when the window closes)."""
+        for backend in (self.backend, self.second):
+            teardown = getattr(backend, "shutdown", None)
+            if callable(teardown):
+                try:
+                    teardown()
+                except Exception:  # noqa: BLE001 - never block closing
+                    pass
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self.shutdown()
+        super().closeEvent(event)
+
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)

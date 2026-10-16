@@ -133,6 +133,7 @@
   "library.remove": "Retirer",
   "library.filter": "Filtrer par titre…",
   "library.empty": "Aucun livre.",
+  "library.empty": "Aucun élément dans cette vue",
   "library.translated": "Traduit",
   "library.original": "Original",
   "chapters.title": "Chapitres",

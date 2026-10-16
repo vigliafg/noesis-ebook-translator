@@ -244,6 +244,7 @@ class MainWindow(QMainWindow):
         self.reader.spreadChanged.connect(
             lambda on: appconfig.save_settings({"reader_spread": bool(on)}))
         self.library = LibraryWidget(self.reader.session)
+        self.library.changed.connect(self._sync_library_buttons)
         self.chapters = ChaptersWidget()
         self.chapters.translateRequested.connect(self._translate_chapters)
         self.chapters.exportRequested.connect(self._export_chapters)
@@ -276,6 +277,14 @@ class MainWindow(QMainWindow):
         # F11 toggles real full screen (no frame); the app starts maximised.
         self._fullscreen_shortcut = QShortcut(QKeySequence("F11"), self)
         self._fullscreen_shortcut.activated.connect(self.toggle_fullscreen)
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        """Tear the reader down before the WebEngine profile is released."""
+        try:
+            self.reader.shutdown()
+        except Exception:  # noqa: BLE001 - closing must never fail
+            pass
+        super().closeEvent(event)
 
     # ------------------------------------------------------------- helpers
     def _engine_names(self) -> list[str]:
@@ -422,6 +431,7 @@ class MainWindow(QMainWindow):
         self.workflow.book_toast.set_reduce_motion(self._reduce_motion)
         self.translate_view.restore_state(settings.get("translate_view"))
         self._apply_view_theme(settings.get("ui_theme", "system"))
+        self._sync_library_buttons()
         self._refresh_choices()
         # Reader defaults (theme is separate from the app theme) + quick controls
         reader_themes = ("light", "sepia", "dark")
@@ -784,10 +794,32 @@ class MainWindow(QMainWindow):
     def set_library_view(self, view: str) -> None:
         self.tabs.setCurrentWidget(self.library)
         self.library.set_view(view)
+        self._sync_library_buttons()
 
     def set_library_layout(self, layout: str) -> None:
         self.tabs.setCurrentWidget(self.library)
         self.library.set_layout(layout)
+        self._sync_library_buttons()
+
+    def _sync_library_buttons(self) -> None:
+        """Show which library view/layout is active, and how much it holds."""
+        try:
+            counts = self.library.counts()
+        except Exception:  # noqa: BLE001 - cosmetic only
+            counts = {}
+        groups = (
+            (getattr(self.workflow, "library_view_buttons", {}),
+             self.library.view()),
+            (getattr(self.workflow, "library_layout_buttons", {}),
+             self.library.layout_mode()),
+        )
+        for buttons, active in groups:
+            for name, button in buttons.items():
+                button.blockSignals(True)
+                button.setChecked(name == active)
+                button.blockSignals(False)
+                if name in counts:
+                    button.setToolTip(f"{T(f'view.{name}')} ({counts[name]})")
 
     def _on_assets_edition_changed(self, _index: int) -> None:
         self._assets_edition = (

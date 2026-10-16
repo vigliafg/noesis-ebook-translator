@@ -333,6 +333,33 @@ class TestWidgets(unittest.TestCase):
             self.assertEqual(window.library.view(), "translated")
             window.set_library_view("chapters")
             self.assertEqual(window.library.view(), "chapters")
+
+            # The toolbar buttons show the active view (and layout), so the two
+            # content views cannot look identical any more.
+            views = window.workflow.library_view_buttons
+            layouts = window.workflow.library_layout_buttons
+            window.set_library_view("translated")
+            self.assertTrue(views["translated"].isChecked())
+            self.assertFalse(views["original"].isChecked())
+            self.assertFalse(views["chapters"].isChecked())
+            self.assertIn("(", views["original"].toolTip())   # item count
+            window.set_library_view("original")
+            self.assertTrue(views["original"].isChecked())
+            self.assertFalse(views["translated"].isChecked())
+            window.set_library_layout("list")
+            self.assertTrue(layouts["list"].isChecked())
+            self.assertFalse(layouts["grid"].isChecked())
+            window.set_library_layout("grid")
+            self.assertTrue(layouts["grid"].isChecked())
+
+            # Views with nothing to show say so instead of looking empty/equal.
+            window.set_library_view("original")
+            window.library.edt_filter.setText("zzz-nothing-matches")
+            self.assertEqual(window.library.list.count(), 0)
+            self.assertFalse(window.library.lbl_empty.isHidden())
+            window.library.edt_filter.clear()
+            self.assertFalse(window.library.list.count() == 0)
+            self.assertTrue(window.library.lbl_empty.isHidden())
         finally:
             window.close()
 
@@ -421,6 +448,31 @@ class TestPaths(unittest.TestCase):
                 _os.environ.pop("NOESIS_CONFIG_DIR", None)
             else:
                 _os.environ["NOESIS_CONFIG_DIR"] = old
+
+
+class TestOpenItemGuard(unittest.TestCase):
+    """Regression: double-clicking a library row could pass ``None``."""
+
+    @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+    def test_open_item_without_item_does_not_raise(self):
+        from noesis_ebook_translator.reader.panels import LibraryWidget
+
+        app = QApplication.instance() or QApplication(["noesis-library"])
+
+        class _Session:
+            def recent(self):
+                return []
+
+        widget = LibraryWidget(_Session())
+        emitted = []
+        widget.openRequested.connect(emitted.append)
+        try:
+            widget._open_item(None)            # used to raise AttributeError
+            widget._open_item()                # no item at all
+            self.assertEqual(emitted, [])
+        finally:
+            widget.close()
+        self.assertIsNotNone(app)
 
 
 if __name__ == "__main__":

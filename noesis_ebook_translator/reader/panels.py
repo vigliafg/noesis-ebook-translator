@@ -79,6 +79,7 @@ class LibraryWidget(QWidget):
     """
 
     openRequested = pyqtSignal(str)
+    changed = pyqtSignal()
 
     def __init__(self, session, parent=None) -> None:
         super().__init__(parent)
@@ -107,6 +108,11 @@ class LibraryWidget(QWidget):
         self.list.itemActivated.connect(self._open_item)
         self.list.itemDoubleClicked.connect(self._open_item)
         layout.addWidget(self.list, 1)
+
+        self.lbl_empty = QLabel(T("library.empty"))
+        self.lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_empty.hide()
+        layout.addWidget(self.lbl_empty)
 
         self.btn_add.clicked.connect(self._add)
         self.btn_remove.clicked.connect(self._remove)
@@ -155,6 +161,26 @@ class LibraryWidget(QWidget):
             self._refresh_chapters(needle)
         else:
             self._refresh_books(needle)
+        empty = self.list.count() == 0
+        self.lbl_empty.setVisible(empty)
+        self.list.setVisible(not empty)
+        self.changed.emit()
+
+    def counts(self) -> dict[str, int]:
+        """How many books/chapters each view would show (for the tooltips)."""
+        try:
+            books = list(self.session.recent())
+        except Exception:  # noqa: BLE001 - best effort
+            books = []
+        try:
+            chapters = list(self.store.all())
+        except Exception:  # noqa: BLE001
+            chapters = []
+        return {
+            "original": len(books),
+            "translated": sum(1 for e in books if e.get("translated_path")),
+            "chapters": len(chapters),
+        }
 
     def _refresh_books(self, needle: str) -> None:
         for entry in self.session.recent():
@@ -230,8 +256,19 @@ class LibraryWidget(QWidget):
         self.session.remove_recent(item.data(Qt.ItemDataRole.UserRole))
         self.refresh()
 
-    def _open_item(self, item: QListWidgetItem) -> None:
-        self.openRequested.emit(item.data(Qt.ItemDataRole.UserRole))
+    def _open_item(self, item: QListWidgetItem | None = None) -> None:
+        """Open the double-clicked/activated book.
+
+        ``itemActivated`` and ``itemDoubleClicked`` can fire with no item (Enter
+        on an empty list, or the row removed while the event was queued), so fall
+        back to the current row and do nothing when there is none.
+        """
+        item = item or self.list.currentItem()
+        if item is None:
+            return
+        path = item.data(Qt.ItemDataRole.UserRole)
+        if path:
+            self.openRequested.emit(path)
 
 
 class FiguresWidget(QWidget):

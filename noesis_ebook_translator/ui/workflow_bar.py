@@ -493,12 +493,22 @@ def build_workflow(window) -> WorkflowBar:
     p.button("action.open_reader", "reader", window.on_open_reader)
     p.button("action.refresh", "refresh", window.on_refresh)
     p.panel("panel.content")
-    p.button("view.original", "library", lambda: window.set_library_view("original"))
-    p.button("view.translated", "check", lambda: window.set_library_view("translated"))
-    p.button("view.chapters", "chapters", lambda: window.set_library_view("chapters"))
+    #: Buttons are checkable so the active view is visible; MainWindow keeps
+    #: them in sync (with item counts in the tooltips).
+    bar.library_view_buttons = {}
+    for key, view, icon_name in (("view.original", "original", "library"),
+                                 ("view.translated", "translated", "check"),
+                                 ("view.chapters", "chapters", "chapters")):
+        bar.library_view_buttons[view] = p.button(
+            key, icon_name, lambda v=view: window.set_library_view(v),
+            checkable=True)
     p.panel("panel.view")
-    p.button("view.grid", "assets", lambda: window.set_library_layout("grid"))
-    p.button("view.list", "format", lambda: window.set_library_layout("list"))
+    bar.library_layout_buttons = {}
+    for key, mode, icon_name in (("view.grid", "grid", "assets"),
+                                 ("view.list", "list", "format")):
+        bar.library_layout_buttons[mode] = p.button(
+            key, icon_name, lambda m=mode: window.set_library_layout(m),
+            checkable=True)
     p.panel("panel.actions")
     p.button("action.compare", "parallel", window.on_compare)
     p.button("action.retranslate", "translate", window.on_retranslate)
