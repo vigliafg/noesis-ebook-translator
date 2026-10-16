@@ -31,6 +31,10 @@ APP_DEFAULTS: dict[str, Any] = {
     "online_batching": False,
     "merge_enabled": False,
     "cache_enabled": True,
+    # Translate one segment at a time (concurrency_limit = 1). Keeps the
+    # per-chapter progress view truthful: a single chapter is "in progress".
+    # Slower with engines that would otherwise run many requests in parallel.
+    "translate_sequential": True,
     "filter_scope": "text",
     "rule_mode": "normal",
     "ebook_metadata": {"metadata_translation": False},

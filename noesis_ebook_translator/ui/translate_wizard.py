@@ -93,7 +93,13 @@ class TranslateWizard(QWizard):
         self.chk_cache.setChecked(bool(settings.get("cache_enabled", True)))
         self.chk_batch = QCheckBox(T("label.batch"))
         self.chk_batch.setChecked(bool(settings.get("online_batching", False)))
-        for widget in (self.chk_bilingual, self.chk_cache, self.chk_batch):
+        self.chk_sequential = QCheckBox(T("label.sequential"))
+        self.chk_sequential.setChecked(
+            bool(settings.get("translate_sequential", True)))
+        self.lbl_sequential_hint = QLabel(T("label.sequential_hint"))
+        self.lbl_sequential_hint.setWordWrap(True)
+        for widget in (self.chk_bilingual, self.chk_cache, self.chk_batch,
+                       self.chk_sequential, self.lbl_sequential_hint):
             options_layout.addWidget(widget)
         self.radio_grouped = QRadioButton(T("grouping.grouped"))
         self.radio_single = QRadioButton(T("grouping.single"))
@@ -185,6 +191,7 @@ class TranslateWizard(QWizard):
             "bilingual": self.chk_bilingual.isChecked(),
             "cache": self.chk_cache.isChecked(),
             "batching": self.chk_batch.isChecked(),
+            "sequential": self.chk_sequential.isChecked(),
             "chapters": self.selected_chapters(),
             "grouping": "single" if self.radio_single.isChecked() else "grouped",
             "folder": folder,

@@ -261,6 +261,8 @@
   "grouping.single": "Un EPUB per capitolo",
   "label.output_name": "Nome file",
   "label.output_folder": "Cartella",
+  "label.sequential": "Traduzione sequenziale (un capitolo alla volta)",
+  "label.sequential_hint": "Mantiene vera la progressione per capitolo nella vista Traduci. Con alcuni motori è più lento.",
   "label.select_chapters": "Seleziona i capitoli",
   "action.browse": "Sfoglia…",
   "label.book": "Libro",

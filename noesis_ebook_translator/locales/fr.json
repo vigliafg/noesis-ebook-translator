@@ -261,6 +261,8 @@
   "grouping.single": "Un EPUB par chapitre",
   "label.output_name": "Nom du fichier",
   "label.output_folder": "Dossier",
+  "label.sequential": "Traduction séquentielle (un chapitre à la fois)",
+  "label.sequential_hint": "Garde la progression par chapitre fidèle dans la vue Traduire. Plus lent avec certains moteurs.",
   "label.select_chapters": "Sélectionner les chapitres",
   "action.browse": "Parcourir…",
   "label.book": "Livre",

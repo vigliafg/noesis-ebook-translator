@@ -918,14 +918,20 @@ class MainWindow(QMainWindow):
         self.lbl_output.setText(self._output_path)
 
         api_key = cfg.get("api_key", "")
+        # "Sequential" pins concurrency_limit=1 (one segment at a time) so the
+        # per-chapter progress is truthful. Passing None *removes* the key, so the
+        # engine class default (1 for most, unlimited for GenAI/DeepSeek) applies.
+        sequential = bool(cfg.get("sequential", True))
         appconfig.set_engine_preference(
             engine, api_keys=[api_key] if api_key else [],
-            model=cfg.get("model") or None)
+            model=cfg.get("model") or None,
+            concurrency_limit=1 if sequential else None)
         settings = {
             "translate_engine": engine,
             "translation_position": "below" if cfg.get("bilingual") else "only",
             "cache_enabled": bool(cfg.get("cache", True)),
             "online_batching": bool(cfg.get("batching", False)),
+            "translate_sequential": sequential,
             "ui_source_lang": source,
             "ui_target_lang": target,
         }
