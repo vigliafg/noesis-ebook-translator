@@ -260,6 +260,31 @@ class TestTranslateViewWidget(unittest.TestCase):
         finally:
             view.close()
 
+    def test_view_state_persists_across_windows(self):
+        """Criterion 5: log visibility and band sizes survive a restart."""
+        import main
+
+        window = main.MainWindow()
+        try:
+            window.translate_view.set_log_visible(False)
+            window.translate_view.splitter.setSizes([10, 20, 30, 1])
+            window._save_view_state()
+        finally:
+            window.close()
+        window = main.MainWindow()
+        try:
+            self.assertFalse(window.translate_view.log_visible())
+            self.assertEqual(window.translate_view.state()["log_visible"], False)
+        finally:
+            window.close()
+        # Leave the shared test config in the default state for other tests.
+        window = main.MainWindow()
+        try:
+            window.translate_view.set_log_visible(True)
+            window._save_view_state()
+        finally:
+            window.close()
+
     def test_painting_the_rows_works_for_every_state(self):
         """Smoke the delegate: every state (and the export badge) must paint."""
         from noesis_ebook_translator.progress_model import ProgressModel
