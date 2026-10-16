@@ -322,6 +322,18 @@ class MainWindow(QMainWindow):
         except Exception:  # noqa: BLE001 - best effort
             self._chapters_total = 0
 
+    @staticmethod
+    def _book_label(path: str) -> str:
+        """Title from the EPUB metadata, falling back to the file name."""
+        try:
+            from noesis_ebook_translator.chapters import book_meta
+            title = (book_meta(path) or {}).get("title") or ""
+            if title.strip():
+                return title.strip()
+        except Exception:  # noqa: BLE001 - best effort
+            pass
+        return os.path.splitext(os.path.basename(path))[0]
+
     def _save_view_state(self) -> None:
         if getattr(self, "_initializing", False):
             return
@@ -368,6 +380,7 @@ class MainWindow(QMainWindow):
         self._output_path = book.default_output_path(path, self.cmb_target.currentText())
         self._refresh_chapters_total()
         self._refresh_choices()
+        self.workflow.set_book(self._book_label(path))
         self.status.set_base_text(T("status.ready"))
         source = self._assets_source()
         for panel in (self.figures, self.tables, self.texts, self.chapters,
@@ -405,6 +418,7 @@ class MainWindow(QMainWindow):
         self.progress.set_reduce_motion(self._reduce_motion)
         self.chapter_bar.set_reduce_motion(self._reduce_motion)
         self.translate_view.set_reduce_motion(self._reduce_motion)
+        self.workflow.book_toast.set_reduce_motion(self._reduce_motion)
         self.translate_view.restore_state(settings.get("translate_view"))
         self._apply_view_theme(settings.get("ui_theme", "system"))
         self._refresh_choices()
@@ -473,6 +487,7 @@ class MainWindow(QMainWindow):
             app = QApplication.instance()
             mode = mode or self._settings.get("ui_theme", "system")
             self.translate_view.set_theme(mode, system_is_dark(app))
+            self.workflow.book_toast.set_theme(mode, system_is_dark(app))
         except Exception:  # noqa: BLE001 - theming is best effort
             pass
 
@@ -490,6 +505,7 @@ class MainWindow(QMainWindow):
         self.progress.set_reduce_motion(self._reduce_motion)
         self.chapter_bar.set_reduce_motion(self._reduce_motion)
         self.translate_view.set_reduce_motion(self._reduce_motion)
+        self.workflow.book_toast.set_reduce_motion(self._reduce_motion)
         appconfig.save_settings({"reduce_motion": self._reduce_motion})
 
     def _set_reader_backend(self, backend: str) -> None:
@@ -1133,6 +1149,8 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(self._on_worker_done)
 
         self.log.clear()
+        self.workflow.set_book(self._book_label(self._input_path), percent=0,
+                               working=True)
         self.btn_translate.setEnabled(False)
         self.btn_translate_chapters.setEnabled(False)
         self.btn_cancel.setEnabled(True)
@@ -1165,6 +1183,7 @@ class MainWindow(QMainWindow):
             self.log.appendPlainText("\n".join(payload["log"]))
         self.translate_view.refresh()
         percent = model.overall_percent()
+        self.workflow.set_book_percent(int(percent))
         self._on_progress(percent / 100.0, "")
         if self.worker is not None:
             self.worker.release_flush()
@@ -1210,6 +1229,8 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001
                 pass
         self.translate_view.set_finished(ok=True, exported=False)
+        self.workflow.set_book(self._book_label(self._input_path), percent=100,
+                               working=False)
         if self._pending_split:
             # One EPUB per chapter: keep the message for when the split is done.
             self._split_ok = False
@@ -1257,6 +1278,7 @@ class MainWindow(QMainWindow):
         self.status.set_base_text(T("status.failed"))
         self.log.appendPlainText(message)
         self.translate_view.set_finished(ok=False)
+        self.workflow.set_book_working(False)
         self._status_message(message.splitlines()[-1])
 
     def _enable_actions(self) -> None:

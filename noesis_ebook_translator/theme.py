@@ -12,8 +12,9 @@ __all__ = [
     "liquid",
 ]
 
-#: Ordered theme ids shown in the UI.
-THEMES = ("system", "light", "dark", "sepia")
+#: Ordered theme ids shown in the UI. (The reader has its own theme list, which
+#: still includes ``sepia``: that is a page-background choice, not a UI theme.)
+THEMES = ("system", "light", "dark")
 
 #: Backwards-compatible alias (older callers imported ``MODES``).
 MODES = THEMES
@@ -23,7 +24,6 @@ THEME_LABELS = {
     "system": "System",
     "light": "Light",
     "dark": "Dark",
-    "sepia": "Sepia",
 }
 
 #: Reader theme used by the backends for each app theme. ``system`` resolves to
@@ -32,7 +32,6 @@ _READER_THEME = {
     "system": None,
     "light": "light",
     "dark": "dark",
-    "sepia": "sepia",
 }
 
 #: Foreground/background hints for embedding (e.g. generated HTML exports).
@@ -41,8 +40,6 @@ _PALETTES = {
               "accent": "#2d6cdf", "surface": "#ffffff"},
     "dark": {"background": "#1f2227", "foreground": "#e8eaed",
              "accent": "#4c8bf5", "surface": "#2a2e35"},
-    "sepia": {"background": "#f4ecd8", "foreground": "#4a3f2f",
-              "accent": "#a06a2c", "surface": "#fbf3e0"},
 }
 
 #: Colours of the "liquid" progress fill (cover + rising water). Copied from the
@@ -53,8 +50,6 @@ _LIQUID = {
              "text": "#ffffff", "accent": "#4f8cff"},
     "light": {"bg": "#e6f2f3f5", "caption_bg": "#e6ffffff",
               "text": "#1c2430", "accent": "#4f8cff"},
-    "sepia": {"bg": "#e6f4ecd8", "caption_bg": "#e6fbf3e0",
-              "text": "#4a3f2f", "accent": "#4f8cff"},
 }
 
 _LIGHT = """
@@ -157,56 +152,9 @@ QPlainTextEdit { font-family: monospace; }
 #detailText { color: #9aa4b2; }
 """
 
-_SEPIA = """
-QWidget { background: #f4ecd8; color: #4a3f2f; }
-QPlainTextEdit, QLineEdit, QComboBox, QSpinBox, QTextEdit, QTextBrowser {
-    background: #fbf3e0; border: 1px solid #d8c9a6; border-radius: 4px;
-    padding: 3px 6px; color: #4a3f2f; selection-background-color: #a06a2c;
-}
-QPushButton { background: #ecdfc2; border: 1px solid #d0bd93; border-radius: 4px;
-    padding: 4px 10px; color: #4a3f2f; }
-QPushButton:hover { background: #e5d5b3; }
-QPushButton:checked { background: #dcc79b; border-color: #a06a2c; }
-QProgressBar { border: 1px solid #d0bd93; border-radius: 4px; text-align: center;
-    color: #4a3f2f; }
-QProgressBar::chunk { background: #a06a2c; border-radius: 3px; }
-QGroupBox { border: 1px solid #d8c9a6; border-radius: 6px; margin-top: 10px;
-    padding: 8px; }
-QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 3px; }
-QTabWidget::pane { border: 1px solid #d8c9a6; border-radius: 6px; }
-QTabBar::tab { background: #ecdfc2; padding: 5px 12px; margin-right: 2px;
-    border-top-left-radius: 4px; border-top-right-radius: 4px; }
-QTabBar::tab:selected { background: #fbf3e0; border-bottom: 2px solid #a06a2c; }
-QListWidget, QTreeWidget, QTableWidget { background: #fbf3e0;
-    border: 1px solid #d8c9a6; border-radius: 4px; }
-QHeaderView::section { background: #ecdfc2; border: 0; padding: 4px; }
-#workflowBar { background: #f4ecd8; border-bottom: 1px solid #d8c9a6; }
-#sectionBar::tab { background: transparent; color: #4a3f2f; padding: 4px 12px;
-    margin: 2px; border-radius: 5px; }
-#sectionBar::tab:selected { background: #a06a2c; color: #ffffff; }
-#sectionBar::tab:hover:!selected { background: #e5d5b3; }
-#sectionPage { background: #f4ecd8; }
-#workflowBar QToolButton { color: #4a3f2f; padding: 4px 8px; border-radius: 5px; }
-#workflowBar QToolButton:hover { background: #e5d5b3; }
-#workflowBar QToolButton:checked { background: #dcc79b; }
-#translateView { background: #f4ecd8; }
-#panelCaption { color: #7a6a52; font-size: 11px; }
-#trackFilter { color: #7a6a52; border: 1px solid transparent; border-radius: 4px;
-    padding: 1px 7px; font-size: 11px; }
-#trackFilter:hover { background: #e5d5b3; }
-#trackFilter:checked { background: #e0cba0; color: #4a3f2f;
-    border-color: #cbb894; }
-#panelDivider { background: #d8c9a6; }
-#panelLauncher { color: #7a6a52; border: none; padding: 0; font-size: 9px; }
-#panelLauncher:hover { color: #a06a2c; }
-#bandTitle { color: #7a6a52; font-weight: 600; }
-#bandHint { color: #7a6a52; }
-#detailTitle { font-size: 15px; font-weight: 600; }
-#detailCount { font-size: 19px; font-weight: 600; }
-#detailText { color: #7a6a52; }
-"""
 
-_SHEETS = {"light": _LIGHT, "dark": _DARK, "sepia": _SEPIA}
+
+_SHEETS = {"light": _LIGHT, "dark": _DARK}
 
 
 def normalize_mode(mode: str) -> str:
@@ -217,7 +165,7 @@ def is_dark(mode: str, system_dark: bool = True) -> bool:
     mode = normalize_mode(mode)
     if mode == "dark":
         return True
-    if mode in ("light", "sepia"):
+    if mode == "light":
         return False
     return system_dark
 
@@ -231,15 +179,13 @@ def reader_theme(mode: str, system_dark: bool = True) -> str:
 
 
 def palette(mode: str, system_dark: bool = True) -> dict:
-    effective = "dark" if is_dark(mode, system_dark) else (
-        "sepia" if normalize_mode(mode) == "sepia" else "light")
+    effective = "dark" if is_dark(mode, system_dark) else "light"
     return dict(_PALETTES[effective])
 
 
 def liquid(mode: str, system_dark: bool = True) -> dict:
     """Colours for the liquid progress widget (app theme, not reader theme)."""
-    effective = "dark" if is_dark(mode, system_dark) else (
-        "sepia" if normalize_mode(mode) == "sepia" else "light")
+    effective = "dark" if is_dark(mode, system_dark) else "light"
     return dict(_LIQUID[effective])
 
 

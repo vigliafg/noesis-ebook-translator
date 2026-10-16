@@ -91,6 +91,11 @@ def ensure_defaults() -> None:
             config.set("reader_backend", "auto")
         config.set("reader_backend_default_v2", True)
         changed = True
+    # One-time migration: the "sepia" app theme was removed (it looked washed
+    # out); the reader keeps its own sepia background.
+    if config.get("ui_theme") == "sepia":
+        config.set("ui_theme", "light")
+        changed = True
     if changed:
         config.commit()
 

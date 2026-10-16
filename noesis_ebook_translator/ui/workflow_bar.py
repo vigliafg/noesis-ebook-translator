@@ -20,6 +20,7 @@ from .. import theme as theme_mod
 from ..engines.languages import google as GOOGLE_LANGUAGES
 from ..i18n import T, get_language
 from ..reader import available_backends
+from .book_toast import BookToast
 from .icons import icon
 
 __all__ = ["WorkflowBar", "build_workflow", "ToolPanel"]
@@ -362,6 +363,7 @@ class WorkflowBar(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("workflowBar")
+        self._book_name = ""
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
@@ -385,6 +387,12 @@ class WorkflowBar(QWidget):
         self.tabs.setDrawBase(False)
         self.tabs.currentChanged.connect(self._on_tab_changed)
         tl.addWidget(self.tabs)
+        tl.addStretch(1)
+        # The book being worked on: centred in the empty area between the last
+        # tab and the settings gear, deliberately louder than the toolbar.
+        self.book_toast = BookToast(self)
+        self.book_toast.hide()
+        tl.addWidget(self.book_toast, 0, Qt.AlignmentFlag.AlignVCenter)
         tl.addStretch(1)
         self.btn_settings = WorkflowButton("", "settings", tooltip=T("action.settings"))
         tl.addWidget(self.btn_settings)
@@ -410,6 +418,26 @@ class WorkflowBar(QWidget):
 
     def setCurrentSection(self, index: int) -> None:
         self.tabs.setCurrentIndex(index)
+
+    def set_book(self, name: str | None, *, percent: int | None = None,
+                 working: bool = False) -> None:
+        """Show the book being worked on in the pill (hidden when there is none)."""
+        name = (name or "").strip()
+        toast = self.book_toast
+        toast.set_text(name)
+        toast.set_percent(percent)
+        toast.set_working(bool(name) and working)
+        toast.setVisible(bool(name))
+        self._book_name = name
+
+    def set_book_working(self, working: bool) -> None:
+        self.book_toast.set_working(bool(self._book_name) and bool(working))
+
+    def set_book_percent(self, percent: int | None) -> None:
+        self.book_toast.set_percent(percent)
+
+    def book_name(self) -> str:
+        return self.book_toast.text()
 
     def currentSection(self) -> int:
         return self.tabs.currentIndex()
