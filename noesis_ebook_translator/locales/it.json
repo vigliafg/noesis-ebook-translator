@@ -63,6 +63,7 @@
   "label.batch": "Batching online",
   "label.cache": "Usa cache",
   "label.bilingual": "Testo bilingue (originale + traduzione)",
+  "label.bilingual_short": "Bilingue",
   "label.theme": "Tema",
   "label.ui_language": "Lingua dell'interfaccia",
   "label.reduce_motion": "Riduci animazioni",

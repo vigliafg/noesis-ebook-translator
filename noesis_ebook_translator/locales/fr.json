@@ -63,6 +63,7 @@
   "label.batch": "Traitement par lots en ligne",
   "label.cache": "Utiliser le cache",
   "label.bilingual": "Texte bilingue (original + traduction)",
+  "label.bilingual_short": "Bilingue",
   "label.theme": "Thème",
   "label.ui_language": "Langue de l'interface",
   "label.reduce_motion": "Réduire les animations",

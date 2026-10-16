@@ -246,7 +246,8 @@ class SectionPage(QWidget):
         return self._add(combo)
 
     def labelled_combo(self, label_key: str, items=None,
-                       tooltip: str | None = None) -> QComboBox:
+                       tooltip: str | None = None,
+                       max_width: int | None = None) -> QComboBox:
         """A combo box with a visible label above it (they travel together)."""
         container = QWidget()
         box = QVBoxLayout(container)
@@ -261,6 +262,10 @@ class SectionPage(QWidget):
             combo.setToolTip(tooltip)
         combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents)
+        if max_width:
+            # Keeps the ribbon from growing past narrow screens; the popup still
+            # shows the full text.
+            combo.setMaximumWidth(max_width)
         box.addWidget(label)
         box.addWidget(combo)
         self._add(container)
@@ -327,17 +332,17 @@ class SectionPage(QWidget):
 class _HeightStack(QStackedWidget):
     """QStackedWidget that sizes to the *current* page (no big empty gaps).
 
-    It also propagates the current page's minimum size to itself, so a page
-    wider than the window makes the surrounding scroll area scroll instead of
-    being silently clipped (Office collapses groups; we scroll the row).
+    The minimum *width* is capped: a wide section (the Translate row needs
+    ~1460px) used to propagate its minimum to the window, which then grew past
+    the screen when that tab was selected. Now the row is clipped instead.
     """
+
+    #: Never demand more than this from the window.
+    MAX_MIN_WIDTH = 700
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.currentChanged.connect(self._sync)
-
-    def _sync(self, *_) -> None:
-        self.updateGeometry()
+        self.currentChanged.connect(lambda *_: self.updateGeometry())
 
     def sizeHint(self):  # noqa: N802 - Qt naming
         page = self.currentWidget()
@@ -345,8 +350,10 @@ class _HeightStack(QStackedWidget):
 
     def minimumSizeHint(self):  # noqa: N802 - Qt naming
         page = self.currentWidget()
-        return (page.minimumSizeHint() if page is not None
-                else super().minimumSizeHint())
+        if page is None:
+            return super().minimumSizeHint()
+        hint = page.minimumSizeHint()
+        return QSize(min(hint.width(), self.MAX_MIN_WIDTH), hint.height())
 
 
 class WorkflowBar(QWidget):
@@ -483,15 +490,16 @@ def build_workflow(window) -> WorkflowBar:
     p.panel("panel.appearance", launcher=launcher(1))
     window.cmb_theme_reader = p.labelled_combo(
         "label.reader_theme", [T(f"theme.{m}") for m in ("light", "sepia", "dark")],
-        tooltip=T("label.reader_theme"))
+        tooltip=T("label.reader_theme"), max_width=140)
     window.cmb_theme_reader.currentIndexChanged.connect(
         lambda i: window._set_reader_theme(("light", "sepia", "dark")[max(0, i)]))
     window.cmb_font = p.labelled_combo(
-        "label.font", ["Serif", "Sans Serif", "Monospace"], tooltip=T("label.font"))
+        "label.font", ["Serif", "Sans Serif", "Monospace"],
+        tooltip=T("label.font"), max_width=130)
     window.cmb_font.currentIndexChanged.connect(window.on_font_changed)
     window.cmb_line = p.labelled_combo(
         "label.line_height", ["1.0", "1.2", "1.4", "1.5", "1.8", "2.0"],
-        tooltip=T("label.line_height"))
+        tooltip=T("label.line_height"), max_width=110)
     window.cmb_line.setCurrentIndex(3)  # 1.5
     window.cmb_line.currentIndexChanged.connect(window.on_line_height_changed)
     window.chk_justify = p.check("label.justify")
@@ -522,7 +530,7 @@ def build_workflow(window) -> WorkflowBar:
     p.panel("panel.source", launcher=launcher(5))
     window.cmb_assets_edition = p.labelled_combo(
         "label.edition", [T("edition.original"), T("edition.translated")],
-        tooltip=T("label.edition"))
+        tooltip=T("label.edition"), max_width=150)
     window.cmb_assets_edition.currentIndexChanged.connect(
         window._on_assets_edition_changed)
     p.button("action.refresh", "refresh", window.on_assets_reload)
@@ -549,21 +557,24 @@ def build_workflow(window) -> WorkflowBar:
     window.btn_cancel.setEnabled(False)
     p.panel("panel.engine", launcher=launcher(2))
     window.cmb_engine = p.labelled_combo("panel.engine", appconfig.engine_names(),
-                                         tooltip=T("panel.engine"))
+                                         tooltip=T("panel.engine"), max_width=190)
     window.cmb_engine.currentTextChanged.connect(window._on_engine_changed)
     window.edt_api_key = p.labelled_line("label.api_key", width=140)
     window.edt_api_key.setEchoMode(QLineEdit.EchoMode.Password)
-    window.cmb_model = p.labelled_combo("label.model", tooltip=T("label.model"))
+    window.cmb_model = p.labelled_combo("label.model", tooltip=T("label.model"),
+                                        max_width=150)
     window.cmb_model.setEditable(True)
     p.panel("panel.languages", launcher=launcher(2))
     window.cmb_source = p.labelled_combo(
         "label.source", ["Auto detect"] + list(GOOGLE_LANGUAGES),
-        tooltip=T("label.source"))
+        tooltip=T("label.source"), max_width=170)
     window.cmb_target = p.labelled_combo(
-        "label.target", list(GOOGLE_LANGUAGES), tooltip=T("label.target"))
+        "label.target", list(GOOGLE_LANGUAGES), tooltip=T("label.target"),
+        max_width=170)
     p.button("action.swap", "swap", window.on_swap_languages)
     p.panel("panel.options", launcher=launcher(2))
-    window.chk_bilingual = p.check("label.bilingual")
+    window.chk_bilingual = p.check("label.bilingual_short")
+    window.chk_bilingual.setToolTip(T("label.bilingual"))
     window.chk_cache = p.check("label.cache")
     window.chk_cache.setChecked(True)
     window.chk_batch = p.check("label.batch")
@@ -594,10 +605,12 @@ def build_workflow(window) -> WorkflowBar:
     p.panel("panel.source", launcher=launcher(4))
     window.cmb_export_edition = p.labelled_combo(
         "label.edition", [T("edition.original"), T("edition.translated")],
-        tooltip=T("label.edition"))
+        tooltip=T("label.edition"), max_width=150)
     window.edt_export_chapters = p.line(T("label.chapters_filter"), width=160)
     p.panel("panel.format_grp", launcher=launcher(4))
-    window.cmb_export_format = p.labelled_combo("label.format", tooltip=T("label.format"))
+    window.cmb_export_format = p.labelled_combo("label.format",
+                                                tooltip=T("label.format"),
+                                                max_width=160)
     window.cmb_export_format.setMinimumWidth(110)
     p.button("action.export", "export", window.on_export_quick)
     p.button("action.export", "package", window.on_export)

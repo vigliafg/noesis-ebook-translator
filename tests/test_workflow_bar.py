@@ -164,6 +164,67 @@ class TestRibbonPanels(unittest.TestCase):
             window.close()
 
 
+class TestStartupGeometry(unittest.TestCase):
+    """The window must fit the screen and never grow past it when switching tabs."""
+
+    @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+    def test_minimum_is_capped_to_the_screen(self):
+        import main
+
+        app = QApplication.instance() or QApplication(["noesis-geometry"])
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        try:
+            available = app.primaryScreen().availableGeometry()
+            self.assertLessEqual(window.minimumSize().width(),
+                                 max(640, available.width() - 40))
+            self.assertLessEqual(window.minimumSize().height(),
+                                 max(420, available.height() - 40))
+        finally:
+            window.close()
+
+    @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+    def test_switching_sections_does_not_grow_the_window(self):
+        import main
+
+        app = QApplication.instance() or QApplication(["noesis-geometry"])
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        try:
+            window.showNormal()
+            window.resize(1024, 700)
+            for _ in range(4):
+                app.processEvents()
+            for index in range(window.workflow.sections()):
+                window.workflow.setCurrentSection(index)
+                window._on_section_changed(index)
+                for _ in range(6):
+                    app.processEvents()
+                self.assertLessEqual(window.width(), 1024,
+                                     f"section {index} grew the window")
+        finally:
+            window.close()
+
+    @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+    def test_fullscreen_toggle_round_trip(self):
+        import main
+
+        app = QApplication.instance() or QApplication(["noesis-geometry"])
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        try:
+            window.show()
+            app.processEvents()
+            window.toggle_fullscreen()
+            app.processEvents()
+            self.assertTrue(window.isFullScreen())
+            window.toggle_fullscreen()
+            app.processEvents()
+            self.assertFalse(window.isFullScreen())
+        finally:
+            window.close()
+
+
 class TestToolPanelLayout(unittest.TestCase):
     """Pure-layout unit test for the optional two-row panels."""
 

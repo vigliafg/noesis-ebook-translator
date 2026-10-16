@@ -12,7 +12,7 @@ import threading
 import traceback
 
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
-from PyQt6.QtGui import QDesktopServices, QIcon
+from PyQt6.QtGui import QDesktopServices, QIcon, QKeySequence, QShortcut
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QFileDialog, QInputDialog, QLabel, QLineEdit,
@@ -174,6 +174,7 @@ class MainWindow(QMainWindow):
         self._build_workflow()
         self._build_body()
         self._load_settings()
+        self._apply_minimum_cap()
         # Make the shown view match the selected workflow section at startup
         # (the QTabBar emits its first currentChanged before we connect).
         self._on_section_changed(self.workflow.currentSection())
@@ -182,6 +183,41 @@ class MainWindow(QMainWindow):
     def _build_workflow(self) -> None:
         self.workflow = build_workflow(self)
         self.workflow.sectionChanged.connect(self._on_section_changed)
+
+    def _apply_minimum_cap(self) -> None:
+        """Never demand more window than the screen can give.
+
+        The toolbar of some sections is wider than a laptop screen; without an
+        explicit (bounded) minimum the layout grows the window past the screen
+        edge as soon as that tab is selected.
+        """
+        hint = self.minimumSizeHint()
+        width, height = hint.width(), hint.height()
+        app = QApplication.instance()
+        screen = app.primaryScreen() if app is not None else None
+        if screen is not None:
+            available = screen.availableGeometry()
+            width = min(width, max(640, available.width() - 40))
+            height = min(height, max(420, available.height() - 40))
+        else:  # pragma: no cover - no screen (never happens with Qt running)
+            width, height = min(width, 720), min(height, 480)
+        self.setMinimumSize(width, height)
+
+    def _startup_geometry(self) -> None:
+        """Start maximised (F11 toggles real full screen later)."""
+        self._apply_minimum_cap()
+        try:
+            self.showMaximized()
+        except Exception:  # noqa: BLE001 - fall back to a plain show()
+            self.show()
+
+    def toggle_fullscreen(self) -> None:
+        """F11: real full screen (no window frame), toggling back to normal."""
+        if self.isFullScreen():
+            self.showNormal()
+            self.showMaximized()
+        else:
+            self.showFullScreen()
 
     def _build_body(self) -> None:
         from noesis_ebook_translator.ui.translate_view import TranslateView
@@ -235,6 +271,10 @@ class MainWindow(QMainWindow):
         container_layout.addWidget(self.tabs, 1)
         self.setCentralWidget(container)
         self.resize(1180, 780)
+
+        # F11 toggles real full screen (no frame); the app starts maximised.
+        self._fullscreen_shortcut = QShortcut(QKeySequence("F11"), self)
+        self._fullscreen_shortcut.activated.connect(self.toggle_fullscreen)
 
     # ------------------------------------------------------------- helpers
     def _engine_names(self) -> list[str]:
@@ -1254,7 +1294,7 @@ def main(argv: list[str] | None = None) -> int:
             pass
 
     window = MainWindow()
-    window.show()
+    window._startup_geometry()
     return app.exec()
 
 

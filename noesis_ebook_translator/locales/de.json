@@ -63,6 +63,7 @@
   "label.batch": "Online-Batching",
   "label.cache": "Cache verwenden",
   "label.bilingual": "Zweisprachiger Text (Original + Übersetzung)",
+  "label.bilingual_short": "Zweisprachig",
   "label.theme": "Design",
   "label.ui_language": "Oberflächensprache",
   "label.reduce_motion": "Animationen reduzieren",

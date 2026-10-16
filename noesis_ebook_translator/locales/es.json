@@ -63,6 +63,7 @@
   "label.batch": "Procesamiento por lotes en línea",
   "label.cache": "Usar caché",
   "label.bilingual": "Texto bilingüe (original + traducción)",
+  "label.bilingual_short": "Bilingüe",
   "label.theme": "Tema",
   "label.ui_language": "Idioma de la interfaz",
   "label.reduce_motion": "Reducir animaciones",
