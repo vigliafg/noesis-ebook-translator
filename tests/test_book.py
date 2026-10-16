@@ -101,6 +101,36 @@ class TestTranslatePipeline(unittest.TestCase):
         self.assertIn("IT&lt;", body,
                       "the chapter translated for the first time was skipped")
 
+    def test_one_entry_of_a_shared_document_covers_only_its_range(self):
+        """Regression: the selection travelled as *file names*, so picking one
+        chapter of a document that holds two dragged in its neighbour (in the
+        corpus book: 87 segments instead of 8)."""
+        from noesis_ebook_translator import book
+        from noesis_ebook_translator.chapters import flatten, load_chapters
+
+        corpus = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "data", "corpus", "astronomy_for_amateurs.epub")
+        if not os.path.isfile(corpus):
+            self.skipTest("corpus fixture missing")
+        chapter = next(c for c in flatten(load_chapters(corpus))
+                       if c.name == "CHAPTER V")
+        settings = {"translation_position": "only", "cache_enabled": False}
+
+        def planned(chapters, tag: str) -> int:
+            plan: dict[str, int] = {}
+            book.translate_epub(
+                corpus, os.path.join(self.tmp, tag), engine="Fake",
+                source_lang="English", target_lang="Italian",
+                chapters=chapters, settings=settings,
+                on_plan=lambda counts: plan.update(counts))
+            return sum(plan.values())
+
+        by_entry = planned([chapter.href], "by_entry.epub")
+        by_file = planned([chapter.file], "by_file.epub")
+        self.assertGreater(by_entry, 0)
+        self.assertGreater(by_file, by_entry,
+                           "selecting one entry must not cover its neighbour")
+
     def test_output_path_default(self):
         from noesis_ebook_translator import book
 

@@ -145,6 +145,32 @@ Questi moduli sono **desktop-only** (non inlineati nel repo gemello):
   `main.py` (ribbon/tab). **Inclusi nel bundle** via `package-data` e
   `--collect-all noesis_ebook_translator` in `release.yml`.
 
+### Banda 2 «Capitoli» (contratto)
+
+`progress_model.py` + `ui/chapter_track.py` mostrano **una riga per voce del
+TOC**, in ordine di lettura, indentata per profondità — **mai** una riga per file
+(due capitoli possono stare nello stesso XHTML con ancore diverse: CHAPTER IV e
+V del corpus). Le intestazioni senza documento restano come righe
+(`STATE_HEADER`, nessuna barra/conteggio).
+
+- **Stato A** (libro aperto, nessuna traduzione): l'intera gerarchia è già lì,
+  tutte le voci in font normale, senza numeri (`_apply_source` chiama
+  `_show_toc`). Nessuna marcatura dedotta dalla cache.
+- **Stato B** (dopo il wizard / durante): selezionati normali, gli altri
+  **grigi** (`STATE_EXCLUDED`); i capitoli in lavorazione con **barra +
+  `done/total`**. Filtri «Tutti» / «Da tradurre» / «Tradotti»: con «Da tradurre»
+  restano solo le sezioni che hanno ancora un figlio visibile.
+- **Stato C** (fine corsa, vista «Tutti»): i tradotti restano nella gerarchia in
+  **neretto + check + barra piena**.
+- La selezione viaggia come **href con ancora** (`main._normalize_chapter_spec`,
+  `TranslateWizard._chapter_choices`): passare nomi di file fondeva le voci che
+  condividono un documento (selezionare CHAPTER V ne traduceva 87 segmenti
+  invece di 8).
+- I totali (`overall/summary/done_chapters`) si contano sui **documenti unici**,
+  così due voci sullo stesso file non contano due volte.
+- La barra è disegnata **dentro** la riga (`BAR_TOP`, non sugli ultimi 2 px):
+  una riga tagliata dal viewport non perde più la barra.
+
 **Guida**: `docs/site/` (MkDocs Material + i18n, 5 lingue) è pubblicata su
 GitHub Pages da `.github/workflows/docs.yml`.
 

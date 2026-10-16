@@ -210,10 +210,16 @@ class TestProgressModel(unittest.TestCase):
 
 
 class TestBuildUnits(unittest.TestCase):
+    #: A real Project Gutenberg book: two chapters share an XHTML document
+    #: (CHAPTER IV/V and IX/X are anchors inside one file).
+    CORPUS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "data", "corpus", "astronomy_for_amateurs.epub")
+
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp(prefix="noesis-units-")
         cls.book = build_sample_epub(os.path.join(cls.tmp, "sample.epub"))
+        cls.rich = build_rich_epub(os.path.join(cls.tmp, "rich.epub"))
 
     def test_units_follow_engine_order(self):
         from noesis_ebook_translator.progress_model import build_units
@@ -229,12 +235,73 @@ class TestBuildUnits(unittest.TestCase):
         units = build_units(self.book, ["chap_02.xhtml"])
         self.assertEqual([u.file for u in units], ["chap_02.xhtml"])
 
-    def test_natural_sort_keeps_numeric_order(self):
+    def test_headings_without_a_document_stay_in_the_tree(self):
+        """A "Part Two" with no document of its own is a row, not dropped, and
+        the sub-chapters keep their depth."""
+        from noesis_ebook_translator.progress_model import build_units
+
+        units = build_units(self.rich)
+        self.assertEqual([u.name for u in units],
+                         ["Introduction", "Part Two", "Chapter 2", "Chapter 3"])
+        self.assertEqual([u.depth for u in units], [0, 0, 1, 1])
+        self.assertEqual([u.kind for u in units],
+                         ["document", "section", "document", "document"])
+        self.assertIsNone(units[1].file)
+
+    @unittest.skipUnless(os.path.isfile(CORPUS), "corpus fixture missing")
+    def test_every_toc_entry_is_a_row_in_reading_order(self):
+        """Regression: the list collapsed entries by file and sorted them by file
+        name, so chapters vanished and the order was unreadable."""
+        from noesis_ebook_translator.chapters import flatten, load_chapters
+        from noesis_ebook_translator.progress_model import build_units
+
+        toc = flatten(load_chapters(self.CORPUS))
+        units = build_units(self.CORPUS)
+        # One row per TOC entry, in the TOC (reading) order, depth preserved.
+        self.assertEqual(len(units), len(toc))
+        self.assertEqual([u.name for u in units], [c.name for c in toc])
+        self.assertEqual([u.depth for u in units], [c.depth for c in toc])
+        # The chapters that share a document with a neighbour are still there.
+        names = [u.name for u in units]
+        for expected in ("CONTENTS", "INTRODUCTION", "CHAPTER I", "CHAPTER IV",
+                         "CHAPTER V", "CHAPTER IX", "CHAPTER X"):
+            self.assertIn(expected, names)
+        # ... and the hierarchy is deeper than one level.
+        self.assertIn(1, [u.depth for u in units])
+        # No entry is swallowed: the identities are unique.
+        self.assertEqual(len({u.key() for u in units}), len(units))
+
+    @unittest.skipUnless(os.path.isfile(CORPUS), "corpus fixture missing")
+    def test_two_chapters_in_one_document_are_two_rows(self):
+        """Regression: they used to collapse into one row labelled with the
+        first entry that pointed at the document."""
+        from noesis_ebook_translator.progress_model import build_units
+
+        units = build_units(self.CORPUS)
+        by_name = {u.name: u for u in units}
+        four, five = by_name["CHAPTER IV"], by_name["CHAPTER V"]
+        self.assertEqual(four.file, five.file)
+        self.assertNotEqual(four.href, five.href)
+        # Both rows carry their own label -- not the document's first entry.
+        self.assertEqual(four.label(), "CHAPTER IV")
+        self.assertEqual(five.label(), "CHAPTER V")
+
+    def test_the_reading_order_is_kept(self):
+        """``set_plan`` must not reorder the list: the TOC order is *the* order.
+
+        Regression: the plan used to be sorted by file name, which scrambled the
+        chapters into an order the reader could not recognise.
+        """
         from noesis_ebook_translator.progress_model import ChapterUnit, ProgressModel
 
         model = ProgressModel([ChapterUnit("c10.xhtml"), ChapterUnit("c2.xhtml")])
         model.set_plan({"c10.xhtml": 1, "c2.xhtml": 1})
-        self.assertEqual([u.file for u in model.units], ["c2.xhtml", "c10.xhtml"])
+        self.assertEqual([u.file for u in model.units], ["c10.xhtml", "c2.xhtml"])
+        # Documents the TOC does not mention are appended at the end, not sorted
+        # into the middle of the tree.
+        model.set_plan({"c10.xhtml": 1, "c2.xhtml": 1, "cover.xhtml": 4})
+        self.assertEqual([u.file for u in model.units],
+                         ["c10.xhtml", "c2.xhtml", "cover.xhtml"])
 
 
 @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
@@ -248,13 +315,12 @@ class TestTranslateViewWidget(unittest.TestCase):
 
         return ProgressModel([ChapterUnit(f, f"Ch {i}") for i, f in enumerate(files)])
 
-    def test_modes_and_liquid_level(self):
+    def test_always_the_list_and_liquid_level(self):
         from noesis_ebook_translator.ui.translate_view import TranslateView
 
         view = TranslateView(reduce_motion=True)
         try:
             view.set_model(self._model(["a.xhtml", "b.xhtml", "c.xhtml"]))
-            self.assertEqual(view.track.mode(), "list")
             self.assertEqual(view.track._list.count(), 3)
 
             view.model().set_plan({"a.xhtml": 4, "b.xhtml": 4, "c.xhtml": 4})
@@ -264,9 +330,10 @@ class TestTranslateViewWidget(unittest.TestCase):
             self.assertAlmostEqual(view.glass.level_value(), 8 / 12 * 100)
             self.assertEqual(view.book_label.text(), "0%")  # set by _on_progress
 
-            # One or two units switch to the single-chapter card.
+            # There is no single-chapter "card" any more: the list is the only
+            # presentation, so even a one-chapter book keeps its hierarchy.
             view.set_model(self._model(["only.xhtml"]))
-            self.assertEqual(view.track.mode(), "detail")
+            self.assertEqual(view.track._list.count(), 1)
         finally:
             view.close()
 
@@ -324,6 +391,85 @@ class TestTranslateViewWidget(unittest.TestCase):
             view.refresh()
             self.assertEqual(model.running_units(), [])
             self.assertFalse(view.track.is_animating())
+        finally:
+            view.hide()
+            view.close()
+
+    def test_a_partly_visible_row_keeps_its_bar(self):
+        """Regression: the bar was painted on the row's last two pixels, so the
+        last (clipped) row of the viewport showed only its text."""
+        from noesis_ebook_translator.ui.chapter_track import (
+            BAR_HEIGHT, BAR_TOP, ROW_HEIGHT)
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        # The bar must live inside the row: painting on the last two pixels is
+        # exactly what made a clipped row lose it.
+        self.assertLess(BAR_TOP + BAR_HEIGHT, ROW_HEIGHT - 2,
+                        "the bar would sit on the row's last pixels")
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            files = [f"c{i}.xhtml" for i in range(1, 8)]
+            view.set_model(self._model(files))
+            model = view.model()
+            model.set_plan({f: 4 for f in files})
+            model.apply({"counts": {f: 4 for f in files}, "errors": {},
+                         "cached": 0, "last": None})
+            view.resize(700, 300)
+            view.set_theme("light", False)
+            view.show()
+            lst = view.track._list
+            # Leave the fifth row visible for 30 px only: enough for the text and
+            # for a bar drawn inside the row, not for one drawn at the bottom
+            # (+2 is the list frame).
+            lst.setFixedHeight(4 * ROW_HEIGHT + 30 + 2)
+            view.refresh()
+            self.app.processEvents()
+            vp = lst.viewport()
+            rect = lst.visualItemRect(lst.item(4))
+            self.assertGreaterEqual(rect.bottom(), vp.height(), "row not clipped")
+            self.assertLess(vp.height() - rect.top(), ROW_HEIGHT)
+            image = vp.grab().toImage()
+            done_fill = view.track.colors()["done"].name()
+            y = rect.top() + 25
+            self.assertLess(y, vp.height())
+            self.assertEqual(image.pixelColor(rect.left() + 40, y).name(),
+                             done_fill,
+                             "a partly visible row lost its progress bar")
+        finally:
+            view.hide()
+            view.close()
+
+    def test_done_rows_are_bold(self):
+        """A translated chapter's name is drawn bold.
+
+        Only the *font* changes for a done row (the colour is the same as a
+        pending one), so any difference in the name band means the bold took
+        effect -- and the check is independent of the active theme.
+        """
+        from noesis_ebook_translator.ui.chapter_track import NAME_HEIGHT
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        def name_band(view):
+            image = view.track._list.viewport().grab().toImage()
+            rect = view.track._list.visualItemRect(view.track._list.item(0))
+            return image.copy(rect.left() + 24, rect.top(), 60, NAME_HEIGHT)
+
+        view = TranslateView(reduce_motion=True)
+        try:
+            view.set_model(self._model(["a.xhtml", "b.xhtml"]))
+            model = view.model()
+            model.set_plan({"a.xhtml": 2, "b.xhtml": 2})
+            view.resize(700, 300)
+            view.show()
+            self.app.processEvents()
+            before = name_band(view)
+            model.apply({"counts": {"a.xhtml": 2}, "errors": {}, "cached": 0,
+                         "last": None})
+            view.refresh()
+            self.app.processEvents()
+            self.assertNotEqual(name_band(view), before,
+                                "the translated row is not drawn bold")
         finally:
             view.hide()
             view.close()
@@ -493,6 +639,7 @@ class TestTranslateViewWidget(unittest.TestCase):
     def test_chapter_row_bars_reflect_the_state(self):
         """Every chapter shows its own bar: done = full, running = partial."""
         from noesis_ebook_translator.progress_model import ProgressModel
+        from noesis_ebook_translator.ui.chapter_track import BAR_TOP
         from noesis_ebook_translator.ui.translate_view import TranslateView
 
         view = TranslateView(reduce_motion=True)
@@ -510,11 +657,12 @@ class TestTranslateViewWidget(unittest.TestCase):
             image = view.track._list.viewport().grab().toImage()
             done_fill = view.track.colors()["done"].name()
             accent = view.track.colors()["accent"].name()
-            # The bar sits on the row's last two pixels; sample its middle.
+            # The bar lives *inside* the row (never on its last two pixels, where
+            # a partly-scrolled row would lose it).
             rect_a = view.track._list.visualItemRect(view.track._list.item(0))
             rect_b = view.track._list.visualItemRect(view.track._list.item(1))
-            y_a = rect_a.bottom() - 1
-            y_b = rect_b.bottom() - 1
+            y_a = rect_a.top() + BAR_TOP + 2
+            y_b = rect_b.top() + BAR_TOP + 2
             x = rect_a.left() + 60
             # Row a is done -> the whole bar is painted in the "done" colour...
             self.assertEqual(image.pixelColor(x, y_a).name(), done_fill)
@@ -528,7 +676,7 @@ class TestTranslateViewWidget(unittest.TestCase):
             rect_c = view.track._list.visualItemRect(view.track._list.item(2))
             self.assertNotEqual(
                 image.pixelColor(rect_c.left() + 20,
-                                 rect_c.bottom() - 1).name(), accent)
+                                 rect_c.top() + BAR_TOP + 2).name(), accent)
         finally:
             view.hide()
             view.close()
@@ -545,6 +693,113 @@ class TestTranslateViewWidget(unittest.TestCase):
             self.assertEqual(view.lbl_glass_title.text(), T("label.book"))
         finally:
             view.close()
+
+
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+class TestChapterTrackContract(unittest.TestCase):
+    """The agreed behaviour of band 2: state A (open), B (running), C (done)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication(["noesis-track"])
+        cls.tmp = tempfile.mkdtemp(prefix="noesis-track-")
+        cls.book = build_rich_epub(os.path.join(cls.tmp, "rich.epub"))
+        from tests.fixtures import register_fake_engine
+        register_fake_engine()
+
+    def _open(self):
+        import main
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        main.QMessageBox.warning = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        window._apply_source(self.book)
+        return window
+
+    def test_state_a_opening_the_book_already_fills_the_trail(self):
+        """No translation started: the whole TOC, neutral, no numbers."""
+        from noesis_ebook_translator.progress_model import (
+            STATE_HEADER, STATE_PENDING, build_units)
+
+        window = self._open()
+        try:
+            model = window.translate_view.model()
+            self.assertIsNotNone(model)
+            self.assertEqual([u.name for u in model.units],
+                             [u.name for u in build_units(self.book)])
+            self.assertEqual([u.name for u in model.units],
+                             ["Introduction", "Part Two", "Chapter 2",
+                              "Chapter 3"])
+            # Every document is neutral and nothing is tracked: no bars, no totals.
+            self.assertEqual(
+                {model.unit_state(u) for u in model.units if u.kind == "document"},
+                {STATE_PENDING})
+            section = next(u for u in model.units if u.kind == "section")
+            self.assertEqual(model.unit_state(section), STATE_HEADER)
+            self.assertEqual(model.tracked(), [])
+            self.assertEqual(window.translate_view.track._list.count(), 4)
+        finally:
+            window.close()
+
+    def test_state_b_selected_normal_excluded_grey(self):
+        """After the wizard: chosen rows normal, the others grey; filters."""
+        from noesis_ebook_translator.progress_model import (
+            STATE_EXCLUDED, STATE_HEADER, STATE_RUNNING)
+
+        window = self._open()
+        try:
+            track = window.translate_view.track
+            model = window.translate_view.model()
+            model.set_selection(["c2.xhtml"])
+            model.set_plan({"c1.xhtml": 2, "c2.xhtml": 2, "c3.xhtml": 2})
+            model.apply({"counts": {"c2.xhtml": 1}, "errors": {}, "cached": 0,
+                         "last": None})
+            window.translate_view.refresh()
+            states = {u.label(): model.unit_state(u) for u in model.units}
+            self.assertEqual(states["Chapter 2"], STATE_RUNNING)
+            self.assertEqual(states["Introduction"], STATE_EXCLUDED)
+            self.assertEqual(states["Chapter 3"], STATE_EXCLUDED)
+            self.assertEqual(states["Part Two"], STATE_HEADER)
+            # "All" shows everything; "to translate" hides the grey rows but keeps
+            # the heading of what is still visible; "translated" is empty.
+            self.assertEqual(len(track.visible_units()), 4)
+            track.set_filter("todo")
+            self.assertEqual([u.label() for u in track.visible_units()],
+                             ["Part Two", "Chapter 2"])
+            track.set_filter("done")
+            self.assertEqual(track.visible_units(), [])
+        finally:
+            window.close()
+
+    def test_state_c_translated_rows_stay_in_the_hierarchy(self):
+        """At the end the translated rows keep their place, bold + check."""
+        from noesis_ebook_translator.progress_model import (
+            STATE_DONE, STATE_EXCLUDED)
+
+        window = self._open()
+        try:
+            window._start_translation({
+                "engine": "Fake", "source": "English", "target": "Italian",
+                "batching": False, "cache": True, "sequential": True,
+                "chapters": ["c2.xhtml"], "grouping": "grouped",
+                "folder": self.tmp, "name": "contract.epub", "bilingual": False})
+            deadline = time.time() + 60
+            while window.worker is not None and time.time() < deadline:
+                self.app.processEvents()
+                time.sleep(0.005)
+            self.app.processEvents()
+            track = window.translate_view.track
+            model = window.translate_view.model()
+            self.assertIsNone(window.worker)
+            self.assertEqual(model.state("c2.xhtml"), STATE_DONE)
+            self.assertEqual(model.state("c1.xhtml"), STATE_EXCLUDED)
+            self.assertEqual([u.label() for u in track.visible_units()],
+                             ["Introduction", "Part Two", "Chapter 2",
+                              "Chapter 3"])
+            track.set_filter("done")
+            self.assertEqual([u.label() for u in track.visible_units()],
+                             ["Part Two", "Chapter 2"])
+        finally:
+            window.close()
 
 
 @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
@@ -613,17 +868,19 @@ class TestTranslationThroughTheGui(unittest.TestCase):
 
     def test_single_chapter_selection_lists_the_whole_toc(self):
         """A selection lists the whole TOC: chosen rows translate, the rest stay
-        dimmed (excluded) for context."""
+        dimmed (excluded) for context, headings included."""
         from noesis_ebook_translator.i18n import T
         from noesis_ebook_translator.progress_model import (
-            STATE_DONE, STATE_EXCLUDED)
+            STATE_DONE, STATE_EXCLUDED, STATE_HEADER)
 
         window, model = self._run(self._cfg("one.epub", chapters=["c2.xhtml"]))
         try:
-            # A chapter selection keeps the list (filters + context).
-            self.assertEqual(window.translate_view.track.mode(), "list")
+            # A chapter selection keeps the whole list (filters + context): the
+            # three documents *and* the "Part Two" heading, in reading order.
             self.assertEqual([u.file for u in model.units],
-                             ["c1.xhtml", "c2.xhtml", "c3.xhtml"])
+                             ["c1.xhtml", None, "c2.xhtml", "c3.xhtml"])
+            self.assertEqual(model.units[1].kind, "section")
+            self.assertEqual(model.unit_state(model.units[1]), STATE_HEADER)
             self.assertEqual(model.state("c2.xhtml"), STATE_DONE)
             self.assertEqual(model.state("c1.xhtml"), STATE_EXCLUDED)
             self.assertEqual(model.state("c3.xhtml"), STATE_EXCLUDED)
@@ -634,9 +891,11 @@ class TestTranslationThroughTheGui(unittest.TestCase):
             window.translate_view.track.set_filter("todo")
             self.assertEqual(window.translate_view.track.visible_units(), [])
             window.translate_view.track.set_filter("done")
-            self.assertEqual([u.file for u in
-                              window.translate_view.track.visible_units()],
-                             ["c2.xhtml"])
+            labels = [u.label() for u in
+                      window.translate_view.track.visible_units()]
+            self.assertIn("Chapter 2", labels)
+            self.assertIn("Part Two", labels)      # its heading stays visible
+            self.assertNotIn("Chapter 3", labels)
         finally:
             window.close()
 

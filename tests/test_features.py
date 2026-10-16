@@ -42,6 +42,38 @@ class TestWidgets(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication(["noesis-widgets"])
 
+    def test_opening_a_book_fills_the_chapter_trail_immediately(self):
+        """State A: band 2 lists the whole TOC as soon as a book is opened.
+
+        Regression: the trail was built only when a translation started, so the
+        band opened empty -- and kept the previous book's chapters in the meantime.
+        """
+        import main
+        from noesis_ebook_translator.progress_model import build_units
+        from tests.fixtures import build_sample_epub
+
+        tmp = tempfile.mkdtemp(prefix="noesis-trail-")
+        book_path = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        main.QMessageBox.warning = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        try:
+            window._apply_source(book_path)
+            model = window.translate_view.model()
+            self.assertIsNotNone(model)
+            self.assertEqual([u.name for u in model.units],
+                             [u.name for u in build_units(book_path)])
+            self.assertEqual(window.translate_view.track._list.count(),
+                             len(model.units))
+            # Opening another book replaces the trail, never leaves the old one.
+            other = build_sample_epub(os.path.join(tmp, "other.epub"))
+            window._apply_source(other)
+            self.assertEqual(
+                [u.file for u in window.translate_view.model().units],
+                ["chap_01.xhtml", "chap_02.xhtml"])
+        finally:
+            window.close()
+
     def test_shimmer_reduce_motion(self):
         from noesis_ebook_translator.ui.animations import ShimmerBar
 

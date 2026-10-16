@@ -32,6 +32,9 @@ _EXPECTED_CONDITIONS = {
     "chapter_added_before_cache", "selection_shrinks", "single_chapter",
     "anchored_sections", "nested_toc",
 }
+#: A real book whose documents hold two chapters each (anchored TOC entries).
+_CORPUS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "data", "corpus", "astronomy_for_amateurs.epub")
 
 
 class TestScenarioMatrix(unittest.TestCase):
@@ -48,7 +51,23 @@ class TestScenarioMatrix(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_the_matrix_covers_every_condition(self):
-        self.assertEqual(set(self.reports), _EXPECTED_CONDITIONS)
+        expected = set(_EXPECTED_CONDITIONS)
+        if os.path.isfile(_CORPUS):
+            expected |= {"anchored_single_entry", "shared_document_whole"}
+        self.assertEqual(set(self.reports), expected)
+
+    def test_selecting_one_entry_does_not_drag_its_neighbour(self):
+        """Regression: the selection travelled as file names, so picking one
+        chapter of a shared document also translated its neighbour."""
+        if not os.path.isfile(_CORPUS):
+            self.skipTest("corpus fixture missing")
+        one = self.reports["anchored_single_entry"]
+        whole = self.reports["shared_document_whole"]
+        self.assertTrue(one.ok, one.summary())
+        self.assertTrue(whole.ok, whole.summary())
+        self.assertGreater(one.planned_total, 0)
+        self.assertLess(one.planned_total, whole.planned_total,
+                        "selecting one entry covered the whole document")
 
     def test_no_scenario_stalls_or_errors(self):
         for name, report in self.reports.items():

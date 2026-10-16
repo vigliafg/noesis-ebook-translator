@@ -133,15 +133,23 @@ class TranslateWizard(QWizard):
 
     # ------------------------------------------------------------------
     def _chapter_choices(self) -> list[tuple[str, str]]:
-        """Return ``[(file_name, name), ...]`` for the chapter selection list."""
+        """Return ``[(entry_key, label), ...]`` for the chapter selection list.
+
+        The key is the **TOC entry** (href with its anchor), not the file name:
+        two chapters that live in one XHTML document must be selectable
+        independently, or picking one would translate its neighbour too. The label
+        is indented by depth so the tree stays readable.
+        """
         out: list[tuple[str, str]] = []
         if not self.input_path:
             return out
         try:
             for chapter in chapters_mod.flatten(
                     chapters_mod.load_chapters(self.input_path)):
-                if chapter.file:
-                    out.append((chapter.file, chapter.name or chapter.file))
+                if not chapter.file:
+                    continue
+                label = "    " * chapter.depth + (chapter.name or chapter.file)
+                out.append((chapter.href or chapter.file, label))
         except Exception:  # noqa: BLE001
             out = []
         return out

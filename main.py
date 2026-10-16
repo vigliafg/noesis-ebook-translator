@@ -315,7 +315,8 @@ class MainWindow(QMainWindow):
         chapters = cfg.get("chapters")
         if chapters:
             label = T("translate.chapters_count").format(
-                selected=len(chapters), total=self._chapters_total or "?")
+                selected=self._selected_document_count(chapters),
+                total=self._chapters_total or "?")
             rows.append((T("tab.chapters"), label))
         flags = []
         if cfg.get("bilingual"):
@@ -335,9 +336,27 @@ class MainWindow(QMainWindow):
 
     def _refresh_chapters_total(self) -> None:
         try:
-            self._chapters_total = len(build_units(self._input_path))
+            # The recap counts *documents*: two TOC entries that share one XHTML
+            # file are one translation unit for the engine.
+            units = build_units(self._input_path)
+            self._chapters_total = len({u.file for u in units if u.file})
         except Exception:  # noqa: BLE001 - best effort
             self._chapters_total = 0
+
+    def _show_toc(self, path: str | None) -> None:
+        """Band 2 shows the book's whole TOC before any translation starts.
+
+        Called as soon as a book is opened, so the trail is already there (in
+        reading order, hierarchy visible, no numbers yet) instead of being filled
+        in later -- or worse, left over from the previous book.
+        """
+        model = None
+        if path:
+            try:
+                model = ProgressModel(build_units(path))
+            except Exception:  # noqa: BLE001 - a broken TOC must not break the UI
+                model = None
+        self.translate_view.set_model(model)
 
     @staticmethod
     def _book_label(path: str) -> str:
@@ -397,6 +416,9 @@ class MainWindow(QMainWindow):
         self._output_path = book.default_output_path(path, self.cmb_target.currentText())
         self._refresh_chapters_total()
         self._refresh_choices()
+        # Band 2 is populated as soon as the book is open: the whole TOC, in
+        # reading order, with the hierarchy and no numbers yet.
+        self._show_toc(path)
         self.workflow.set_book(self._book_label(path))
         self.status.set_base_text(T("status.ready"))
         source = self._assets_source()
@@ -1010,25 +1032,47 @@ class MainWindow(QMainWindow):
             self.worker.cancel()
             self.status.set_base_text(T("status.canceled"))
 
-    def _resolve_chapter_files(self, spec) -> list[str] | None:
-        """Resolve a chapter spec (indices/hrefs) into EPUB file names."""
+    def _selected_document_count(self, chapters) -> int:
+        """How many XHTML documents the selected TOC entries cover."""
+        if not chapters or not self._input_path:
+            return len(chapters or [])
+        wanted = {str(c) for c in chapters}
+        try:
+            units = build_units(self._input_path)
+        except Exception:  # noqa: BLE001
+            return len(chapters)
+        docs = {u.file for u in units
+                if u.file and (u.href in wanted or u.file in wanted)}
+        return len(docs) or len(chapters)
+
+    def _normalize_chapter_spec(self, spec) -> list[str] | None:
+        """Resolve a chapter spec into **TOC entry** identities (href + anchor).
+
+        The engine and the chapter list both identify a chapter by its TOC entry.
+        Passing bare file names merged the entries that share one XHTML document:
+        selecting CHAPTER V (``book.xhtml#ch5``) also dragged in CHAPTER IV, i.e.
+        87 segments instead of 8. ``resolve_selection`` matches hrefs exactly, so
+        the anchor is what keeps the selection honest.
+        """
         if not spec or not self._input_path:
             return None
         from noesis_ebook_translator.chapters import (
-            chapter_files, load_chapters, resolve_selection)
-        selected = resolve_selection(load_chapters(self._input_path), spec)
-        files: list[str] = []
+            load_chapters, resolve_selection)
+        try:
+            selected = resolve_selection(load_chapters(self._input_path), spec)
+        except Exception:  # noqa: BLE001 - fall back to what was passed
+            return [str(s) for s in spec]
+        keys: list[str] = []
         for chapter in selected:
-            for name in chapter.files:
-                if name not in files:
-                    files.append(name)
-        return files or None
+            key = chapter.href or chapter.file
+            if key and key not in keys:
+                keys.append(key)
+        return keys or None
 
     def _translate_chapters(self, indices) -> None:
         self.tabs.setCurrentWidget(self._translate_tab)
-        files = (self._resolve_chapter_files(",".join(str(i) for i in indices))
-                 if indices else None)
-        if not files:
+        chapters = self._normalize_chapter_spec(indices or None)
+        if not chapters:
             self._status_message(T("msg.no_input"))
             return
         base = os.path.splitext(os.path.basename(self._input_path or "book"))[0]
@@ -1041,7 +1085,7 @@ class MainWindow(QMainWindow):
             "bilingual": self.chk_bilingual.isChecked(),
             "cache": self.chk_cache.isChecked(),
             "batching": self.chk_batch.isChecked(),
-            "chapters": files,
+            "chapters": chapters,
             "grouping": "grouped",
             "folder": os.path.dirname(self._input_path or ""),
             "name": base + "_sel",
@@ -1131,7 +1175,9 @@ class MainWindow(QMainWindow):
         engine = cfg.get("engine") or self.cmb_engine.currentText()
         source = cfg.get("source") or "English"
         target = cfg.get("target") or "Italian"
-        chapters = cfg.get("chapters") or None
+        # A chapter spec always becomes TOC-entry identities (href + anchor): the
+        # wizard and the chapter panel may hand over indices, file names or hrefs.
+        chapters = self._normalize_chapter_spec(cfg.get("chapters"))
         folder = cfg.get("folder") or os.path.dirname(self._input_path)
         name = cfg.get("name") or os.path.splitext(
             os.path.basename(self._input_path))[0]

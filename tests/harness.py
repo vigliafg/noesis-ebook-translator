@@ -535,6 +535,23 @@ def run_scenario_matrix(tmpdir: str, *, timeout: float = 120.0) -> dict[str, Sce
         "nested_toc": dict(source=rich("nested")),
     }
 
+    # A real book whose documents hold two chapters each (CHAPTER IV/V, IX/X):
+    # selecting one *entry* must cover only its range, while the whole document
+    # covers both. The pair is what the tests compare.
+    corpus = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "data", "corpus", "astronomy_for_amateurs.epub")
+    if os.path.isfile(corpus):
+        try:
+            from noesis_ebook_translator.chapters import flatten, load_chapters
+            entry = next(c for c in flatten(load_chapters(corpus))
+                         if c.name == "CHAPTER V")
+            conditions["anchored_single_entry"] = dict(
+                source=corpus, chapters=[entry.href], cache_enabled=False)
+            conditions["shared_document_whole"] = dict(
+                source=corpus, chapters=[entry.file], cache_enabled=False)
+        except Exception:  # noqa: BLE001 - the pair is a bonus, not a requirement
+            pass
+
     reports: dict[str, ScenarioReport] = {}
     for name, kwargs in conditions.items():
         reports[name] = run_translation_scenario(

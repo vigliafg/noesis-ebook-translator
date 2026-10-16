@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 
+from PyQt6 import sip
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
@@ -12,6 +13,14 @@ from PyQt6.QtWidgets import (
 from ..i18n import T
 from .document import EpubDocument
 from .session import Session
+
+
+def _deleted(obj) -> bool:
+    """True when the Qt object behind ``obj`` has already been destroyed."""
+    try:
+        return sip.isdeleted(obj)
+    except Exception:  # noqa: BLE001 - not a SIP wrapper at all
+        return False
 
 
 class ReaderWidget(QWidget):
@@ -122,6 +131,7 @@ class ReaderWidget(QWidget):
             self.document = None
             self.toc.clear()
             self._toc_items = []
+            self._current_toc_item = None
             self.backend.open_file(path)
             self.session.add_recent(path, path.rsplit("/", 1)[-1])
             self.statusMessage.emit(path.rsplit("/", 1)[-1])
@@ -196,7 +206,9 @@ class ReaderWidget(QWidget):
                 break
         if target is self._current_toc_item:
             return
-        if self._current_toc_item is not None:
+        if self._current_toc_item is not None and not _deleted(self._current_toc_item):
+            # Opening another book rebuilds the tree, so the remembered item can
+            # belong to a widget that no longer exists (RuntimeError otherwise).
             font = self._current_toc_item.font(0)
             font.setBold(False)
             self._current_toc_item.setFont(0, font)
@@ -252,6 +264,8 @@ class ReaderWidget(QWidget):
     def _populate_toc(self) -> None:
         self.toc.clear()
         self._toc_items = []
+        # The remembered item belonged to the tree that was just cleared.
+        self._current_toc_item = None
         if self.document is None:
             return
         items: list[QTreeWidgetItem] = []

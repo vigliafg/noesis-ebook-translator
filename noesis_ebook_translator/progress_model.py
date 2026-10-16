@@ -28,7 +28,7 @@ __all__ = [
     "ChapterUnit", "build_units", "ProgressModel", "DeltaBatch",
     "TransferThrottle",
     "STATE_PENDING", "STATE_RUNNING", "STATE_DONE", "STATE_ERROR",
-    "STATE_SKIPPED", "STATE_EXCLUDED",
+    "STATE_SKIPPED", "STATE_EXCLUDED", "STATE_HEADER",
 ]
 
 STATE_PENDING = "pending"
@@ -39,6 +39,9 @@ STATE_SKIPPED = "skipped"
 #: A chapter of the book that is not part of the current selection: shown (for
 #: context) but never translated, so it stays dimmed and out of the totals.
 STATE_EXCLUDED = "excluded"
+#: A TOC entry that is only a heading (a "Part I…" with no document of its own):
+#: it carries no progress, it is there to make the tree readable.
+STATE_HEADER = "header"
 
 #: The engine stores TOC titles as elements of this pseudo-document; they are not
 #: part of any chapter, so they are excluded from the per-chapter counts.
@@ -47,25 +50,38 @@ TOC_PAGE = "toc.ncx"
 
 @dataclass
 class ChapterUnit:
-    """A translatable unit: one XHTML document (one row in the progress list)."""
+    """One row of the chapter list: a **TOC entry**, not an XHTML document.
 
-    file: str
+    Entries that share a document (``part.xhtml#ch1`` and ``part.xhtml#ch2``)
+    stay distinct rows, and headings with no document of their own are kept as
+    ``kind="section"`` so the tree stays readable. The progress itself is per
+    document -- that is what the engine reports -- so the rows that share a file
+    show the same numbers.
+    """
+
+    file: str | None = None
     name: str = ""
     depth: int = 0
+    href: str | None = None
+    kind: str = "document"          # "document" | "section"
 
     def label(self) -> str:
-        return self.name or self.file
+        return self.name or self.file or self.href or ""
+
+    def key(self) -> str:
+        """Identity of the entry: the href (anchor included) when there is one."""
+        return self.href or self.file or ""
 
 
 def build_units(input_path: str | None, selected=None) -> list[ChapterUnit]:
-    """Return the units to track, in the **engine's order**.
+    """Return every TOC entry, in **reading order**, as a flat list.
 
-    The engine walks the documents in natural order of the file name
-    (``sorted_mixed_keys``), so the list must follow the same order or the
-    highlight would jump around.
+    The order is the TOC order (``flatten``), never a sort by file name: this list
+    is what the user reads while the book is being translated. Entries are *not*
+    collapsed by file, so two chapters that live in one XHTML document are two
+    rows (the engine reports their progress together).
 
-    ``selected`` is an optional collection of file names (chapter selection):
-    when given, only those files are tracked.
+    ``selected`` optionally keeps only the entries whose href/file matches.
     """
     if not input_path:
         return []
@@ -75,17 +91,14 @@ def build_units(input_path: str | None, selected=None) -> list[ChapterUnit]:
         return []
     wanted = {str(s) for s in selected} if selected else None
     units: list[ChapterUnit] = []
-    seen: set[str] = set()
     for chapter in tree:
-        if not chapter.file or chapter.file in seen:
+        file = chapter.file or None
+        href = chapter.href or None
+        if wanted is not None and href not in wanted and (file or "") not in wanted:
             continue
-        seen.add(chapter.file)
-        if wanted is not None and chapter.file not in wanted:
-            continue
-        units.append(ChapterUnit(file=chapter.file,
-                                 name=chapter.name or chapter.file,
-                                 depth=chapter.depth))
-    units.sort(key=lambda unit: sorted_mixed_keys(unit.file))
+        units.append(ChapterUnit(
+            file=file, name=chapter.name or file or "", depth=chapter.depth,
+            href=href, kind="document" if file else "section"))
     return units
 
 
@@ -179,7 +192,12 @@ class DeltaBatch:
 
 
 class ProgressModel:
-    """Per-unit translation state, driven by plan + deltas."""
+    """Per-entry state, driven by plan + deltas.
+
+    The list shows **every TOC entry**; the totals are computed over the **unique
+    documents** behind them, so two entries that share an XHTML file are counted
+    once (that is how the engine reports progress).
+    """
 
     def __init__(self, units: list[ChapterUnit] | None = None) -> None:
         self.units: list[ChapterUnit] = list(units or [])
@@ -192,34 +210,43 @@ class ProgressModel:
         self.finished = False
         self.exported = False
         self.selection: set[str] | None = None
-        self._known: set[str] = {unit.file for unit in self.units}
+        self._known: set[str] = {unit.file for unit in self.units if unit.file}
 
     # -- structure --------------------------------------------------------
     def set_selection(self, files) -> None:
-        """Mark which documents are part of the translation.
+        """Mark which entries are part of the translation.
 
-        Passing ``None`` (whole book) selects everything. The units outside the
-        selection stay visible as ``excluded``: they give the reader their place
-        in the book but are dimmed and kept out of the progress totals.
+        ``files`` holds entry identities: TOC hrefs (anchor included) and/or
+        document names. Passing ``None`` (whole book) selects everything. Entries
+        outside the selection stay visible as ``excluded``: they give the reader
+        their place in the book but are dimmed and kept out of the totals.
         """
         self.selection = {str(f) for f in files} if files else None
+
+    def is_selected(self, unit: ChapterUnit) -> bool:
+        if self.selection is None:
+            return True
+        return (unit.href in self.selection) or (unit.file in self.selection)
+
     def set_plan(self, counts: dict[str, int] | None) -> None:
         """Attach the engine's per-document segment totals.
 
-        Documents with no translatable content stay in the list as ``skipped``
-        (visible but not part of the totals); plan documents missing from the
-        chapter list are appended (front matter, cover files, …).
+        The list keeps the TOC (reading) order. Documents the TOC does not
+        mention -- front matter the reader still gets, such as the nav or a cover
+        page -- are appended at the end instead of being sorted into the tree.
+        Entries with no translatable content stay visible as ``skipped``.
         """
         self.plan = {k: int(v) for k, v in (counts or {}).items() if k != TOC_PAGE}
-        for file_name, total in self.plan.items():
-            if total > 0 and file_name not in self._known:
-                self._known.add(file_name)
-                self.units.append(ChapterUnit(file=file_name, name=file_name))
-        self.units.sort(key=lambda unit: sorted_mixed_keys(unit.file))
+        extra = [name for name, total in self.plan.items()
+                 if total > 0 and name not in self._known]
+        for file_name in sorted(extra, key=sorted_mixed_keys):
+            self._known.add(file_name)
+            self.units.append(ChapterUnit(file=file_name, name=file_name,
+                                          kind="document"))
 
     def set_units(self, units: list[ChapterUnit]) -> None:
         self.units = list(units)
-        self._known = {unit.file for unit in self.units}
+        self._known = {unit.file for unit in self.units if unit.file}
         self.done.clear()
         self.errors.clear()
         self.cached = 0
@@ -228,12 +255,11 @@ class ProgressModel:
         self.exported = False
 
     # -- state ------------------------------------------------------------
-    def total(self, file_name: str) -> int:
-        return self.plan.get(file_name, 0)
+    def total(self, file_name: str | None) -> int:
+        return self.plan.get(file_name or "", 0)
 
-    def state(self, file_name: str) -> str:
-        if self.selection is not None and file_name not in self.selection:
-            return STATE_EXCLUDED
+    def file_state(self, file_name: str) -> str:
+        """Progress state of a document, ignoring the selection."""
         if self.errors.get(file_name):
             return STATE_ERROR
         total = self.total(file_name)
@@ -247,14 +273,44 @@ class ProgressModel:
             return STATE_RUNNING
         return STATE_PENDING
 
-    def progress(self, file_name: str) -> tuple[int, int]:
-        return self.done.get(file_name, 0), self.total(file_name)
+    def unit_state(self, unit: ChapterUnit) -> str:
+        """State of one row: a heading carries no progress, an entry outside the
+        selection stays dimmed."""
+        if unit.kind != "document" or not unit.file:
+            return STATE_HEADER
+        if not self.is_selected(unit):
+            return STATE_EXCLUDED
+        return self.file_state(unit.file)
+
+    def state(self, file_name: str) -> str:
+        """State of a document by name (the band header and older callers)."""
+        if self.selection is not None:
+            units = [u for u in self.units if u.file == file_name]
+            if units and not any(self.is_selected(u) for u in units):
+                return STATE_EXCLUDED
+        return self.file_state(file_name)
+
+    def progress(self, file_name: str | None) -> tuple[int, int]:
+        return self.done.get(file_name or "", 0), self.total(file_name)
 
     def tracked(self) -> list[ChapterUnit]:
-        """Units that carry content and belong to the selection."""
-        return [unit for unit in self.units
-                if self.total(unit.file) > 0
-                and (self.selection is None or unit.file in self.selection)]
+        """One row per **document** with content that is part of the selection.
+
+        Duplicate entries that share a file collapse to one, so the totals never
+        count the same segments twice.
+        """
+        seen: set[str] = set()
+        rows: list[ChapterUnit] = []
+        for unit in self.units:
+            if unit.kind != "document" or not unit.file or unit.file in seen:
+                continue
+            if not self.is_selected(unit):
+                continue
+            if self.total(unit.file) <= 0:
+                continue
+            seen.add(unit.file)
+            rows.append(unit)
+        return rows
 
     def overall(self) -> tuple[int, int]:
         done = sum(min(self.done.get(u.file, 0), self.total(u.file))
@@ -268,21 +324,21 @@ class ProgressModel:
 
     def running_units(self) -> list[str]:
         return [u.file for u in self.tracked()
-                if self.state(u.file) in (STATE_RUNNING, STATE_ERROR)]
+                if self.file_state(u.file) in (STATE_RUNNING, STATE_ERROR)]
 
     def done_chapters(self) -> int:
-        """Chapters of the selection that are fully translated."""
+        """Documents of the selection that are fully translated."""
         return sum(1 for unit in self.tracked()
-                   if self.state(unit.file) == STATE_DONE)
+                   if self.file_state(unit.file) == STATE_DONE)
 
     def cached_chapters(self) -> int:
-        """Finished chapters whose segments all came from the cache."""
+        """Finished documents whose segments all came from the cache."""
         return sum(1 for unit in self.tracked()
-                   if self.state(unit.file) == STATE_DONE
+                   if self.file_state(unit.file) == STATE_DONE
                    and self.cached_pages.get(unit.file, 0) >= self.total(unit.file))
 
     def selection_size(self) -> int:
-        """How many chapters the run is about (the ones with content)."""
+        """How many documents the run is about (the ones with content)."""
         return len(self.tracked())
 
     def summary(self) -> dict[str, int]:
@@ -330,7 +386,9 @@ class ProgressModel:
         if not ok:
             return
         for unit in self.units:
-            if self.selection is not None and unit.file not in self.selection:
+            if unit.kind != "document" or not unit.file:
+                continue
+            if not self.is_selected(unit):
                 continue
             if self.plan and not self.total(unit.file):
                 continue
