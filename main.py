@@ -656,10 +656,16 @@ class MainWindow(QMainWindow):
             self._status_message(f"{T('action.bookmarks')}: {len(items)}")
 
     # ------------------------------------------------------ settings dialogs
-    def on_settings(self) -> None:
+    def on_settings(self, tab: int | None = None) -> None:
         from noesis_ebook_translator.ui import SettingsDialog
         dialog = SettingsDialog(self, apply_theme_cb=self._apply_theme_preview)
         dialog.applied.connect(self._apply_settings_values)
+        if tab is not None:
+            # Ribbon "dialog launcher": open Settings on the matching page.
+            try:
+                dialog.tabs.setCurrentIndex(int(tab))
+            except Exception:  # noqa: BLE001 - cosmetic only
+                pass
         if dialog.exec():
             values = dialog.apply()
             self._apply_settings_values(values)

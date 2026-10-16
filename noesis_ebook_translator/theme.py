@@ -90,6 +90,10 @@ QHeaderView::section { background: #eceef2; border: 0; padding: 4px; }
 #workflowBar QToolButton:hover { background: #e3e6ec; }
 #workflowBar QToolButton:checked { background: #c9d6f2; }
 #translateView { background: #f6f7f9; }
+#panelCaption { color: #6b7684; font-size: 11px; }
+#panelDivider { background: #d5d8de; }
+#panelLauncher { color: #6b7684; border: none; padding: 0; font-size: 9px; }
+#panelLauncher:hover { color: #2d6cdf; }
 #bandTitle { color: #5c6674; font-weight: 600; }
 #bandHint { color: #5c6674; }
 #detailTitle { font-size: 15px; font-weight: 600; }
@@ -132,6 +136,10 @@ QPlainTextEdit { font-family: monospace; }
 #workflowBar QToolButton:hover { background: #313640; }
 #workflowBar QToolButton:checked { background: #2f4772; }
 #translateView { background: #1f2227; }
+#panelCaption { color: #9aa4b2; font-size: 11px; }
+#panelDivider { background: #3a3f47; }
+#panelLauncher { color: #9aa4b2; border: none; padding: 0; font-size: 9px; }
+#panelLauncher:hover { color: #4c8bf5; }
 #bandTitle { color: #9aa4b2; font-weight: 600; }
 #bandHint { color: #9aa4b2; }
 #detailTitle { font-size: 15px; font-weight: 600; }
@@ -172,6 +180,10 @@ QHeaderView::section { background: #ecdfc2; border: 0; padding: 4px; }
 #workflowBar QToolButton:hover { background: #e5d5b3; }
 #workflowBar QToolButton:checked { background: #dcc79b; }
 #translateView { background: #f4ecd8; }
+#panelCaption { color: #7a6a52; font-size: 11px; }
+#panelDivider { background: #d8c9a6; }
+#panelLauncher { color: #7a6a52; border: none; padding: 0; font-size: 9px; }
+#panelLauncher:hover { color: #a06a2c; }
 #bandTitle { color: #7a6a52; font-weight: 600; }
 #bandHint { color: #7a6a52; }
 #detailTitle { font-size: 15px; font-weight: 600; }

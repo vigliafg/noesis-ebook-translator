@@ -11,9 +11,9 @@ from __future__ import annotations
 from PyQt6.QtCore import QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMenu,
-    QPushButton, QSizePolicy, QSpinBox, QStackedWidget, QTabBar, QToolButton,
-    QVBoxLayout, QWidget)
+    QCheckBox, QComboBox, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMenu,
+    QSizePolicy, QSpinBox, QStackedWidget, QTabBar, QToolButton, QVBoxLayout,
+    QWidget)
 
 from .. import appconfig
 from .. import theme as theme_mod
@@ -22,7 +22,7 @@ from ..i18n import T, get_language
 from ..reader import available_backends
 from .icons import icon
 
-__all__ = ["WorkflowBar", "build_workflow"]
+__all__ = ["WorkflowBar", "build_workflow", "ToolPanel"]
 
 
 class WorkflowButton(QWidget):
@@ -90,8 +90,96 @@ class WorkflowButton(QWidget):
         return self._label.text() if self._label is not None else ""
 
 
+class _PanelDivider(QWidget):
+    """Thin 1px vertical rule between two ribbon panels.
+
+    Office draws a hairline that spans (almost) the panel height; the light
+    colour comes from the theme stylesheet (``#panelDivider``).
+    """
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("panelDivider")
+        # Plain QWidget backgrounds need this attribute for QSS to paint them.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedWidth(1)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed,
+                           QSizePolicy.Policy.Expanding)
+
+
+class ToolPanel(QWidget):
+    """A ribbon-style panel: controls on top, the function name underneath.
+
+    ``break_after`` stacks the controls on two sub-rows (Office groups with a
+    lot of content do the same), which also keeps the toolbar narrower.
+    """
+
+    def __init__(self, key: str, caption: str, *, break_after: int = 0,
+                 launcher=None, parent=None) -> None:
+        super().__init__(parent)
+        self.key = key
+        self._count = 0
+        self._break_after = max(0, int(break_after))
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.grid = QGridLayout()
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setHorizontalSpacing(5)
+        self.grid.setVerticalSpacing(2)
+        outer.addLayout(self.grid, 1)
+
+        bottom = QHBoxLayout()
+        bottom.setContentsMargins(0, 0, 0, 0)
+        bottom.setSpacing(0)
+        bottom.addStretch(1)
+        self.caption = QLabel(caption)
+        self.caption.setObjectName("panelCaption")
+        self.caption.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        # Word wrap keeps the caption from making small panels wider.
+        self.caption.setWordWrap(True)
+        # Bottom-aligned so the caption row stays level with launcher panels.
+        bottom.addWidget(self.caption, 0, Qt.AlignmentFlag.AlignBottom)
+        bottom.addStretch(1)
+
+        self.launcher: QToolButton | None = None
+        if launcher is not None:
+            tooltip, slot = launcher
+            self.launcher = QToolButton(self)
+            self.launcher.setObjectName("panelLauncher")
+            self.launcher.setAutoRaise(True)
+            self.launcher.setText("\u25e2")
+            self.launcher.setToolTip(tooltip)
+            self.launcher.setCursor(Qt.CursorShape.PointingHandCursor)
+            # Keep it smaller than the caption line: a taller launcher would push
+            # the caption up and break the alignment across panels.
+            self.launcher.setFixedSize(13, 13)
+            self.launcher.clicked.connect(slot)
+            bottom.addWidget(self.launcher, 0, Qt.AlignmentFlag.AlignBottom)
+        outer.addLayout(bottom)
+
+    # -- content ----------------------------------------------------------
+    def add(self, widget: QWidget, stretch: int = 0) -> QWidget:
+        if self._break_after and self._count >= self._break_after:
+            row, column = 1, self._count - self._break_after
+        else:
+            row, column = 0, self._count
+        self.grid.addWidget(widget, row, column, 1, 1,
+                            Qt.AlignmentFlag.AlignLeft
+                            | Qt.AlignmentFlag.AlignTop)
+        if stretch:
+            self.grid.setColumnStretch(column, stretch)
+        self._count += 1
+        return widget
+
+    def caption_text(self) -> str:
+        return self.caption.text()
+
+
 class SectionPage(QWidget):
-    """A horizontal array of controls for one workflow section."""
+    """A horizontal array of ribbon panels for one workflow section."""
 
     def __init__(self, key: str, parent=None) -> None:
         super().__init__(parent)
@@ -100,10 +188,37 @@ class SectionPage(QWidget):
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(8, 2, 8, 2)
         self._layout.setSpacing(5)
-        self._layout.setAlignment(Qt.AlignmentFlag.AlignLeft
-                                  | Qt.AlignmentFlag.AlignTop)
+        self._layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._panel: ToolPanel | None = None
+        self._panels: list[ToolPanel] = []
+        self._dividers: list[_PanelDivider] = []
 
+    # -- panels -----------------------------------------------------------
+    def panel(self, key: str, *, break_after: int = 0,
+              launcher=None) -> ToolPanel:
+        """Start a new panel (a divider is added between panels)."""
+        if self._panels:
+            divider = _PanelDivider(self)
+            self._dividers.append(divider)
+            self._layout.addWidget(divider)
+        panel = ToolPanel(key, T(key), break_after=break_after,
+                          launcher=launcher)
+        self._panels.append(panel)
+        self._layout.addWidget(panel)
+        self._panel = panel
+        return panel
+
+    def panels(self) -> list[ToolPanel]:
+        return list(self._panels)
+
+    def dividers(self) -> int:
+        return len(self._dividers)
+
+    # -- content ----------------------------------------------------------
     def _add(self, widget: QWidget, stretch: int = 0) -> QWidget:
+        if self._panel is not None:
+            return self._panel.add(widget, stretch)
+        # Legacy: a section without panels keeps the flat single row.
         self._layout.addWidget(widget, stretch)
         return widget
 
@@ -203,19 +318,26 @@ class SectionPage(QWidget):
             label.setToolTip(tooltip)
         return self._add(label)
 
-    def separator(self) -> QFrame:
-        frame = QFrame()
-        frame.setFrameShape(QFrame.Shape.VLine)
-        frame.setFrameShadow(QFrame.Shadow.Sunken)
-        return self._add(frame)
+    def divider(self) -> _PanelDivider:
+        """Add a thin rule inside the current panel (rarely needed)."""
+        divider = _PanelDivider(self)
+        return self._add(divider)
 
 
 class _HeightStack(QStackedWidget):
-    """QStackedWidget that sizes to the *current* page (no big empty gaps)."""
+    """QStackedWidget that sizes to the *current* page (no big empty gaps).
+
+    It also propagates the current page's minimum size to itself, so a page
+    wider than the window makes the surrounding scroll area scroll instead of
+    being silently clipped (Office collapses groups; we scroll the row).
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.currentChanged.connect(lambda *_: self.updateGeometry())
+        self.currentChanged.connect(self._sync)
+
+    def _sync(self, *_) -> None:
+        self.updateGeometry()
 
     def sizeHint(self):  # noqa: N802 - Qt naming
         page = self.currentWidget()
@@ -290,9 +412,20 @@ class WorkflowBar(QWidget):
 
 
 def build_workflow(window) -> WorkflowBar:
-    """Create the workflow bar, wire it to ``window`` and return it."""
+    """Create the workflow bar, wire it to ``window`` and return it.
+
+    Controls are grouped in ribbon-style panels: the caption under each panel
+    comes from the existing ``panel.*`` catalog keys (leftovers of the old
+    ``pyqtribbon`` bar, revived here). Panels whose settings live in the tabbed
+    Settings dialog get a small "dialog launcher" in their bottom-right corner.
+    """
     bar = WorkflowBar(window)
     window.workflow = bar
+
+    def launcher(tab: int):
+        """Office-like ▸ in the panel corner: opens Settings on ``tab``."""
+        return (T("action.settings"),
+                lambda: window.on_settings(tab))
 
     def build_start_menu() -> QMenu:
         menu = QMenu(bar)
@@ -319,32 +452,35 @@ def build_workflow(window) -> WorkflowBar:
 
     # -- Library -------------------------------------------------------
     p = bar.add_section("library", T("tab.library"))
+    p.panel("panel.file", launcher=launcher(5))
     p.button("action.add_book", "add", window.on_add_book, tooltip=T("tip.add_book"))
     p.button("action.remove_book", "remove", window.on_remove_book)
     p.button("action.open_reader", "reader", window.on_open_reader)
     p.button("action.refresh", "refresh", window.on_refresh)
-    p.separator()
+    p.panel("panel.content")
     p.button("view.original", "library", lambda: window.set_library_view("original"))
     p.button("view.translated", "check", lambda: window.set_library_view("translated"))
     p.button("view.chapters", "chapters", lambda: window.set_library_view("chapters"))
-    p.separator()
+    p.panel("panel.view")
     p.button("view.grid", "assets", lambda: window.set_library_layout("grid"))
     p.button("view.list", "format", lambda: window.set_library_layout("list"))
-    p.separator()
+    p.panel("panel.actions")
     p.button("action.compare", "parallel", window.on_compare)
     p.button("action.retranslate", "translate", window.on_retranslate)
     p.button("action.extract_chapters", "chapters", window.on_extract_chapters)
-    p.separator()
+    p.panel("panel.information")
     p.button("action.reveal", "folder", window.on_reveal)
     p.button("action.stats", "report", window.on_stats)
     p.stretch()
 
     # -- Reader --------------------------------------------------------
     p = bar.add_section("reader", T("tab.reader"))
+    p.panel("panel.navigation")
     window.btn_toc = p.button("action.toc", "chapters", window.on_toggle_toc)
     p.button("action.expand_all", "add", window.on_expand_all)
     p.button("action.collapse_all", "remove", window.on_collapse_all)
-    p.separator()
+    # The "Appearance" group is the widest: two sub-rows keep the ribbon narrow.
+    p.panel("panel.appearance", launcher=launcher(1))
     window.cmb_theme_reader = p.labelled_combo(
         "label.reader_theme", [T(f"theme.{m}") for m in ("light", "sepia", "dark")],
         tooltip=T("label.reader_theme"))
@@ -364,17 +500,18 @@ def build_workflow(window) -> WorkflowBar:
     window.chk_hyphenate = p.check("label.hyphenate")
     window.chk_hyphenate.setChecked(True)
     window.chk_hyphenate.toggled.connect(window.on_hyphenate_toggled)
-    p.separator()
+    p.panel("label.zoom")
     p.button("assets.zoom_in", "zoom_in", lambda: window.reader.backend.set_zoom(1))
     p.button("assets.zoom_out", "zoom_out", lambda: window.reader.backend.set_zoom(-1))
-    p.separator()
+    p.panel("panel.search")
     window.edt_find = p.line(T("label.search"), width=160)
     window.edt_find.returnPressed.connect(window.on_find_run)
     p.button("action.find_next", "find", window.on_find_next)
+    p.panel("panel.compare")
     window.btn_parallel = p.button(
         "action.compare", "parallel", checkable=True,
         on_toggle=window.on_parallel_toggled)
-    p.separator()
+    p.panel("panel.notes")
     p.button("action.add_note", "note", window.on_add_note)
     p.button("action.bookmarks", "bookmark", window.on_bookmarks)
     p.button("action.print_pdf", "print", window.on_print_pdf)
@@ -382,33 +519,35 @@ def build_workflow(window) -> WorkflowBar:
 
     # -- Assets --------------------------------------------------------
     p = bar.add_section("assets", T("tab.assets"))
+    p.panel("panel.source", launcher=launcher(5))
     window.cmb_assets_edition = p.labelled_combo(
         "label.edition", [T("edition.original"), T("edition.translated")],
         tooltip=T("label.edition"))
     window.cmb_assets_edition.currentIndexChanged.connect(
         window._on_assets_edition_changed)
     p.button("action.refresh", "refresh", window.on_assets_reload)
-    p.separator()
+    p.panel("panel.figures")
     p.button("action.load", "assets", window._load_figures)
     p.button("action.export_assets", "export", lambda: window.figures._export("img"))
     p.button("assets.save_back", "save", lambda: window.figures.save_back())
-    p.separator()
+    p.panel("assets.texts")
     p.button("assets.texts", "preview", window._load_texts)
     p.button("assets.save_back", "save", lambda: window.texts.save_back())
-    p.separator()
+    p.panel("panel.tables")
     p.button("panel.tables", "format", window._load_tables)
     p.button("assets.save_back", "save", lambda: window.tables.save_back())
     p.stretch()
 
     # -- Translate -----------------------------------------------------
     p = bar.add_section("translate", T("tab.translate"))
+    p.panel("panel.run")
     window.btn_translate = p.button(
         "action.translate_book", "translate", window.on_translate_book, "Ctrl+Return")
     window.btn_translate_chapters = p.button(
         "action.translate_chapters", "chapters", window.on_translate_chapters)
     window.btn_cancel = p.button("action.cancel", "cancel", window.on_cancel)
     window.btn_cancel.setEnabled(False)
-    p.separator()
+    p.panel("panel.engine", launcher=launcher(2))
     window.cmb_engine = p.labelled_combo("panel.engine", appconfig.engine_names(),
                                          tooltip=T("panel.engine"))
     window.cmb_engine.currentTextChanged.connect(window._on_engine_changed)
@@ -416,34 +555,35 @@ def build_workflow(window) -> WorkflowBar:
     window.edt_api_key.setEchoMode(QLineEdit.EchoMode.Password)
     window.cmb_model = p.labelled_combo("label.model", tooltip=T("label.model"))
     window.cmb_model.setEditable(True)
-    p.separator()
+    p.panel("panel.languages", launcher=launcher(2))
     window.cmb_source = p.labelled_combo(
         "label.source", ["Auto detect"] + list(GOOGLE_LANGUAGES),
         tooltip=T("label.source"))
     window.cmb_target = p.labelled_combo(
         "label.target", list(GOOGLE_LANGUAGES), tooltip=T("label.target"))
     p.button("action.swap", "swap", window.on_swap_languages)
-    p.separator()
+    p.panel("panel.options", launcher=launcher(2))
     window.chk_bilingual = p.check("label.bilingual")
     window.chk_cache = p.check("label.cache")
     window.chk_cache.setChecked(True)
     window.chk_batch = p.check("label.batch")
-    p.separator()
+    p.panel("panel.preview")
     p.button("tab.preview", "preview",
              lambda: window.tabs.setCurrentWidget(window.preview))
     p.stretch()
 
     # -- Quality -------------------------------------------------------
     p = bar.add_section("quality", T("tab.quality"))
+    p.panel("panel.evaluation", launcher=launcher(3))
     p.button("action.evaluate", "check", lambda: window.on_quality(False))
     p.button("action.evaluate_ai", "quality", lambda: window.on_quality(True))
     window.spn_samples = p.labelled_spin("label.samples")
     window.spn_samples.setRange(1, 100)
     window.spn_samples.setValue(10)
-    p.separator()
+    p.panel("panel.report", launcher=launcher(3))
     p.button("action.report_save", "save", window.on_report_save)
     p.button("action.report_open", "report", window.on_report_open)
-    p.separator()
+    p.panel("label.threshold")
     window.spn_threshold = p.labelled_spin("label.threshold")
     window.spn_threshold.setRange(0, 100)
     window.spn_threshold.setValue(60)
@@ -451,24 +591,26 @@ def build_workflow(window) -> WorkflowBar:
 
     # -- Export --------------------------------------------------------
     p = bar.add_section("export", T("tab.export"))
+    p.panel("panel.source", launcher=launcher(4))
     window.cmb_export_edition = p.labelled_combo(
         "label.edition", [T("edition.original"), T("edition.translated")],
         tooltip=T("label.edition"))
     window.edt_export_chapters = p.line(T("label.chapters_filter"), width=160)
-    p.separator()
+    p.panel("panel.format_grp", launcher=launcher(4))
     window.cmb_export_format = p.labelled_combo("label.format", tooltip=T("label.format"))
     window.cmb_export_format.setMinimumWidth(110)
     p.button("action.export", "export", window.on_export_quick)
     p.button("action.export", "package", window.on_export)
-    p.separator()
+    p.panel("panel.asset_export")
     p.button("action.export_assets", "assets", window.on_export_assets)
     p.stretch()
 
     # -- Tools ---------------------------------------------------------
     p = bar.add_section("tools", T("tab.tools"))
+    p.panel("label.segments")
     p.button("action.split", "split", window.on_split)
     p.button("action.merge", "merge", window.on_merge)
-    p.separator()
+    p.panel("panel.maintenance", launcher=launcher(5))
     p.button("action.clear_cache", "cache", window.on_clear_cache)
     p.button("action.data_dir", "file_folder", window.on_data_dir)
     p.stretch()
