@@ -157,21 +157,27 @@ class WaterGlass(QWidget):
         painter.setFont(caption_font)
         metrics = painter.fontMetrics()
 
+        # A narrow glass would elide a single long line, so the caption may carry
+        # several lines (one per piece of information).
+        lines = self._caption.split("\n")
         pad = 10
         box = QRectF(rect.adjusted(6, 0, -6, 0))
-        width = min(metrics.horizontalAdvance(self._caption),
+        width = min(max(metrics.horizontalAdvance(line) for line in lines),
                     max(20, int(box.width()) - 2 * pad))
-        height = metrics.height()
+        height = metrics.height() * len(lines)
         box = QRectF(box.center().x() - (width + 2 * pad) / 2,
                      box.center().y() - (height + 2 * pad) / 2,
                      width + 2 * pad, height + 2 * pad)
 
         painter.fillRect(box, self._color("caption_bg"))
         painter.setPen(self._color("text"))
-        painter.drawText(box, int(Qt.AlignmentFlag.AlignCenter),
-                         metrics.elidedText(self._caption,
-                                            Qt.TextElideMode.ElideRight,
-                                            int(box.width()) - 2 * pad))
+        for index, line in enumerate(lines):
+            line_rect = QRectF(box.left(), box.top() + pad
+                               + index * metrics.height(),
+                               box.width(), metrics.height())
+            painter.drawText(line_rect, int(Qt.AlignmentFlag.AlignCenter),
+                             metrics.elidedText(line, Qt.TextElideMode.ElideRight,
+                                                int(box.width()) - 2 * pad))
         painter.end()
 
 

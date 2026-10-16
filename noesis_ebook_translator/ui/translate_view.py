@@ -193,7 +193,7 @@ class TranslateView(QWidget):
         parts = [f"{done}/{total} {T('label.segments').lower()}"] if total else []
         if model.cached:
             parts.append(f"{T('translate.cached')}: {model.cached}")
-        self.glass.set_caption(" · ".join(parts))
+        self.glass.set_caption("\n".join(parts))
 
     def set_finished(self, ok: bool = True, exported: bool = False) -> None:
         if self._model is None:
