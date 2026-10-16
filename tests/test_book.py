@@ -46,6 +46,61 @@ class TestTranslatePipeline(unittest.TestCase):
         # (only inside the translated paragraph), never duplicated as bilingual.
         self.assertEqual(body.count("A lone sentence to translate."), 1)
 
+    def test_new_chapter_is_translated_with_a_large_cache(self):
+        """A >50 kB cache must not stop a chapter translated for the first time.
+
+        Regression: ``TranslationCache.save()`` skips the insert when a
+        persistent cache exists and is larger than 50 kB, so a chapter never
+        translated before never reached the queue -- the run ended with it at 0%
+        and the progress never completed.
+        """
+        import glob
+        import sqlite3
+
+        from noesis_ebook_translator import book
+        from tests.fixtures import build_rich_epub
+
+        cache_dir = os.path.join(tempfile.gettempdir(),
+                                 "com.bookfere.Calibre.EbookTranslator", "cache")
+        before = set(glob.glob(os.path.join(cache_dir, "*.db")))
+        src = build_rich_epub(os.path.join(self.tmp, "incr.epub"))
+        settings = {"translation_position": "only", "cache_enabled": True}
+
+        book.translate_epub(
+            src, os.path.join(self.tmp, "one.epub"), engine="Fake",
+            source_lang="English", target_lang="Italian",
+            chapters=["c1.xhtml", "c2.xhtml"], settings=settings)
+
+        created = [path for path in glob.glob(os.path.join(cache_dir, "*.db"))
+                   if path not in before]
+        self.assertTrue(created, "the translation cache was not created")
+        db = created[0]
+        # Simulate a real book's cache: push it over the 50 kB threshold.
+        connection = sqlite3.connect(db)
+        connection.execute(
+            "INSERT OR REPLACE INTO cache (id, md5, raw, original, ignored, "
+            "page, translation, engine_name, target_lang) "
+            "VALUES (?,?,?,?,0,?,?,?,?)",
+            ("padding-row", "padding-md5", "x" * 60000, "padding", "pad.xhtml",
+             "padding", "Fake", "Italian"))
+        connection.commit()
+        connection.close()
+        self.assertGreater(os.path.getsize(db), 50000)
+
+        out = os.path.join(self.tmp, "two.epub")
+        book.translate_epub(
+            src, out, engine="Fake", source_lang="English",
+            target_lang="Italian",
+            chapters=["c1.xhtml", "c2.xhtml", "c3.xhtml"], settings=settings)
+
+        with zipfile.ZipFile(out) as archive:
+            body = "\n".join(
+                archive.read(name).decode("utf-8")
+                for name in archive.namelist()
+                if name.endswith((".xhtml", ".html")) and "c3" in name)
+        self.assertIn("IT&lt;", body,
+                      "the chapter translated for the first time was skipped")
+
     def test_output_path_default(self):
         from noesis_ebook_translator import book
 

@@ -224,6 +224,7 @@ def translate_epub(
     cache.set_info("target_lang", target_lang)
     cache.set_info("plugin_version", EbookTranslator.__version__)
     cache.save(originals)
+    _ensure_cache_rows(cache, originals)
     paragraphs = cache.all_paragraphs()
 
     def _log(text: str, error: bool = False) -> None:
@@ -259,6 +260,26 @@ def _persist_paragraph(cache, paragraph, on_paragraph) -> None:
     cache.update_paragraph(paragraph)
     if on_paragraph is not None:
         on_paragraph(paragraph)
+
+
+def _ensure_cache_rows(cache, originals) -> None:
+    """Insert the segments the persistent cache is still missing.
+
+    ``TranslationCache.save()`` refuses to insert when a persistent cache already
+    exists and is larger than 50 kB (it assumes the previous run was complete).
+    That breaks incremental work: a chapter translated for the *first* time would
+    never enter the queue, so it stayed at 0% and the progress never finished.
+    ``add`` is an ``INSERT ... ON CONFLICT DO NOTHING``, so this is idempotent.
+    """
+    if cache.is_fresh():
+        return                          # save() already inserted everything
+    known = {row[0] for row in cache.all()}
+    missing = [entry for entry in originals if entry[0] not in known]
+    if not missing:
+        return
+    for entry in missing:
+        cache.add(*entry)
+    cache.connection.commit()
 
 
 def preview_translation(
