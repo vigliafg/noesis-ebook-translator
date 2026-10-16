@@ -219,6 +219,10 @@ class ProgressModel:
         self.exported = False
         self.selection: set[str] | None = None
         self._known: set[str] = {unit.file for unit in self.units if unit.file}
+        #: Bumped on every change worth repainting. A big book (thousands of TOC
+        #: entries) is repainted only when this moves, so the per-delta work stays
+        #: O(visible rows) instead of O(entries).
+        self.revision = 0
 
     # -- structure --------------------------------------------------------
     def set_selection(self, files) -> None:
@@ -230,6 +234,7 @@ class ProgressModel:
         their place in the book but are dimmed and kept out of the totals.
         """
         self.selection = {str(f) for f in files} if files else None
+        self.revision += 1
 
     def is_selected(self, unit: ChapterUnit) -> bool:
         if self.selection is None:
@@ -251,6 +256,7 @@ class ProgressModel:
             self._known.add(file_name)
             self.units.append(ChapterUnit(file=file_name, name=file_name,
                                           kind="document"))
+        self.revision += 1
 
     def set_units(self, units: list[ChapterUnit]) -> None:
         self.units = list(units)
@@ -261,6 +267,7 @@ class ProgressModel:
         self.last = None
         self.finished = False
         self.exported = False
+        self.revision += 1
 
     # -- state ------------------------------------------------------------
     def total(self, file_name: str | None) -> int:
@@ -382,6 +389,8 @@ class ProgressModel:
         if delta.get("last"):
             self.last = tuple(delta["last"])  # type: ignore[assignment]
             changed = True
+        if changed:
+            self.revision += 1
         return changed
 
     def finish(self, ok: bool = True) -> None:
@@ -391,6 +400,7 @@ class ProgressModel:
         so the view does not pretend the interrupted work completed.
         """
         self.finished = True
+        self.revision += 1
         if not ok:
             return
         for unit in self.units:
@@ -405,3 +415,4 @@ class ProgressModel:
 
     def mark_exported(self) -> None:
         self.exported = True
+        self.revision += 1

@@ -525,6 +525,90 @@ class TestTranslateViewWidget(unittest.TestCase):
             view.hide()
             view.close()
 
+    def test_refresh_does_not_build_every_row(self):
+        """A big book must not rebuild every row on every delta.
+
+        Regression: the payload of all 7541 corpus entries was rebuilt (and
+        ``visualItemRect`` called) on each refresh -- 2.4 s per update.
+        """
+        from noesis_ebook_translator.progress_model import (
+            ChapterUnit, ProgressModel)
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        track = ChapterTrackWidget(reduce_motion=True)
+        try:
+            units = [ChapterUnit(f"c{i:05d}.xhtml", f"Cap {i}")
+                     for i in range(3000)]
+            model = ProgressModel(units)
+            model.set_plan({u.file: 4 for u in units})
+            track.resize(500, 320)
+            track.set_model(model)
+            original = track.row_data
+            calls: list[int] = []
+
+            def spy(row):
+                calls.append(row)
+                return original(row)
+
+            track.row_data = spy
+            model.apply({"counts": {units[0].file: 1}, "errors": {},
+                         "cached": 0, "last": None})
+            track.refresh()
+            self.assertEqual(calls, [], "refresh() rebuilt the whole book")
+            track.grab()                      # paints the visible rows only
+            self.assertLess(len(calls), len(units) // 10)
+            self.assertLessEqual(len(calls), 60)
+        finally:
+            track.close()
+
+    def test_delegate_ignores_an_invalid_index(self):
+        """Painting a stale or out-of-range row must not raise."""
+        from PyQt6.QtCore import QRect
+        from PyQt6.QtGui import QImage, QPainter
+        from PyQt6.QtWidgets import QStyleOptionViewItem
+
+        from noesis_ebook_translator.progress_model import ProgressModel
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        track = ChapterTrackWidget(reduce_motion=True)
+        try:
+            self.assertIsNone(track.row_data(0))            # no model at all
+            track.set_model(ProgressModel())
+            self.assertIsNone(track.row_data(5))            # out of range
+            track.set_model(self._model(["a.xhtml"]))
+            image = QImage(20, 20, QImage.Format.Format_ARGB32)
+            painter = QPainter(image)
+            option = QStyleOptionViewItem()
+            option.rect = QRect(0, 0, 20, 20)
+            delegate = track._list.itemDelegate()
+            delegate.paint(painter, option,
+                           track._list.model().index(999, 0))   # invalid row
+            painter.end()
+        finally:
+            track.close()
+
+    def test_scrolling_to_a_running_row_that_is_filtered_out(self):
+        """The running chapter may be invisible under a filter: no crash."""
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        track = ChapterTrackWidget(reduce_motion=True)
+        try:
+            model = self._model(["a.xhtml", "b.xhtml"])
+            model.set_plan({"a.xhtml": 4, "b.xhtml": 4})
+            track.resize(500, 320)
+            track.set_model(model)
+            track.set_filter("done")        # nothing is translated yet
+            self.assertEqual(track.visible_units(), [])
+            # ... and *now* a chapter starts: the auto-scroll must find nothing
+            # to scroll to instead of raising.
+            model.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0,
+                         "last": None})
+            track.refresh()
+            self.assertEqual(model.running_units(), ["a.xhtml"])
+            self.assertEqual(track.visible_units(), [])
+        finally:
+            track.close()
+
     def test_empty_track_helpers(self):
         """No model yet: the list is empty, the filter falls back to "all"."""
         from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
@@ -653,6 +737,8 @@ class TestTranslateViewWidget(unittest.TestCase):
             track.set_filter("done")
             self.assertEqual(track.visible_units(), [])
             self.assertFalse(track.lbl_empty.isHidden())
+            # ... and the rows really go away (no stale row left behind).
+            self.assertEqual(track._list.count(), 0)
             track.set_filter("all")
             self.assertTrue(track.lbl_empty.isHidden())
         finally:

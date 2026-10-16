@@ -47,18 +47,24 @@ class TestBookToast(unittest.TestCase):
             toast.show()
             self.app.processEvents()
             self.assertFalse(toast.is_animating())
+            self.assertEqual(toast.sheenPos, 0.0)
             toast.set_working(True)
-            self.app.processEvents()
             self.assertTrue(toast.is_animating())
-            # The reflection must actually travel (0 -> 1, same as the cloner).
-            lowest = highest = toast.sheenPos
-            deadline = time.time() + 3.0
-            while time.time() < deadline and (highest - lowest) < 0.6:
-                self.app.processEvents()
-                lowest = min(lowest, toast.sheenPos)
-                highest = max(highest, toast.sheenPos)
-                time.sleep(0.02)
-            self.assertGreater(highest - lowest, 0.6, "the sheen must sweep")
+            # Drive the sweep by hand: the check must not depend on wall-clock
+            # timers (it flaked on a loaded machine). The reflection starts at 0,
+            # travels linearly and reaches the end at 55% of the duration, then
+            # holds -- exactly the cloner's sweep.
+            toast._anim.pause()
+
+            def pos(fraction: float) -> float:
+                toast._anim.setCurrentTime(int(toast.SHEEN_MS * fraction))
+                return toast.sheenPos
+
+            self.assertAlmostEqual(pos(0.0), 0.0, places=2)
+            self.assertGreater(pos(0.30), 0.3)          # it really travels
+            self.assertAlmostEqual(pos(0.45), 0.82, places=2)
+            self.assertAlmostEqual(pos(0.55), 1.0, places=2)
+            self.assertAlmostEqual(pos(0.80), 1.0, places=2)   # held
             toast.set_working(False)
             self.assertFalse(toast.is_animating())
             self.assertEqual(toast.sheenPos, 0.0)

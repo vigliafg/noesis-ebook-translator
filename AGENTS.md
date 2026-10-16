@@ -170,6 +170,10 @@ V del corpus). Le intestazioni senza documento restano come righe
   così due voci sullo stesso file non contano due volte.
 - La barra è disegnata **dentro** la riga (`BAR_TOP`, non sugli ultimi 2 px):
   una riga tagliata dal viewport non perde più la barra.
+- **Scala**: il delegate costruisce il payload **su richiesta** (`row_data`), solo
+  per le righe che dipinge, e `ProgressModel.revision` evita i refresh inutili. Il
+  corpus locale dell'utente arriva a **7541 voci** (Ferri's): refresh ~4 ms e
+  cambio filtro ~20 ms, contro 2,4 s e 1,7 s della versione "tutte le righe".
 
 **Guida**: `docs/site/` (MkDocs Material + i18n, 5 lingue) è pubblicata su
 GitHub Pages da `.github/workflows/docs.yml`.

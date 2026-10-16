@@ -48,7 +48,12 @@ class _UnitDelegate(QStyledItemDelegate):
         return QSize(0, ROW_HEIGHT)
 
     def paint(self, painter: QPainter, option, index) -> None:  # noqa: N802
-        data = index.data(Qt.ItemDataRole.UserRole) or {}
+        # The payload is built *here*, for the rows Qt is actually painting: a
+        # 7500-entry book costs a handful of dictionary builds per frame instead
+        # of one per row per refresh.
+        data = self._track.row_data(index.row())
+        if not data:
+            return
         rect = option.rect
         colors = self._track.colors()
         state = data.get("state")
@@ -176,7 +181,12 @@ class ChapterTrackWidget(QWidget):
         self._reduce_motion = bool(reduce_motion)
         self._phase = 0
         self._files: list[str] = []
-        self._snapshot: dict[str, tuple] = {}
+        #: The rows currently shown, in order: the delegate reads them by index.
+        self._units: list = []
+        #: Set when the visible set must be rebuilt even if it looks unchanged
+        #: (an empty result must not be mistaken for "nothing changed").
+        self._rebuild_pending = True
+        self._revision = -1
         self._last_running: list[str] = []
         self._colors = self._theme_colors("light", False)
 
@@ -245,10 +255,24 @@ class ChapterTrackWidget(QWidget):
     def set_model(self, model: ProgressModel | None) -> None:
         self._model = model
         self._files = []
-        self._snapshot.clear()
+        self._units = []
+        self._rebuild_pending = True
+        self._revision = -1
         self._last_running = []
         self._list.clear()
         self.refresh()
+
+    def row_data(self, row: int) -> dict | None:
+        """Payload for one visible row, built on demand by the delegate."""
+        model = self._model
+        if model is None or not 0 <= row < len(self._units):
+            return None
+        unit = self._units[row]
+        done, total = model.progress(unit.file)
+        state = model.unit_state(unit)
+        return {"name": unit.label(), "depth": unit.depth, "done": done,
+                "total": total, "state": state,
+                "exported": model.exported and state == STATE_DONE}
 
     def set_filter(self, name: str) -> None:
         """Show every entry, only the ones to translate, or only the done ones."""
@@ -258,7 +282,8 @@ class ChapterTrackWidget(QWidget):
         button = self._filter_buttons.get(name)
         if button is not None and not button.isChecked():
             button.setChecked(True)
-        self._files = []          # force a rebuild of the visible rows
+        self._files = []
+        self._rebuild_pending = True     # an empty result is still a change
         self.refresh()
 
     def filter_name(self) -> str:
@@ -330,13 +355,33 @@ class ChapterTrackWidget(QWidget):
         if model is None:
             return
         units = self._filtered(model)
-        files = [unit.key() for unit in units]
-        if files != self._files:
+        if self._rebuild_pending or [unit.key() for unit in units] != self._files:
             self._rebuild(units)
-        self._update_rows(units)
+            self._revision = -1
+        # Repaint once per real change: the delegate rebuilds each *visible* row's
+        # payload while painting, so nothing here is O(entries) per frame.
+        if model.revision != self._revision:
+            self._revision = model.revision
+            self._list.viewport().update()
+        running = model.running_units()
+        if running != self._last_running:
+            self._last_running = list(running)
+            self._scroll_to(running[0] if running else None)
         self._update_empty(units)
         self._update_header(model)
         self._update_timer()
+
+    def _scroll_to(self, file_name: str | None) -> None:
+        if not file_name:
+            return
+        row = next((index for index, unit in enumerate(self._units)
+                    if unit.file == file_name), None)
+        if row is None:
+            return
+        item = self._list.item(row)
+        if item is not None:
+            self._list.scrollToItem(item,
+                                    QListWidget.ScrollHint.PositionAtCenter)
 
     def _update_empty(self, units) -> None:
         empty = not units
@@ -369,43 +414,17 @@ class ChapterTrackWidget(QWidget):
         self.bar_current.set_busy(model.file_state(current) == STATE_RUNNING)
 
     def _rebuild(self, units) -> None:
-        self._list.clear()
-        self._snapshot.clear()
-        self._files = []
-        for unit in units:
-            item = QListWidgetItem()
-            item.setData(Qt.ItemDataRole.UserRole,
-                         {"name": unit.label(), "depth": unit.depth,
-                          "done": 0, "total": 0, "state": STATE_HEADER,
-                          "exported": False})
-            self._list.addItem(item)
-            self._files.append(unit.key())
+        """Recreate the row placeholders (one per visible entry).
 
-    def _update_rows(self, units) -> None:
-        model = self._model
-        assert model is not None
-        running = model.running_units()
-        scroll_to: QListWidgetItem | None = None
-        for index, unit in enumerate(units):
-            item = self._list.item(index)
-            if item is None:  # pragma: no cover - defensive
-                continue
-            done, total = model.progress(unit.file)
-            state = model.unit_state(unit)
-            key = (done, total, state, model.exported)
-            data = {"name": unit.label(), "depth": unit.depth,
-                    "done": done, "total": total, "state": state,
-                    "exported": model.exported and state == STATE_DONE}
-            item.setData(Qt.ItemDataRole.UserRole, data)
-            if self._snapshot.get(unit.key()) != key:
-                self._snapshot[unit.key()] = key
-                self._list.viewport().update(self._list.visualItemRect(item))
-            if running and unit.file == running[0] and scroll_to is None:
-                scroll_to = item
-        if scroll_to is not None and running != self._last_running:
-            self._list.scrollToItem(scroll_to,
-                                    QListWidget.ScrollHint.PositionAtCenter)
-        self._last_running = list(running)
+        The rows carry no data: the delegate asks :meth:`row_data` for it while
+        painting, so a rebuild is just N cheap items.
+        """
+        self._list.clear()
+        self._units = list(units)
+        self._files = [unit.key() for unit in units]
+        self._rebuild_pending = False
+        for _ in units:
+            self._list.addItem(QListWidgetItem())
 
     def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Re-evaluate the pulse when the band becomes visible.
