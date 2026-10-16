@@ -75,6 +75,42 @@ I test girano **headless** (`QT_QPA_PLATFORM=offscreen`, impostato in
 (`tests/fixtures.py`): **non serve la rete**. In CI:
 `.github/workflows/tests.yml` (`ubuntu-latest`, Python 3.12).
 
+### Harness di scenario (invarianti di stato)
+
+`tests/harness.py` espone due harness molto diversi:
+
+- `run_feature_harness` — **smoke**: la finestra si costruisce, un libro si apre,
+  gli asset caricano. Verifica «non è esploso».
+- `run_scenario_matrix` — **invarianti**: esegue **davvero** traduzioni su una
+  matrice di condizioni (cache assente / piena / parziale / grande >50 kB,
+  capitolo nuovo **prima** o dopo la cache, selezione che si restringe, TOC
+  multilivello, anchor) e controlla che `segmenti processati == pianificati`,
+  che nessun capitolo resti `pending`, che l'output contenga la traduzione in
+  **ogni** documento e in **tutti** i livelli del TOC. Ogni condizione gira in un
+  thread con **watchdog**: uno stallo è un test rosso, non una suite appesa.
+
+```bash
+python tools/scenario_harness.py          # tabella + exit code
+python tools/scenario_harness.py --json   # report grezzi
+```
+
+`tests/test_scenarios.py` è il wrapper unittest (una condizione = un test, più
+il caso GUI «cache mista → 100%» e l'annullamento).
+
+### Canale stderr asserito
+
+`tests/test_console_clean.py` esegue `python -m tests.console_probe {gui,engine,reader}`
+in **sottoprocessi** e fallisce su `Traceback`, `AttributeError`,
+`Release of profile requested`, `SIGSEGV`, … con allow-list per il rumore di
+piattaforma headless (`QRhiGles2`, `Vulkan`, `libpng`). È l'unico modo per
+accorgersi delle eccezioni negli slot Qt (PyQt le stampa e prosegue) e dei
+warning di Chromium.
+
+> Le due classi di bug che questo harness ha trovato al primo colpo sono in
+> `book.py`: la cache era riconciliata per **indice posizionale** (`id`), non per
+> contenuto, e un annullamento veniva riportato come traduzione riuscita con un
+> file parziale scritto su disco.
+
 ### Corpus Project Gutenberg
 
 `tests/data/corpus/` contiene **13 EPUB reali** di Project Gutenberg (pubblico

@@ -25,6 +25,7 @@ from .lib.cache import get_cache
 from .lib.config import get_config
 from .lib.element import (
     get_element_handler, get_page_elements, get_toc_elements)
+from .lib.exception import TranslationCanceled
 from .lib.translation import get_engine_class, get_translation, get_translator
 from .lib.utils import log, uid
 
@@ -243,6 +244,11 @@ def translate_epub(
         translation.set_cancel_request(should_cancel)
 
     translation.handle(paragraphs)
+    # A cancelled run returns normally from the engine's handler (it drains the
+    # queue), so check explicitly: writing a half-translated EPUB and reporting
+    # success is worse than stopping here.
+    if should_cancel is not None and should_cancel():
+        raise TranslationCanceled("Translation canceled.")
     handler.add_translations(paragraphs)
     cache.done()
 
@@ -263,22 +269,42 @@ def _persist_paragraph(cache, paragraph, on_paragraph) -> None:
 
 
 def _ensure_cache_rows(cache, originals) -> None:
-    """Insert the segments the persistent cache is still missing.
+    """Align the persistent cache with the segments of *this* run.
 
-    ``TranslationCache.save()`` refuses to insert when a persistent cache already
-    exists and is larger than 50 kB (it assumes the previous run was complete).
-    That breaks incremental work: a chapter translated for the *first* time would
-    never enter the queue, so it stayed at 0% and the progress never finished.
-    ``add`` is an ``INSERT ... ON CONFLICT DO NOTHING``, so this is idempotent.
+    The verbatim ``TranslationCache`` writes rows with ``INSERT ... ON CONFLICT
+    DO NOTHING`` keyed on ``id``, and ``id`` is the element's **position**: it is
+    only stable while the element list does not change. A run whose chapter
+    selection differs from the previous one (a chapter added, removed or
+    re-selected) shifts every following index, so an id-based match crosses
+    segments -- the elements that landed on an already-used id were silently left
+    untranslated, while rows of a book state that no longer exists stayed in the
+    queue (wasted engine calls). ``TranslationCache.save()`` has the same flaw in
+    its "fresh" path, and it also skips every insert when a >50 kB cache exists.
+
+    ``original`` (the segment text) is the only stable identity, so the table is
+    rebuilt in this run's order, carrying the known translations over by content.
     """
-    if cache.is_fresh():
-        return                          # save() already inserted everything
-    known = {row[0] for row in cache.all()}
-    missing = [entry for entry in originals if entry[0] not in known]
-    if not missing:
-        return
-    for entry in missing:
-        cache.add(*entry)
+    rows = cache.all()
+    # Cache row layout: id, md5, raw, original, ignored, attributes, page,
+    # translation, engine_name, target_lang.
+    expected = {entry[0]: entry[3] for entry in originals
+                if not (entry[4] if len(entry) > 4 else False)}
+    actual = {row[0]: row[3] for row in rows}
+    if actual == expected:
+        return                          # the table already matches this run
+    translation_by_content = {row[3]: row[7] for row in rows if row[7]}
+    if rows:
+        cache.cursor.execute('DELETE FROM cache')
+    for entry in originals:
+        oid, md5, raw, content = entry[0], entry[1], entry[2], entry[3]
+        ignored = entry[4] if len(entry) > 4 else False
+        attributes = entry[5] if len(entry) > 5 else None
+        page = entry[6] if len(entry) > 6 else None
+        cache.cursor.execute(
+            'INSERT OR REPLACE INTO cache VALUES ('
+            '?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)',
+            (oid, md5, raw, content, ignored, attributes, page,
+             translation_by_content.get(content), None, None))
     cache.connection.commit()
 
 

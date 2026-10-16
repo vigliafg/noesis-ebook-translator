@@ -141,6 +141,11 @@ def register_fake_engine():
     # Keep test output readable: the engine logs every paragraph at INFO.
     utils_mod.log.level = utils_mod.log.ERROR
 
+    # Idempotent: several suites call this, and the harness calls it per scenario.
+    for engine in engines.builtin_engines:
+        if getattr(engine, "name", None) == "Fake":
+            return engine
+
     fake = make_fake_engine()
     extended = tuple(engines.builtin_engines) + (fake,)
     # ``lib/translation.py`` binds ``builtin_engines`` at import time, so patch

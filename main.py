@@ -30,6 +30,7 @@ from noesis_ebook_translator.reader.panels import (
     TextsWidget)
 from noesis_ebook_translator.ui.workflow_bar import build_workflow
 from noesis_ebook_translator.engines.languages import google as GOOGLE_LANGUAGES
+from noesis_ebook_translator.lib.exception import TranslationCanceled
 
 
 def _resource(*parts: str) -> str:
@@ -54,6 +55,7 @@ class TranslationWorker(QThread):
     delta = pyqtSignal(object)
     logged = pyqtSignal(str, bool)
     finished_ok = pyqtSignal(str)
+    cancelled = pyqtSignal()
     failed = pyqtSignal(str)
 
     def __init__(self, input_path, output_path, engine, source, target, settings,
@@ -120,6 +122,11 @@ class TranslationWorker(QThread):
             )
             self._flush(force=True)
             self.finished_ok.emit(path)
+        except TranslationCanceled:
+            # A cancelled run is not a failure: report it as such, and never as
+            # a "translated" book (no output was written).
+            self._flush(force=True)
+            self.cancelled.emit()
         except Exception:  # noqa: BLE001 - surfaced to the UI
             self._flush(force=True)
             self.failed.emit(traceback.format_exc())
@@ -1178,6 +1185,7 @@ class MainWindow(QMainWindow):
         self.worker.delta.connect(self._on_delta)
         self.worker.logged.connect(self._on_log)
         self.worker.finished_ok.connect(self._on_finished)
+        self.worker.cancelled.connect(self._on_cancelled)
         self.worker.failed.connect(self._on_failed)
         self.worker.finished.connect(self._on_worker_done)
 
@@ -1326,6 +1334,22 @@ class MainWindow(QMainWindow):
             message += "\n" + self._split_message
         self._status_message(message)
         self._enable_actions()
+
+    def _on_cancelled(self) -> None:
+        """The user stopped the run: report it as cancelled, not as translated.
+
+        The engine drains its queue on cancel and used to return normally, so the
+        window marked the book as translated with a half-written file. Now the
+        cancellation is reported as such: the view is left unfinished and the
+        library never learns a translated path.
+        """
+        self.progress.set_busy(False)
+        self.chapter_bar.set_busy(False)
+        self.status.stop_busy()
+        self.status.set_base_text(T("status.canceled"))
+        self.translate_view.set_finished(ok=False)
+        self.workflow.set_book_working(False)
+        self._status_message(T("status.canceled"))
 
     def _on_failed(self, message: str) -> None:
         self.progress.set_busy(False)
