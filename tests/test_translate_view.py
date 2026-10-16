@@ -803,6 +803,75 @@ class TestChapterTrackContract(unittest.TestCase):
 
 
 @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+class TestWizardChapterSelection(unittest.TestCase):
+    """The real flow: pick a chapter in the wizard, translate only that one."""
+
+    CORPUS = TestBuildUnits.CORPUS
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication(["noesis-wiz"])
+        cls.tmp = tempfile.mkdtemp(prefix="noesis-wiz-")
+        from tests.fixtures import register_fake_engine
+        register_fake_engine()
+
+    @unittest.skipUnless(os.path.isfile(CORPUS), "corpus fixture missing")
+    def test_wizard_selection_of_one_entry_of_a_shared_document(self):
+        """Regression: the wizard keyed its list on the *file*, so two chapters in
+        one document were indistinguishable and picking one translated both."""
+        from PyQt6.QtCore import Qt
+
+        import main
+        from noesis_ebook_translator.progress_model import (
+            STATE_DONE, STATE_EXCLUDED)
+        from noesis_ebook_translator.ui import TranslateWizard
+
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        main.QMessageBox.warning = staticmethod(lambda *a, **k: None)
+
+        wizard = TranslateWizard(None, mode="chapters", input_path=self.CORPUS)
+        try:
+            labels = [wizard.chapter_list.item(i).text()
+                      for i in range(wizard.chapter_list.count())]
+            self.assertEqual(len(labels), 31)          # every TOC entry
+            self.assertIn("CHAPTER IV", [t.strip() for t in labels])
+            self.assertIn("CHAPTER V", [t.strip() for t in labels])
+            target = next(i for i, t in enumerate(labels)
+                          if t.strip().startswith("CHAPTER V"))
+            for i in range(wizard.chapter_list.count()):
+                wizard.chapter_list.item(i).setCheckState(
+                    Qt.CheckState.Checked if i == target
+                    else Qt.CheckState.Unchecked)
+            selected = wizard.selected_chapters()
+            self.assertEqual(len(selected), 1)
+            self.assertIn("#", selected[0])            # an anchor, not a bare file
+            cfg = wizard.config()
+            cfg["folder"] = self.tmp
+        finally:
+            wizard.close()
+
+        window = main.MainWindow()
+        try:
+            window._input_path = self.CORPUS
+            window._output_path = os.path.join(self.tmp, "wizard_out.epub")
+            window._start_translation(cfg)
+            deadline = time.time() + 60
+            while window.worker is not None and time.time() < deadline:
+                self.app.processEvents()
+                time.sleep(0.005)
+            self.app.processEvents()
+            model = window.translate_view.model()
+            self.assertEqual(len(model.units), 31)
+            self.assertEqual(len(model.tracked()), 1)   # one document tracked
+            self.assertEqual(model.overall_percent(), 100.0)
+            states = {u.label(): model.unit_state(u) for u in model.units}
+            self.assertEqual(states["CHAPTER V"], STATE_DONE)
+            self.assertEqual(states["CHAPTER IV"], STATE_EXCLUDED)
+        finally:
+            window.close()
+
+
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
 class TestTranslationThroughTheGui(unittest.TestCase):
     """End-to-end: the GUI bands reflect a real (offline) translation run."""
 
