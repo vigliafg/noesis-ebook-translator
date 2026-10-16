@@ -138,6 +138,26 @@ class TestProgressModel(unittest.TestCase):
         self.assertEqual(model.state("empty.xhtml"), STATE_SKIPPED)
         self.assertEqual(model.overall(), (2, 3))
 
+    def test_selection_marks_excluded_units(self):
+        """Chapters outside the selection stay visible but out of the totals."""
+        from noesis_ebook_translator.progress_model import (
+            STATE_DONE, STATE_EXCLUDED, STATE_PENDING)
+
+        model = self._model()
+        model.set_selection(["a.xhtml"])
+        model.set_plan({"a.xhtml": 2})
+        self.assertEqual(model.state("a.xhtml"), STATE_PENDING)
+        self.assertEqual(model.state("b.xhtml"), STATE_EXCLUDED)
+        self.assertEqual(model.overall(), (0, 2))
+        model.apply({"counts": {"a.xhtml": 2}, "errors": {}, "cached": 0,
+                     "last": None})
+        self.assertEqual(model.state("a.xhtml"), STATE_DONE)
+        self.assertEqual(model.overall_percent(), 100.0)
+        model.finish(ok=True)
+        self.assertEqual(model.state("b.xhtml"), STATE_EXCLUDED)
+        model.mark_exported()
+        self.assertTrue(model.exported)
+
     def test_error_state_and_finish(self):
         from noesis_ebook_translator.progress_model import (
             STATE_DONE, STATE_ERROR, STATE_PENDING, STATE_RUNNING)
@@ -476,18 +496,24 @@ class TestTranslationThroughTheGui(unittest.TestCase):
         finally:
             window.close()
 
-    def test_single_chapter_uses_detail_mode_and_selection_label(self):
+    def test_single_chapter_selection_lists_the_whole_toc(self):
+        """A selection lists the whole TOC: chosen rows translate, the rest stay
+        dimmed (excluded) for context. Criterion 9."""
         from noesis_ebook_translator.i18n import T
-        from noesis_ebook_translator.progress_model import STATE_DONE
+        from noesis_ebook_translator.progress_model import (
+            STATE_DONE, STATE_EXCLUDED)
 
         window, model = self._run(self._cfg("one.epub", chapters=["c2.xhtml"]))
         try:
             self.assertEqual(window.translate_view.track.mode(), "detail")
-            self.assertEqual([u.file for u in model.units], ["c2.xhtml"])
+            self.assertEqual([u.file for u in model.units],
+                             ["c1.xhtml", "c2.xhtml", "c3.xhtml"])
             self.assertEqual(model.state("c2.xhtml"), STATE_DONE)
+            self.assertEqual(model.state("c1.xhtml"), STATE_EXCLUDED)
+            self.assertEqual(model.state("c3.xhtml"), STATE_EXCLUDED)
+            self.assertEqual(model.overall_percent(), 100.0)
             self.assertEqual(window.translate_view.lbl_glass_title.text(),
                              T("translate.selection"))
-            self.assertEqual(model.overall_percent(), 100.0)
         finally:
             window.close()
 

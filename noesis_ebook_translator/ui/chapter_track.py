@@ -21,8 +21,8 @@ from PyQt6.QtWidgets import (
 from .. import theme as theme_mod
 from ..i18n import T
 from ..progress_model import (
-    STATE_DONE, STATE_ERROR, STATE_PENDING, STATE_RUNNING, STATE_SKIPPED,
-    ProgressModel)
+    STATE_DONE, STATE_ERROR, STATE_EXCLUDED, STATE_PENDING, STATE_RUNNING,
+    STATE_SKIPPED, ProgressModel)
 from .animations import ShimmerBar
 from .icons import icon
 
@@ -85,7 +85,8 @@ class _UnitDelegate(QStyledItemDelegate):
             painter.drawEllipse(marker.adjusted(3, 3, -3, -3))
 
         font = QFont(option.font)
-        if state == STATE_RUNNING:
+        if state == STATE_DONE:
+            # A translated chapter stays bold with its check mark.
             font.setBold(True)
         painter.setFont(font)
         metrics = painter.fontMetrics()
@@ -100,14 +101,17 @@ class _UnitDelegate(QStyledItemDelegate):
         text_width = max(10, rect.right() - count_width - badge - text_left - 6)
 
         if state == STATE_RUNNING:
-            # Blink the whole row (name + marker), not just the dot, so the
-            # chapter being translated is unmistakable at a glance.
+            # Blink the whole row (name + marker) while it is being translated.
             alpha = self._track.pulse_alpha()
             name_color = QColor(accent)
             name_color.setAlpha(alpha)
-        elif state in (STATE_PENDING, STATE_SKIPPED):
+        elif state == STATE_EXCLUDED:
+            name_color = colors["excluded"]      # dimmed: outside the selection
+        elif state == STATE_SKIPPED:
             name_color = colors["muted"]
         else:
+            # Chosen chapters (pending or done) are in normal colour; only the
+            # excluded ones stay grey.
             name_color = colors["text"]
         painter.setPen(name_color)
         name = metrics.elidedText(str(data.get("name") or ""),
@@ -269,7 +273,11 @@ class ChapterTrackWidget(QWidget):
         files = [unit.file for unit in model.units]
         if files != self._files:
             self._rebuild()
-        self.set_mode("detail" if len(model.units) <= 2 else "list")
+        # The layout follows the *selected* chapters: a single chosen chapter
+        # still gets the detail card even when the whole TOC is listed.
+        selected = (len(model.selection) if model.selection is not None
+                    else len(model.units))
+        self.set_mode("detail" if selected <= 2 else "list")
         self._update_rows()
         self._update_detail(model)
         self._update_header(model)
@@ -280,7 +288,8 @@ class ChapterTrackWidget(QWidget):
         if running:
             return running[0]
         pending = [u.file for u in model.units
-                   if model.state(u.file) not in (STATE_SKIPPED, STATE_DONE)]
+                   if model.state(u.file)
+                   not in (STATE_SKIPPED, STATE_DONE, STATE_EXCLUDED)]
         if pending:
             return pending[0]
         return model.units[-1].file if model.units else None
@@ -345,9 +354,10 @@ class ChapterTrackWidget(QWidget):
             return
         unit = next((u for u in model.units if u.file == current), None)
         title = unit.label() if unit else current
-        if len(model.units) > 1:
-            index = [u.file for u in model.units].index(current) + 1
-            title = f"{title}  ({index}/{len(model.units)})"
+        chosen = [u.file for u in model.units
+                  if model.state(u.file) != STATE_EXCLUDED]
+        if len(chosen) > 1 and current in chosen:
+            title = f"{title}  ({chosen.index(current) + 1}/{len(chosen)})"
         self.lbl_detail_title.setText(title)
         done, total = model.progress(current)
         self.lbl_detail_count.setText(f"{done}/{total}"
@@ -407,6 +417,8 @@ class ChapterTrackWidget(QWidget):
         return {
             "text": QColor(palette["foreground"]),
             "muted": QColor("#8b95a3" if dark else "#6b7684"),
+            # "Greyed out": low contrast against the background in both themes.
+            "excluded": QColor("#59626d" if dark else "#b4bbc5"),
             "accent": QColor(accent),
             "track": QColor("#3a3f47" if dark else "#d9dde4"),
             "done": QColor("#37b24d" if not dark else "#51cf66"),

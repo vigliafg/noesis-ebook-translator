@@ -28,7 +28,7 @@ __all__ = [
     "ChapterUnit", "build_units", "ProgressModel", "DeltaBatch",
     "TransferThrottle",
     "STATE_PENDING", "STATE_RUNNING", "STATE_DONE", "STATE_ERROR",
-    "STATE_SKIPPED",
+    "STATE_SKIPPED", "STATE_EXCLUDED",
 ]
 
 STATE_PENDING = "pending"
@@ -36,6 +36,9 @@ STATE_RUNNING = "running"
 STATE_DONE = "done"
 STATE_ERROR = "error"
 STATE_SKIPPED = "skipped"
+#: A chapter of the book that is not part of the current selection: shown (for
+#: context) but never translated, so it stays dimmed and out of the totals.
+STATE_EXCLUDED = "excluded"
 
 #: The engine stores TOC titles as elements of this pseudo-document; they are not
 #: part of any chapter, so they are excluded from the per-chapter counts.
@@ -181,9 +184,18 @@ class ProgressModel:
         self.last: tuple[str, str] | None = None
         self.finished = False
         self.exported = False
+        self.selection: set[str] | None = None
         self._known: set[str] = {unit.file for unit in self.units}
 
     # -- structure --------------------------------------------------------
+    def set_selection(self, files) -> None:
+        """Mark which documents are part of the translation.
+
+        Passing ``None`` (whole book) selects everything. The units outside the
+        selection stay visible as ``excluded``: they give the reader their place
+        in the book but are dimmed and kept out of the progress totals.
+        """
+        self.selection = {str(f) for f in files} if files else None
     def set_plan(self, counts: dict[str, int] | None) -> None:
         """Attach the engine's per-document segment totals.
 
@@ -213,6 +225,8 @@ class ProgressModel:
         return self.plan.get(file_name, 0)
 
     def state(self, file_name: str) -> str:
+        if self.selection is not None and file_name not in self.selection:
+            return STATE_EXCLUDED
         if self.errors.get(file_name):
             return STATE_ERROR
         total = self.total(file_name)
@@ -230,8 +244,10 @@ class ProgressModel:
         return self.done.get(file_name, 0), self.total(file_name)
 
     def tracked(self) -> list[ChapterUnit]:
-        """Units that actually carry content (excluded from the totals)."""
-        return [unit for unit in self.units if self.total(unit.file) > 0]
+        """Units that carry content and belong to the selection."""
+        return [unit for unit in self.units
+                if self.total(unit.file) > 0
+                and (self.selection is None or unit.file in self.selection)]
 
     def overall(self) -> tuple[int, int]:
         done = sum(min(self.done.get(u.file, 0), self.total(u.file))
@@ -281,6 +297,8 @@ class ProgressModel:
         if not ok:
             return
         for unit in self.units:
+            if self.selection is not None and unit.file not in self.selection:
+                continue
             if self.plan and not self.total(unit.file):
                 continue
             if self.done.get(unit.file, 0) > 0 and not self.errors.get(unit.file):

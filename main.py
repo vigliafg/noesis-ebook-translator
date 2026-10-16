@@ -1115,8 +1115,11 @@ class MainWindow(QMainWindow):
         # estimate in _on_progress is only used when _chapter_names is filled).
         self._chapter_names = []
         self._refresh_choices(cfg)
-        units = build_units(self._input_path, chapters)
+        units = build_units(self._input_path)
         model = ProgressModel(units)
+        # The whole TOC is listed; only the wizard selection is translated and
+        # the other chapters stay dimmed for context.
+        model.set_selection(chapters)
         self.translate_view.set_model(model, selection=bool(chapters))
 
         self.worker = TranslationWorker(
