@@ -198,6 +198,20 @@ class ResumeTest(unittest.TestCase):
                         cache_path)
         self.assertIn("translator-cache", cache_path)
 
+    def test_cache_dir_follows_the_configured_path(self):
+        from pathlib import Path
+
+        from noesis_ebook_translator.lib.config import get_config
+        from noesis_ebook_translator.paths import cache_dir
+
+        config = get_config()
+        previous = config.get("cache_path") or ""
+        try:
+            config.save(cache_path=self.cache_store)
+            self.assertEqual(Path(cache_dir()), Path(self.cache_path))
+        finally:
+            config.save(cache_path=previous)
+
     def test_final_write_is_atomic(self):
         out = os.path.join(self.tmp, "atomic.epub")
         original = book.epub.write_epub

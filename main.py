@@ -906,9 +906,9 @@ class MainWindow(QMainWindow):
         open_path(str(directory))
 
     def on_clear_cache(self) -> None:
-        from noesis_ebook_translator.paths import data_dir
+        from noesis_ebook_translator.paths import cache_dir
         import shutil
-        cache = data_dir() / "cache"
+        cache = cache_dir()
         if cache.is_dir():
             shutil.rmtree(cache, ignore_errors=True)
         self._status_message(T("action.clear_cache"))

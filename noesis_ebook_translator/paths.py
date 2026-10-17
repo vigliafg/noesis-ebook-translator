@@ -41,3 +41,17 @@ def data_dir() -> Path:
 def data_file(name: str) -> Path:
     """Return ``data_dir()/name`` (parent directory is NOT created here)."""
     return data_dir() / name
+
+
+def cache_dir() -> Path:
+    """Directory holding the translation cache (the ``*.db`` files).
+
+    Follows ``cache_path`` from the configuration when set (``main.py`` points it
+    at :func:`data_dir` so hours of work survive a reboot); otherwise it uses the
+    app default under :func:`data_dir`.
+    """
+    from .lib.config import get_config
+
+    configured = get_config().get("cache_path") or ""
+    base = Path(configured) if configured else data_dir() / "translator-cache"
+    return base / "cache"

@@ -296,8 +296,8 @@ class SettingsDialog(QDialog):
 
     def _clear_cache(self) -> None:
         import shutil
-        from ..paths import data_dir
-        cache = data_dir() / "cache"
+        from ..paths import cache_dir
+        cache = cache_dir()
         if cache.is_dir():
             shutil.rmtree(cache, ignore_errors=True)
 
