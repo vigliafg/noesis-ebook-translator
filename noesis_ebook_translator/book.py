@@ -8,8 +8,10 @@ Qt GUI (``main.py``) and the CLI/TUI edition both drive.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
+import time
 from typing import Any, Callable, Iterable
 
 import ebooklib
@@ -169,6 +171,101 @@ def _apply_settings(settings: dict[str, Any] | None) -> None:
 
 
 # ---------------------------------------------------------------------------
+#  Crash-safe resume
+# ---------------------------------------------------------------------------
+# The verbatim cache keys its rows by the element's **position**, so a different
+# chapter selection re-indexes them and its own rebuild drops everything outside
+# the selection. Work already paid for must survive a power cut *and* a different
+# selection, so every finished translation is also stored in a content-keyed
+# table (same SQLite file): the source text is the only stable identity.
+#
+# The table is scoped by engine + model + source/target language, so switching
+# model can never mix translations (and switching back restores its own work).
+_RESUME_TABLE = "noesis_resume"
+
+
+def _resume_content_hash(content: str) -> str:
+    return uid(content or "")
+
+
+def _resume_key(translator, source_lang: str, target_lang: str) -> tuple[str, ...]:
+    return (translator.name or "",
+            str(getattr(translator, "model", "") or ""),
+            source_lang or "",
+            target_lang or "")
+
+
+def _ensure_resume_table(cache) -> None:
+    cache.cursor.execute(
+        f"CREATE TABLE IF NOT EXISTS {_RESUME_TABLE}("
+        "content_hash TEXT NOT NULL, engine_name TEXT NOT NULL, "
+        "model TEXT NOT NULL, source_lang TEXT NOT NULL, "
+        "target_lang TEXT NOT NULL, original TEXT, translation TEXT, "
+        "updated_at INTEGER, "
+        "PRIMARY KEY(content_hash, engine_name, model, source_lang, "
+        "target_lang))")
+    cache.connection.commit()
+
+
+def _remember_translation(cache, paragraph, resume_key) -> None:
+    """Record one finished paragraph in the content-keyed resume table.
+
+    The later ``cache.update_paragraph()`` commits both statements together,
+    so a power cut never leaves the two tables disagreeing.
+    """
+    if not paragraph.translation:
+        return
+    engine, model, source, target = resume_key
+    cache.cursor.execute(
+        f"INSERT INTO {_RESUME_TABLE}("
+        "content_hash, engine_name, model, source_lang, target_lang, "
+        "original, translation, updated_at) VALUES(?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(content_hash, engine_name, model, source_lang, "
+        "target_lang) DO UPDATE SET translation=excluded.translation, "
+        "original=excluded.original, updated_at=excluded.updated_at",
+        (_resume_content_hash(paragraph.original), engine, model, source,
+         target, paragraph.original, paragraph.translation, int(time.time())))
+
+
+def _seed_resume_translations(cache, originals, resume_key) -> int:
+    """Restore known translations for this run's segments (by content)."""
+    engine, model, source, target = resume_key
+    rows = cache.cursor.execute(
+        f"SELECT content_hash, translation FROM {_RESUME_TABLE} "
+        "WHERE engine_name=? AND model=? AND source_lang=? AND target_lang=?",
+        (engine, model, source, target)).fetchall()
+    known = {content_hash: translation for content_hash, translation in rows
+             if translation}
+    if not known:
+        return 0
+    restored = 0
+    for entry in originals:
+        oid, content = entry[0], entry[3]
+        if len(entry) > 4 and entry[4]:      # ignored element
+            continue
+        translation = known.get(_resume_content_hash(content))
+        if not translation:
+            continue
+        cache.cursor.execute(
+            "UPDATE cache SET translation=? WHERE id=? "
+            "AND (translation IS NULL OR translation='')",
+            (translation, oid))
+        restored += cache.cursor.rowcount or 0
+    cache.connection.commit()
+    return restored
+
+
+def _cache_progress(cache) -> tuple[int, int]:
+    """``(translated, total)`` segments of the current selection."""
+    done = cache.cursor.execute(
+        "SELECT COUNT(*) FROM cache WHERE NOT ignored "
+        "AND translation IS NOT NULL AND translation<>''").fetchone()[0]
+    total = cache.cursor.execute(
+        "SELECT COUNT(*) FROM cache WHERE NOT ignored").fetchone()[0]
+    return int(done), int(total)
+
+
+# ---------------------------------------------------------------------------
 #  The pipeline
 # ---------------------------------------------------------------------------
 def translate_epub(
@@ -186,6 +283,7 @@ def translate_epub(
     on_log: Callable[[str, bool], None] | None = None,
     on_paragraph: Callable[[Any], None] | None = None,
     on_plan: Callable[[dict[str, int]], None] | None = None,
+    on_resume: Callable[[int, int], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> str:
     """Translate ``input_path`` and return the path of the written EPUB."""
@@ -257,9 +355,33 @@ def translate_epub(
     cache.set_info("engine_name", translator.name)
     cache.set_info("target_lang", target_lang)
     cache.set_info("plugin_version", EbookTranslator.__version__)
+
+    # Keep the run selection so "resume" can offer the same chapters again.
+    cache.set_info("chapters",
+                   json.dumps(chapters, default=str) if chapters else "")
+    # Never mix translations produced by another model / source language: keep
+    # the rows but drop their translations (the resume table keeps them per
+    # model, so switching back restores that model's work).
+    model = str(getattr(translator, "model", "") or "")
+    previous_model = cache.get_info("model") or ""
+    previous_source = cache.get_info("source_lang") or ""
+    if previous_model and (previous_model != model
+                           or previous_source != (source_lang or "")):
+        cache.cursor.execute(
+            "UPDATE cache SET translation=NULL, engine_name=NULL, "
+            "target_lang=NULL")
+        cache.connection.commit()
+    cache.set_info("model", model)
+    cache.set_info("source_lang", source_lang or "")
+
     cache.save(originals)
     _ensure_cache_rows(cache, originals)
+    _ensure_resume_table(cache)
+    resume_key = _resume_key(translator, source_lang, target_lang)
+    _seed_resume_translations(cache, originals, resume_key)
     paragraphs = cache.all_paragraphs()
+    if on_resume is not None:
+        on_resume(*_cache_progress(cache))
 
     def _log(text: str, error: bool = False) -> None:
         if on_log is not None:
@@ -269,7 +391,8 @@ def translate_epub(
 
     translation = get_translation(translator, _log)
     translation.set_callback(
-        lambda paragraph: _persist_paragraph(cache, paragraph, on_paragraph))
+        lambda paragraph: _persist_paragraph(
+            cache, paragraph, on_paragraph, resume_key))
     if on_progress is not None:
         translation.set_progress(
             lambda fraction, message: on_progress(fraction, message))
@@ -301,11 +424,28 @@ def translate_epub(
         node.write_back()
 
     _ensure_toc_uids(book.toc)
-    epub.write_epub(output_path, book)
+    # Write next to the target and rename atomically: a power cut during the
+    # final write must not leave a truncated EPUB in place of a good one. The
+    # cache is untouched either way, so a re-run rewrites it without asking the
+    # engine for anything already translated.
+    part_path = f"{output_path}.part"
+    try:
+        epub.write_epub(part_path, book)
+        os.replace(part_path, output_path)
+    finally:
+        if os.path.exists(part_path):
+            try:
+                os.remove(part_path)
+            except OSError:  # pragma: no cover - best effort
+                pass
     return output_path
 
 
-def _persist_paragraph(cache, paragraph, on_paragraph) -> None:
+def _persist_paragraph(cache, paragraph, on_paragraph,
+                       resume_key=None) -> None:
+    if resume_key is not None:
+        # Written first; ``update_paragraph`` commits both statements at once.
+        _remember_translation(cache, paragraph, resume_key)
     cache.update_paragraph(paragraph)
     if on_paragraph is not None:
         on_paragraph(paragraph)

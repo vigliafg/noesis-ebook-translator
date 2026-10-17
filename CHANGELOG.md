@@ -33,6 +33,12 @@ la storia completa è nei commit (`git log`).
   OpenCode Go) che rifiutano `chat/completions` — p.es. `muse-spark-1.3-contributor`,
   `gpt-6-luna`, `grok-4.7`: lo snapshot registra il protocollo di ogni modello e
   il motore instrada di conseguenza.
+- **Ripresa a prova di interruzione (blackout)**: ogni segmento tradotto è
+  committato subito e registrato per contenuto (`noesis_resume`, per motore +
+  modello + lingua), quindi un crash o una mancanza di corrente non fanno perdere
+  nulla: rilanciando la traduzione si riparte dai soli segmenti mancanti, anche
+  cambiando la selezione dei capitoli. L'EPUB finale è scritto in modo atomico
+  (`*.part` + `os.replace`) e la GUI segnala «Ripresa: N/M segmenti».
 - `tools/fetch_provider_catalog.py` per rigenerare lo snapshot incluso nel
   bundle (utile solo per lo sviluppo: l'app si aggiorna dalla UI).
 

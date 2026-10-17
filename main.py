@@ -56,6 +56,7 @@ class TranslationWorker(QThread):
     plan = pyqtSignal(object)
     delta = pyqtSignal(object)
     logged = pyqtSignal(str, bool)
+    resumed = pyqtSignal(int, int)
     finished_ok = pyqtSignal(str)
     cancelled = pyqtSignal()
     failed = pyqtSignal(str)
@@ -120,6 +121,7 @@ class TranslationWorker(QThread):
                 on_log=self._on_log,
                 on_paragraph=self._on_paragraph,
                 on_plan=self._emit_plan,
+                on_resume=lambda done, total: self.resumed.emit(done, total),
                 should_cancel=self._cancel.is_set,
             )
             self._flush(force=True)
@@ -1309,6 +1311,7 @@ class MainWindow(QMainWindow):
         self.worker.plan.connect(self._on_plan)
         self.worker.delta.connect(self._on_delta)
         self.worker.logged.connect(self._on_log)
+        self.worker.resumed.connect(self._on_resume_report)
         self.worker.finished_ok.connect(self._on_finished)
         self.worker.cancelled.connect(self._on_cancelled)
         self.worker.failed.connect(self._on_failed)
@@ -1338,6 +1341,13 @@ class MainWindow(QMainWindow):
             return
         model.set_plan(counts)
         self.translate_view.refresh()
+
+    def _on_resume_report(self, done: int, total: int) -> None:
+        """The engine found work already in the cache: say how much."""
+        if done <= 0 or total <= 0:
+            return
+        self._status_message(
+            T("msg.resume_cache").format(done=done, total=total))
 
     def _on_delta(self, payload: dict) -> None:
         """A coalesced batch of progress (counts, cached, last text, log lines)."""

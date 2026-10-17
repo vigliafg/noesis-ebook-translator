@@ -214,6 +214,30 @@ V del corpus). Le intestazioni senza documento restano come righe
   corpus locale dell'utente arriva a **7541 voci** (Ferri's): refresh ~4 ms e
   cambio filtro ~20 ms, contro 2,4 s e 1,7 s della versione "tutte le righe".
 
+### Ripresa dopo un'interruzione (cache a prova di blackout)
+
+`book.py` committa **ogni** segmento appena tradotto (una riga per segmento) e lo
+registra anche in una tabella **per contenuto** (`noesis_resume`, stessa SQLite),
+collegata a *motore + modello + lingua sorgente/destinazione*:
+
+- un blackout a metà traduzione **non perde nulla**: rilanciando la stessa
+  traduzione il motore viene interrogato **solo** per i segmenti mancanti
+  (`tests/test_resume.py` uccide davvero il processo a metà e verifica la ripresa);
+- cambiare **selezione** non distrugge il lavoro: la cache posizionale viene
+  ricostruita, le traduzioni tornano dalla tabella per contenuto (prima si
+  perdevano i capitoli fuori selezione);
+- cambiare **modello** non mescola: le traduzioni della cache vengono azzerate e la
+  tabella per contenuto conserva il lavoro *per modello* (tornando indietro si riprende);
+- testo identico condivide la traduzione (stessa semantica di
+  `add_translations`, che indicizza per contenuto);
+- l'EPUB finale è scritto su `*.part` e rinominato con `os.replace`: un blackout
+  durante il salvataggio non lascia un file corrotto al posto di uno valido.
+
+Il motivo per cui la tabella è necessaria: la cache verbatim indicizza per
+**posizione**, quindi una selezione diversa ri-indicizza le righe e il suo rebuild
+scarta tutto ciò che è fuori selezione. `cache.info` conserva modello, lingua e
+selezione; `on_resume(done, total)` dice alla GUI quanti segmenti arrivano dalla cache.
+
 ### Nome del file tradotto (e sovrascritture)
 
 Il nome scelto nel wizard è solo la **base**: l'app aggiunge **sempre** il suffisso

@@ -323,5 +323,6 @@
   "settings.providers_hint": "Configurez jusqu'à 4 fournisseurs, chacun avec sa clé API et son modèle. Le modèle choisi est testé automatiquement.",
   "model_test.ok_tooltip": "Dernier test réussi le {when} ({model}).",
   "model_test.fail_tooltip": "Dernier test échoué le {when} : {error}",
-  "action.refresh_all_models": "Actualiser toutes les listes"
+  "action.refresh_all_models": "Actualiser toutes les listes",
+  "msg.resume_cache": "Reprise : {done}/{total} segments déjà traduits depuis le cache."
 }
