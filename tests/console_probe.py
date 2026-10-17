@@ -6,13 +6,23 @@ subprocess lets ``tests/test_console_clean.py`` read the stream and fail on the
 noise, which is how the reported ``AttributeError`` and the WebEngine warnings
 went unnoticed for so long.
 
-Usage: ``python -m tests.console_probe <gui|engine|reader>``.
+Usage: ``python -m tests.console_probe <gui|engine|providers|reader>``.
 """
 from __future__ import annotations
 
 import os
 import sys
 import tempfile
+
+
+def _pump(app, seconds: float = 1.0) -> None:
+    """Process events for ``seconds`` so timers and worker threads complete."""
+    import time as _time
+
+    deadline = _time.time() + seconds
+    while _time.time() < deadline:
+        app.processEvents()
+        _time.sleep(0.02)
 
 
 def _probe_gui() -> int:
@@ -58,6 +68,74 @@ def _probe_gui() -> int:
     return 0
 
 
+def _probe_providers() -> int:
+    """Open the provider pages with their timers and worker threads active.
+
+    The slot rows refresh a stale model list on show and schedule a debounced
+    model test; both run in worker threads and report through signals. This probe
+    exercises those paths (and the ribbon badge) with offline stubs, so any
+    exception raised inside a slot/timer reaches stderr — which is the whole
+    point, since PyQt would otherwise print it and carry on unnoticed.
+    """
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("NOESIS_READER_BACKEND", "lite")
+    os.environ.setdefault(
+        "NOESIS_CONFIG_DIR", tempfile.mkdtemp(prefix="noesis-probe-providers-"))
+
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(["noesis-probe-providers"])
+
+    from noesis_ebook_translator import appconfig, provider_catalog
+    appconfig.ensure_defaults()
+    # A stale model cache so the automatic refresh path really runs, and two
+    # configured providers (one of them custom, with an endpoint).
+    appconfig.save_settings({"model_cache": {}, "model_tests": {}})
+    appconfig.set_provider_slots([
+        {"enabled": True, "provider": "groq", "api_key": "sk-probe",
+         "model": "llama-3.3-70b-versatile"},
+        {"enabled": True, "provider": "custom", "api_key": "",
+         "model": "qwen", "endpoint": "http://127.0.0.1:11434/v1"},
+    ])
+
+    def fake_fetch(provider_id, api_key):
+        return ["model-a", "model-b"]
+
+    def fake_probe(provider_id, api_key, model, endpoint=None):
+        return provider_catalog.TestResult(ok=True, latency_ms=5, sample="Ciao")
+
+    from noesis_ebook_translator.ui import (
+        OnboardingWizard, SettingsDialog, TranslateWizard)
+
+    dialog = SettingsDialog(models_fetcher=fake_fetch,
+                            model_test_runner=fake_probe)
+    dialog.show()
+    _pump(app, 1.2)
+    dialog.close()
+
+    wizard = TranslateWizard(None, mode="book", engine="Groq",
+                             model_test_runner=fake_probe)
+    wizard.show()
+    _pump(app, 1.2)
+    wizard.close()
+
+    onboarding = OnboardingWizard(model_test_runner=fake_probe)
+    onboarding.show()
+    _pump(app, 0.4)
+    onboarding.close()
+
+    import main
+    main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+    main.QMessageBox.warning = staticmethod(lambda *a, **k: None)
+    window = main.MainWindow()
+    window.cmb_engine.setCurrentText("Groq")
+    window._update_model_badge()
+    _pump(app, 0.4)
+    window.close()
+    _pump(app, 0.2)
+    print("PROBE providers: ok")
+    return 0
+
+
 def _probe_engine() -> int:
     """Run a real translation through the offline engine."""
     os.environ.setdefault("NOESIS_CONFIG_DIR",
@@ -93,7 +171,8 @@ def _probe_reader() -> int:
     return 0 if report.ok else 1
 
 
-_PROBES = {"gui": _probe_gui, "engine": _probe_engine, "reader": _probe_reader}
+_PROBES = {"gui": _probe_gui, "engine": _probe_engine,
+           "providers": _probe_providers, "reader": _probe_reader}
 
 
 def main(argv=None) -> int:

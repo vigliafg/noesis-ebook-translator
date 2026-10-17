@@ -317,6 +317,10 @@ di verità**. La provenienza del motore importato è registrata in
 `ENGINE_SOURCE.json`; l'aggiornamento dal fork avviene con
 `python tools/import_core_from_fork.py`.
 
+## Changelog
+
+Le modifiche rilevanti sono elencate in [CHANGELOG.md](CHANGELOG.md).
+
 ## Licenza
 
 **GNU General Public License v3.0** (o successive) — vedi [LICENSE](LICENSE).

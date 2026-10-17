@@ -88,6 +88,10 @@ class TestConsoleClean(unittest.TestCase):
     def test_engine_translation_is_quiet(self):
         self._assert_clean(self._run("engine"), "engine")
 
+    def test_provider_pages_are_quiet(self):
+        """Provider slots, their timers/threads and the ribbon badge."""
+        self._assert_clean(self._run("providers"), "providers")
+
     @unittest.skipUnless(webengine_available(), "QtWebEngine not installed")
     def test_full_reader_is_quiet(self):
         """The iframe-sandbox warning and the profile teardown must be silent."""

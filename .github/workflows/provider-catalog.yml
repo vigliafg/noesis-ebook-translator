@@ -1,0 +1,54 @@
+name: provider-catalog
+
+# The bundled provider model snapshot
+# (noesis_ebook_translator/data/providers.json) ages: models.dev and the
+# providers' public /models endpoints change over time. This scheduled job
+# detects a stale snapshot and fails, so a red ✗ is the reminder to run
+# `python tools/fetch_provider_catalog.py` and commit the result.
+#
+# It needs no third-party dependency: the fetch tool only uses the standard
+# library and `provider_catalog.py` (whose imports are stdlib-only).
+on:
+  schedule:
+    # Every Monday at 06:00 UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-catalog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: snapshot freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the bundled model snapshot
+        run: |
+          set -o pipefail
+          if python tools/fetch_provider_catalog.py --check 2>&1 | tee check.log; then
+            echo "### Snapshot up to date :white_check_mark:" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### Snapshot is outdated :x:"
+            echo
+            echo "Run \`python tools/fetch_provider_catalog.py\` and commit the"
+            echo "regenerated \`noesis_ebook_translator/data/providers.json\`."
+            echo
+            echo '```'
+            tail -40 check.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
