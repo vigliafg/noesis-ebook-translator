@@ -298,6 +298,18 @@ class MainWindow(QMainWindow):
     def _engine_names(self) -> list[str]:
         return appconfig.engine_names()
 
+    def _reload_engines(self) -> None:
+        """Rebuild the engine combo (providers enabled in Settings appear here)."""
+        current = self.cmb_engine.currentText()
+        self.cmb_engine.blockSignals(True)
+        self.cmb_engine.clear()
+        self.cmb_engine.addItems(appconfig.engine_names())
+        index = self.cmb_engine.findText(current)
+        if index >= 0:
+            self.cmb_engine.setCurrentIndex(index)
+        self.cmb_engine.blockSignals(False)
+        self._on_engine_changed(self.cmb_engine.currentText())
+
     # -------------------------------------------------- translate view state
     def _choice_rows(self, cfg: dict | None = None) -> list[tuple[str, str]]:
         """Rows for band 1: what the wizard collected (never the API key)."""
@@ -592,6 +604,7 @@ class MainWindow(QMainWindow):
             self.cmb_export_format.setCurrentIndex(fmt_index)
         self.cmb_export_edition.setCurrentIndex(
             1 if values.get("export_edition") == "translated" else 0)
+        self._reload_engines()
 
     # --------------------------------------------------------- tab / TOC
     def _on_section_changed(self, index: int) -> None:
@@ -782,6 +795,7 @@ class MainWindow(QMainWindow):
         from noesis_ebook_translator.ui import OnboardingWizard
         wizard = OnboardingWizard(self)
         if wizard.exec():
+            self._reload_engines()
             self._status_message(T("msg.wizard_done"))
 
     def on_help(self) -> None:

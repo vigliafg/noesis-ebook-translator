@@ -12,13 +12,14 @@ from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QSpinBox, QTabWidget, QVBoxLayout, QWidget)
+    QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 from .. import appconfig
 from .. import theme as theme_mod
 from ..engines.languages import google as GOOGLE_LANGUAGES
 from ..i18n import LANGUAGES, T, get_language
 from ..reader import available_backends
+from .provider_slots import ProviderSlotRow
 
 __all__ = ["SettingsDialog"]
 
@@ -26,11 +27,16 @@ __all__ = ["SettingsDialog"]
 class SettingsDialog(QDialog):
     applied = pyqtSignal(dict)
 
-    def __init__(self, parent=None, apply_theme_cb=None) -> None:
+    def __init__(self, parent=None, apply_theme_cb=None, *,
+                 model_test_runner=None, models_fetcher=None,
+                 synchronous_tests: bool = False) -> None:
         super().__init__(parent)
         self._apply_theme_cb = apply_theme_cb
+        self._model_test_runner = model_test_runner
+        self._models_fetcher = models_fetcher
+        self._synchronous_tests = synchronous_tests
         self.setWindowTitle(T("action.settings"))
-        self.resize(680, 520)
+        self.resize(680, 560)
         self._settings = appconfig.load_settings()
 
         layout = QVBoxLayout(self)
@@ -40,6 +46,7 @@ class SettingsDialog(QDialog):
         self._build_general()
         self._build_reader()
         self._build_translation()
+        self._build_providers()
         self._build_quality()
         self._build_export()
         self._build_paths()
@@ -127,7 +134,9 @@ class SettingsDialog(QDialog):
     def _build_translation(self) -> None:
         _page, form = self._page("translation")
         self.cmb_engine = QComboBox()
-        self.cmb_engine.addItems(appconfig.engine_names())
+        # The curated providers are owned by the Provider page; here only the
+        # verbatim plugin engines are edited.
+        self.cmb_engine.addItems(appconfig.legacy_engine_names())
         engine = self._settings.get("translate_engine")
         if engine:
             index = self.cmb_engine.findText(engine)
@@ -169,6 +178,30 @@ class SettingsDialog(QDialog):
         form.addRow(T("panel.rules"), self.edt_reserve)
         self.cmb_engine.currentTextChanged.connect(self._on_engine_changed)
         self._on_engine_changed(self.cmb_engine.currentText())
+
+    def _build_providers(self) -> None:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        hint = QLabel(T("settings.providers_hint"))
+        hint.setWordWrap(True)
+        outer.addWidget(hint)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        inner = QWidget()
+        inner_layout = QVBoxLayout(inner)
+        self._slot_rows: list[ProviderSlotRow] = []
+        for index, slot in enumerate(appconfig.provider_slots()):
+            row = ProviderSlotRow(
+                index, model_test_runner=self._model_test_runner,
+                models_fetcher=self._models_fetcher,
+                synchronous_tests=self._synchronous_tests)
+            row.set_values(slot)
+            inner_layout.addWidget(row)
+            self._slot_rows.append(row)
+        inner_layout.addStretch(1)
+        scroll.setWidget(inner)
+        outer.addWidget(scroll, 1)
+        self.tabs.addTab(page, T("settings.tab.providers"))
 
     def _build_quality(self) -> None:
         _page, form = self._page("quality")
@@ -314,6 +347,7 @@ class SettingsDialog(QDialog):
             "export_format": self.cmb_format.currentData() or "epub",
             "export_edition": self.cmb_edition.currentData() or "original",
             "output_dir": self.edt_output.text().strip(),
+            "provider_slots": [row.values() for row in self._slot_rows],
             "onboarding_done": False if self.chk_reset_onboarding.isChecked()
             else self._settings.get("onboarding_done", False),
         }
@@ -322,6 +356,7 @@ class SettingsDialog(QDialog):
         values = self.values()
         engine = values["translate_engine"]
         appconfig.save_settings(values)
+        appconfig.set_provider_slots(values.get("provider_slots") or [])
         appconfig.set_engine_preference(
             engine,
             api_keys=[self.edt_api_key.text().strip()]

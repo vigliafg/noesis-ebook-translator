@@ -9,10 +9,11 @@ from __future__ import annotations
 from PyQt6.QtWidgets import (
     QComboBox, QFormLayout, QLabel, QLineEdit, QVBoxLayout, QWizard, QWizardPage)
 
-from .. import appconfig
+from .. import appconfig, provider_catalog
 from .. import theme as theme_mod
 from ..i18n import LANGUAGES, T, set_language
 from ..reader import available_backends
+from .provider_test import ModelTestWidget
 
 __all__ = ["OnboardingWizard"]
 
@@ -31,10 +32,14 @@ def _page(title: str, body: str, extra=None) -> QWizardPage:
 
 
 class OnboardingWizard(QWizard):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, model_test_runner=None,
+                 models_fetcher=None, synchronous_tests: bool = False) -> None:
         super().__init__(parent)
+        self._model_test_runner = model_test_runner
+        self._models_fetcher = models_fetcher
+        self._synchronous_tests = synchronous_tests
         self.setWindowTitle(T("wizard.title"))
-        self.resize(640, 460)
+        self.resize(640, 480)
         settings = appconfig.load_settings()
 
         # -- language -----------------------------------------------------
@@ -58,33 +63,38 @@ class OnboardingWizard(QWizard):
         theme_page = _page(T("wizard.theme_title"), T("wizard.theme_text"),
                            self.cmb_theme)
 
-        # -- engine -------------------------------------------------------
-        self.cmb_engine = QComboBox()
-        self.cmb_engine.addItems(appconfig.engine_names())
-        engine = settings.get("translate_engine")
-        if engine:
-            engine_index = self.cmb_engine.findText(engine)
-            if engine_index >= 0:
-                self.cmb_engine.setCurrentIndex(engine_index)
+        # -- provider -----------------------------------------------------
+        self.cmb_provider = QComboBox()
+        self.cmb_provider.addItem("—", "")
+        for choice in appconfig.provider_choices():
+            self.cmb_provider.addItem(choice["name"], choice["id"])
         self.edt_api_key = QLineEdit()
         self.edt_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.edt_model = QComboBox()
         self.edt_model.setEditable(True)
-        engine_form = QFormLayout()
-        engine_form.addRow(T("panel.engine"), self.cmb_engine)
-        engine_form.addRow(T("label.api_key"), self.edt_api_key)
-        engine_form.addRow(T("label.model"), self.edt_model)
-        engine_box = QVBoxLayout()
-        engine_page = QWizardPage()
-        engine_page.setTitle(T("wizard.engine_title"))
-        layout = QVBoxLayout(engine_page)
+        self.lbl_provider_note = QLabel("")
+        self.lbl_provider_note.setWordWrap(True)
+        self.lbl_provider_note.setVisible(False)
+        self.test_provider = ModelTestWidget(
+            self, runner=model_test_runner, synchronous=synchronous_tests)
+        provider_form = QFormLayout()
+        provider_form.addRow(T("label.provider"), self.cmb_provider)
+        provider_form.addRow(T("label.api_key"), self.edt_api_key)
+        provider_form.addRow(T("label.model"), self.edt_model)
+        provider_page = QWizardPage()
+        provider_page.setTitle(T("wizard.engine_title"))
+        layout = QVBoxLayout(provider_page)
         intro = QLabel(T("wizard.engine_text"))
         intro.setWordWrap(True)
         layout.addWidget(intro)
-        layout.addLayout(engine_form)
+        layout.addLayout(provider_form)
+        layout.addWidget(self.lbl_provider_note)
+        layout.addWidget(self.test_provider)
         layout.addStretch(1)
-        self.cmb_engine.currentTextChanged.connect(self._on_engine_changed)
-        self._on_engine_changed(self.cmb_engine.currentText())
+        self.cmb_provider.currentIndexChanged.connect(self._on_provider_changed)
+        self.edt_model.currentTextChanged.connect(self._schedule_test)
+        self.edt_api_key.editingFinished.connect(self._schedule_test)
+        self._on_provider_changed()
 
         # -- reader -------------------------------------------------------
         self.cmb_reader = QComboBox()
@@ -104,35 +114,60 @@ class OnboardingWizard(QWizard):
         self.addPage(_page(T("wizard.welcome_title"), T("wizard.welcome_text")))
         self.addPage(lang_page)
         self.addPage(theme_page)
-        self.addPage(engine_page)
+        self.addPage(provider_page)
         self.addPage(reader_page)
         self.addPage(finish_page)
         self.setButtonText(QWizard.WizardButton.FinishButton, T("wizard.finish"))
 
     # ------------------------------------------------------------------
-    def _on_engine_changed(self, name: str) -> None:
-        info = appconfig.engine_info(name)
-        self.edt_api_key.setEnabled(info["need_api_key"])
-        self.edt_api_key.setPlaceholderText(info["api_key_hint"])
+    def _current_provider(self):
+        return provider_catalog.get(self.cmb_provider.currentData() or "")
+
+    def _on_provider_changed(self, *_args) -> None:
+        provider = self._current_provider()
+        self.edt_api_key.setEnabled(bool(provider and not provider.custom))
+        if provider:
+            self.edt_api_key.setPlaceholderText(
+                provider.env_hint or T("label.api_key"))
         self.edt_model.clear()
-        models = info["models"] or []
-        if models:
-            self.edt_model.addItems(models)
-            self.edt_model.setEnabled(True)
-        else:
-            self.edt_model.setEnabled(False)
-        pref = appconfig.get_engine_preference(name)
-        if pref.get("model"):
-            self.edt_model.setCurrentText(pref["model"])
-        keys = pref.get("api_keys") or []
-        self.edt_api_key.setText(keys[0] if keys else "")
+        if provider is not None:
+            models = appconfig.provider_models(provider.id) or []
+            if models:
+                self.edt_model.addItems(models)
+            if provider.default_model:
+                self.edt_model.setCurrentText(provider.default_model)
+        note = provider.note if provider else ""
+        self.lbl_provider_note.setText(T(note) if note else "")
+        self.lbl_provider_note.setVisible(bool(note))
+        self._prefill_from_slots(provider.id if provider else "")
+        self._schedule_test()
+
+    def _prefill_from_slots(self, provider_id: str) -> None:
+        """Reuse the key/model already configured in a slot, if any."""
+        if not provider_id:
+            return
+        for slot in appconfig.provider_slots():
+            if slot.get("provider") != provider_id or not slot.get("enabled"):
+                continue
+            if not self.edt_api_key.text() and slot.get("api_key"):
+                self.edt_api_key.setText(slot["api_key"])
+            if slot.get("model") and not self.edt_model.currentText():
+                self.edt_model.setCurrentText(slot["model"])
+            return
+
+    def _schedule_test(self, *_args) -> None:
+        provider = self._current_provider()
+        if provider is None:
+            return
+        self.test_provider.schedule(provider.id, self.edt_api_key.text().strip(),
+                                    self.edt_model.currentText().strip())
 
     def selected(self) -> dict:
         return {
             "ui_language": self.cmb_language.currentData(),
             "ui_theme": self.cmb_theme.currentData(),
-            "translate_engine": self.cmb_engine.currentText(),
             "reader_backend": self.cmb_reader.currentData() or "auto",
+            "provider_id": self.cmb_provider.currentData() or "",
             "api_key": self.edt_api_key.text().strip(),
             "model": self.edt_model.currentText().strip(),
         }
@@ -140,15 +175,25 @@ class OnboardingWizard(QWizard):
     def apply(self) -> dict:
         """Persist the wizard choices and mark onboarding as done."""
         values = self.selected()
-        engine = values.pop("translate_engine")
-        api_key = values.pop("api_key")
-        model = values.pop("model")
-        values["translate_engine"] = engine
+        provider_id = values.pop("provider_id", "")
+        api_key = values.pop("api_key", "")
+        model = values.pop("model", "")
         values["onboarding_done"] = True
         appconfig.save_settings(values)
-        if engine:
-            appconfig.set_engine_preference(
-                engine, api_keys=[api_key] if api_key else [], model=model or None)
+        if provider_id:
+            engine = provider_catalog.engine_name(provider_id)
+            slots = appconfig.provider_slots()
+            target = next((slot for slot in slots
+                           if slot.get("provider") == provider_id), None)
+            if target is None:
+                target = next((slot for slot in slots
+                               if not slot.get("provider")), None)
+            if target is None:
+                target = slots[0]
+            target.update({"enabled": True, "provider": provider_id,
+                           "api_key": api_key, "model": model})
+            appconfig.set_provider_slots(slots)
+            appconfig.save_settings({"translate_engine": engine})
         if values.get("ui_language"):
             set_language(values["ui_language"])
         return values

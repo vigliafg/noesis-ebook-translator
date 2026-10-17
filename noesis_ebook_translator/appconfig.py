@@ -7,21 +7,40 @@ small, Qt-free API to read/write settings and to introspect the engines.
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 
+from . import provider_catalog
 from .engines import builtin_engines
 from .lib.config import get_config
 
 __all__ = [
     "APP_DEFAULTS",
+    "MAX_PROVIDER_SLOTS",
+    "MODEL_CACHE_TTL",
     "ensure_defaults",
     "load_settings",
     "save_settings",
     "engine_names",
+    "builtin_engine_names",
+    "legacy_engine_names",
     "engine_info",
     "set_engine_preference",
     "get_engine_preference",
+    "provider_choices",
+    "provider_slots",
+    "set_provider_slots",
+    "provider_id_for_engine",
+    "provider_models",
+    "save_provider_models",
+    "refresh_provider_models",
 ]
+
+#: Maximum number of providers the user can configure at the same time.
+MAX_PROVIDER_SLOTS = 4
+
+#: How long a live model list is trusted before a refresh is suggested.
+MODEL_CACHE_TTL = 24 * 3600
 
 
 #: App-level defaults written into the config on first run. Keys match
@@ -69,11 +88,19 @@ APP_DEFAULTS: dict[str, Any] = {
     # The engine also reserves img/code/br/hr/sub/sup/kbd/abbr/wbr/var/canvas/
     # svg/script/style/math by default. Add more via the `reserve_rules` setting.
     "reserve_rules": ["a"],
+    # Provider slots (desktop-only): up to MAX_PROVIDER_SLOTS configured
+    # providers, each with its own API key / model. Mirrored into
+    # ``engine_preferences`` under the engine name (see set_provider_slots).
+    "provider_slots": [],
+    # Live model lists fetched from the providers, keyed by provider id:
+    # {"groq": {"at": <epoch>, "models": [...]}}.
+    "model_cache": {},
 }
 
 #: Preference keys surfaced by the GUI for the selected engine.
 _ENGINE_PREFERENCE_KEYS = (
-    "api_keys", "model", "prompt", "target_lang", "concurrency_limit")
+    "api_keys", "model", "prompt", "target_lang", "concurrency_limit",
+    "endpoint", "models_url")
 
 
 def ensure_defaults() -> None:
@@ -96,6 +123,14 @@ def ensure_defaults() -> None:
     if config.get("ui_theme") == "sepia":
         config.set("ui_theme", "light")
         changed = True
+    # One-time migration: seed the provider slots from the single-engine
+    # configuration that predates multi-provider support.
+    if not config.preferences.get("provider_slots_v1"):
+        slots = _slots_from_engine_preferences()
+        if slots:
+            config.set("provider_slots", slots)
+        config.set("provider_slots_v1", True)
+        changed = True
     if changed:
         config.commit()
 
@@ -113,9 +148,75 @@ def save_settings(values: dict[str, Any]) -> None:
     config.commit()
 
 
+#: Engine names generated for the curated providers (``openai_compatible``).
+def _provider_engine_names() -> set[str]:
+    from .engines.openai_compatible import provider_engines
+    return {engine.name for engine in provider_engines()}
+
+
+#: Engine name -> provider id, for every curated provider (builtin included).
+def _provider_id_by_engine() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for provider in provider_catalog.providers():
+        mapping[provider.resolved_engine_name] = provider.id
+    return mapping
+
+
+def provider_choices() -> list[dict[str, Any]]:
+    """Curated providers, ready for the provider pickers in the UI."""
+    return [{
+        "id": provider.id,
+        "name": provider.name,
+        "need_api_key": not provider.custom,
+        "default_model": provider.default_model,
+        "doc": provider.doc,
+        "env_hint": provider.env_hint,
+        "note": provider.note,
+        "custom": provider.custom,
+    } for provider in provider_catalog.providers()]
+
+
+def provider_id_for_engine(name: str) -> str:
+    """Provider id backed by engine ``name`` (``""`` when not a provider)."""
+    return _provider_id_by_engine().get(name or "", "")
+
+
 def engine_names() -> list[str]:
-    """All available engine display names."""
-    return [e.name for e in builtin_engines if e.name]
+    """Engine display names offered to the user.
+
+    The verbatim plugin engines are always listed; the curated provider engines
+    only appear once the user has enabled them in a slot (the settings page uses
+    :func:`provider_choices` for the full roster). This keeps the wizard and the
+    ribbon short while still offering any provider.
+    """
+    provider_engines = _provider_engine_names()
+    names = [e.name for e in builtin_engines
+             if e.name and e.name not in provider_engines]
+    for slot in provider_slots():
+        if not slot.get("enabled") or not slot.get("provider"):
+            continue
+        name = provider_catalog.engine_name(slot["provider"])
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def builtin_engine_names() -> list[str]:
+    """The verbatim plugin engines only (no curated provider engines)."""
+    provider_engines = _provider_engine_names()
+    return [e.name for e in builtin_engines
+            if e.name and e.name not in provider_engines]
+
+
+def legacy_engine_names() -> list[str]:
+    """Engines edited in the *Translation* page of the settings.
+
+    The curated providers (OpenRouter included) are owned by the Provider page,
+    so they are excluded here to avoid two pages writing the same preference.
+    """
+    curated = set(_provider_id_by_engine())
+    return [e.name for e in builtin_engines
+            if e.name and e.name not in curated]
 
 
 def engine_info(name: str) -> dict[str, Any]:
@@ -123,14 +224,158 @@ def engine_info(name: str) -> dict[str, Any]:
     engine = next((e for e in builtin_engines if e.name == name), None)
     if engine is None:
         return {"name": name, "need_api_key": True, "api_key_hint": "API Keys",
-                "models": None, "free": False}
+                "models": None, "free": False, "provider": "", "note": ""}
+    provider_id = getattr(engine, "provider_id", "") or ""
+    provider = provider_catalog.get(provider_id)
+    models = (provider_models(provider_id) if provider_id
+              else list(getattr(engine, "models", []) or []) or None)
     return {
         "name": engine.name,
-        "need_api_key": bool(engine.need_api_key),
+        "need_api_key": bool(getattr(engine, "need_api_key", True)),
         "api_key_hint": getattr(engine, "api_key_hint", "API Keys"),
-        "models": list(getattr(engine, "models", []) or []) or None,
+        "models": models,
         "free": bool(getattr(engine, "free", False)),
+        "provider": provider_id,
+        "note": provider.note if provider else "",
     }
+
+
+# ------------------------------------------------------------------ slots
+
+
+def _blank_slot() -> dict[str, Any]:
+    return {"enabled": False, "provider": "", "api_key": "", "model": "",
+            "endpoint": ""}
+
+
+def provider_slots() -> list[dict[str, Any]]:
+    """The configured provider slots, always padded to ``MAX_PROVIDER_SLOTS``."""
+    stored = get_config().get("provider_slots") or []
+    slots: list[dict[str, Any]] = []
+    for item in stored:
+        if not isinstance(item, dict):
+            continue
+        slot = _blank_slot()
+        slot.update({key: item.get(key) for key in slot if key in item})
+        slots.append(slot)
+    while len(slots) < MAX_PROVIDER_SLOTS:
+        slots.append(_blank_slot())
+    return slots[:MAX_PROVIDER_SLOTS]
+
+
+def set_provider_slots(slots: list[dict[str, Any]]) -> None:
+    """Persist the slots and mirror each one into ``engine_preferences``.
+
+    The engine layer only ever reads ``engine_preferences``, so this keeps the
+    translation path untouched.
+    """
+    config = get_config()
+    normalized: list[dict[str, Any]] = []
+    for item in (slots or [])[:MAX_PROVIDER_SLOTS]:
+        slot = _blank_slot()
+        if isinstance(item, dict):
+            slot.update({key: item.get(key) for key in slot if key in item})
+        slot["enabled"] = bool(slot["enabled"]) and bool(slot["provider"])
+        slot["api_key"] = str(slot.get("api_key") or "")
+        slot["model"] = str(slot.get("model") or "")
+        slot["endpoint"] = str(slot.get("endpoint") or "")
+        normalized.append(slot)
+    config.set("provider_slots", normalized)
+    config.commit()
+    for slot in normalized:
+        provider_id = slot.get("provider")
+        if not provider_id:
+            continue
+        name = provider_catalog.engine_name(provider_id)
+        if slot["enabled"]:
+            set_engine_preference(
+                name,
+                api_keys=[slot["api_key"]] if slot["api_key"] else [],
+                model=slot["model"] or None,
+                endpoint=slot["endpoint"] or None)
+        else:
+            # Keep the slot data (the user can re-enable it) but drop the
+            # mirrored engine config so a disabled provider is really inactive.
+            set_engine_preference(
+                name, api_keys=[], model=None, endpoint=None)
+
+
+def _slots_from_engine_preferences() -> list[dict[str, Any]]:
+    """Seed the slots from a pre-multi-provider configuration."""
+    config = get_config()
+    preferences = config.get("engine_preferences") or {}
+    by_engine = _provider_id_by_engine()
+    seeds: list[dict[str, Any]] = []
+    current = config.get("translate_engine")
+    order = ([current] if current in by_engine else []) + [
+        name for name in by_engine if name != current]
+    for name in order:
+        if len(seeds) >= MAX_PROVIDER_SLOTS:
+            break
+        pref = preferences.get(name) or {}
+        keys = pref.get("api_keys") or []
+        if not keys and name != current:
+            continue
+        slots = provider_slots()
+        slot = dict(slots[len(seeds)])
+        slot.update({
+            "enabled": bool(keys),
+            "provider": by_engine[name],
+            "api_key": (keys[0] if keys else ""),
+            "model": pref.get("model", "") or "",
+            "endpoint": pref.get("endpoint", "") or "",
+        })
+        seeds.append(slot)
+    return seeds
+
+
+# ------------------------------------------------------------ model lists
+
+
+def provider_models(provider_id: str) -> list[str] | None:
+    """Cached / bundled models for ``provider_id`` (``None`` when unknown)."""
+    if not provider_id:
+        return None
+    cache = get_config().get("model_cache") or {}
+    entry = cache.get(provider_id) or {}
+    models = [str(m) for m in (entry.get("models") or [])]
+    if models:
+        return models
+    snapshot = provider_catalog.default_models(provider_id)
+    return snapshot or None
+
+
+def save_provider_models(provider_id: str, models: list[str]) -> None:
+    """Cache a freshly fetched model list for ``provider_id``."""
+    if not provider_id or not models:
+        return
+    config = get_config()
+    cache = dict(config.get("model_cache") or {})
+    cache[provider_id] = {"at": int(time.time()),
+                          "models": [str(m) for m in models]}
+    config.set("model_cache", cache)
+    config.commit()
+
+
+def model_cache_age(provider_id: str) -> float | None:
+    """Seconds since the cached list was fetched (``None`` when absent)."""
+    cache = get_config().get("model_cache") or {}
+    entry = cache.get(provider_id) or {}
+    at = entry.get("at")
+    return None if at is None else max(0.0, time.time() - float(at))
+
+
+def refresh_provider_models(provider_id: str, api_key: str = "", *,
+                            _fetch=None) -> list[str]:
+    """Fetch the live model list and cache it.
+
+    ``_fetch`` is injectable so the GUI (and its tests) can avoid the network.
+    """
+    fetcher = _fetch or provider_catalog.fetch_models
+    models = fetcher(provider_id, api_key)
+    if models:
+        save_provider_models(provider_id, models)
+    return models or []
 
 
 def get_engine_preference(engine_name: str) -> dict[str, Any]:

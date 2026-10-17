@@ -11,15 +11,18 @@ from .baidu import BaiduTranslate
 from .microsoft import MicrosoftEdgeTranslate, AzureChatgptTranslate
 from .deepseek import DeepseekTranslate
 from .openrouter import OpenRouterTranslate
+from .openai_compatible import provider_engines
 
 # NOTE (Noesis override): the upstream plugin registers the full engine set here;
 # the fork this app is based on had dropped the ChatGPT/Azure/Gemini/Claude
 # entries. This project wants *all* plugin engines available, so they are
-# restored. This is the only engine file that is intentionally not verbatim.
+# restored. It also appends the curated OpenAI-compatible providers (OpenCode,
+# OpenCode Go, Groq, Mistral, …) generated in ``openai_compatible.py``. This file
+# is the only engine file that is intentionally not verbatim.
 builtin_engines: tuple[type[Base], ...] = (
     GoogleFreeTranslateNew, GoogleFreeTranslateHtml, GoogleFreeTranslate,
     GoogleBasicTranslate, GoogleBasicTranslateADC, GoogleAdvancedTranslate,
     GeminiTranslate, ChatgptTranslate, ClaudeTranslate, AzureChatgptTranslate,
     DeepseekTranslate, OpenRouterTranslate, DeeplTranslate, DeeplProTranslate,
     DeeplFreeTranslate, MicrosoftEdgeTranslate, YoudaoTranslate,
-    BaiduTranslate)
+    BaiduTranslate) + provider_engines()

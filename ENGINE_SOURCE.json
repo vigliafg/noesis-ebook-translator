@@ -35,5 +35,8 @@
   ],
   "overrides": [
     "engines/__init__.py"
+  ],
+  "extensions": [
+    "engines/openai_compatible.py"
   ]
 }

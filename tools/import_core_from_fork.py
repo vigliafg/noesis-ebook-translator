@@ -60,6 +60,11 @@ LIB_FILES = (
 #: Files that are intentionally NOT verbatim (local overrides).
 OVERRIDES = ("engines/__init__.py",)
 
+#: Local engine extensions (files that do not exist in the fork at all). They
+#: are part of the engine and must be inlined by the engine repo's sync script
+#: (``tools/sync_from_desktop.py`` -> ``CORE_MODULES``).
+EXTENSIONS = ("engines/openai_compatible.py",)
+
 #: Directory names never copied.
 SKIP_DIRS = {"__pycache__"}
 SKIP_SUFFIXES = {".pyc", ".pyo"}
@@ -183,6 +188,7 @@ def import_core(fork: Path) -> int:
             .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "verbatim": verbatim,
         "overrides": list(OVERRIDES),
+        "extensions": list(EXTENSIONS),
     }
     MANIFEST.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
@@ -200,6 +206,7 @@ def import_core(fork: Path) -> int:
     for rel in changed:
         print(f"  ~ {rel}")
     print(f"overrides: {', '.join(OVERRIDES)} (never overwritten)")
+    print(f"extensions: {', '.join(EXTENSIONS)} (local, inlined by the engine repo)")
     return 0
 
 

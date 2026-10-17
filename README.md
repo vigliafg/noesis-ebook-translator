@@ -98,6 +98,24 @@ I motori LLM e le API a pagamento richiedono una **chiave API** (e a volte un
 *Motore* del ribbon e vengono salvati tra le sessioni. I motori Google gratuiti,
 DeepL Free e Microsoft Edge funzionano senza chiave.
 
+### Provider multipli (fino a 4)
+
+Oltre ai motori del plugin, la scheda **Impostazioni → Provider** (e il wizard di
+primo avvio) permette di configurare **fino a 4 provider OpenAI-compatibili**
+contemporaneamente, ognuno con la **propria chiave API e il proprio modello**:
+`OpenCode`, `OpenCode Go`, `OpenRouter`, `Groq`, `Mistral`, `xAI (Grok)`,
+`Together`, `Fireworks`, `DeepInfra`, `Cerebras`, `SambaNova`, `NVIDIA NIM`,
+`Moonshot (Kimi)`, `Z.AI (GLM)`, `Alibaba (DashScope)`, `Novita`, `HuggingFace`,
+più un **endpoint personalizzato** (Ollama, LM Studio, vLLM, LiteLLM…).
+
+- Le **liste modelli** sono aggiornate **live** dall'endpoint `/models` del
+  provider (con cache e fallback incluso per l'uso offline) e con il pulsante
+  *Aggiorna modelli*.
+- Il **modello scelto viene testato automaticamente** (una traduzione breve) e
+  l'esito compare inline: `✓ modello OK · 1,2s` oppure `✗ motivo` con *Riprova*.
+- Solo i provider **abilitati** compaiono nella tendina del ribbon e del wizard;
+  il provider si sceglie a ogni traduzione.
+
 ## Barra degli strumenti (workflow)
 
 La barra è **custom** (nessuna libreria ribbon esterna): una **fascia superiore**

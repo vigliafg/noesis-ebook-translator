@@ -50,6 +50,7 @@ plugins:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Providers: providers.md
   - FAQ: faq.md
 
 markdown_extensions:

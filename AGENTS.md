@@ -24,13 +24,27 @@ Il motore di traduzione è una copia **verbatim** del fork
 
 **Unica eccezione (override locale):** `noesis_ebook_translator/engines/__init__.py`.
 Il fork aveva rimosso alcuni motori dalla tupla `builtin_engines`; questa app li
-**ripristina tutti** (Gemini, ChatGPT, Claude, Azure ChatGPT, …). È quindi
-l'unico file del motore intenzionalmente **non** verbatim: **non sovrascriverlo**
-con quello del fork.
+**ripristina tutti** (Gemini, ChatGPT, Claude, Azure ChatGPT, …) e vi appende i
+provider curati generati da `engines/openai_compatible.py`. È quindi l'unico file
+del motore intenzionalmente **non** verbatim: **non sovrascriverlo** con quello
+del fork.
+
+**Estensioni locali del motore** (file che nel fork non esistono): 
+`engines/openai_compatible.py` (trasporto generico OpenAI-compatible + una classe
+per provider) — dichiarato in `ENGINE_SOURCE.json` sotto `extensions` e in
+`tools/import_core_from_fork.py` (`EXTENSIONS`). Va aggiunto a `CORE_MODULES`
+dello script di sync del repo engine: **ogni modifica al motore va risincronizzata**
+(`noesis-ebook-translator-engine/tools/sync_from_desktop.py` + test).
+
+Il **catalogo dei provider** (`noesis_ebook_translator/provider_catalog.py` e lo
+snapshot `data/providers.json`) è **condiviso**: viene inlineato nel motore CLI
+(è in `CORE_MODULES`), mentre le parti solo-GUI (schede Impostazioni, widget di
+test) restano fuori dal sync. Rigenera lo snapshot con
+`python tools/fetch_provider_catalog.py`.
 
 La provenienza del motore importato è registrata in `ENGINE_SOURCE.json`
 (`fork_repo`, `fork_commit`, `fork_version`, `synced_at`, `verbatim`,
-`overrides`).
+`overrides`, `extensions`).
 
 ## Shim `calibre/`
 

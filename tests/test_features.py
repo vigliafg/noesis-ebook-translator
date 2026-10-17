@@ -396,15 +396,22 @@ class TestWidgets(unittest.TestCase):
             window.close()
 
     def test_settings_dialog_tabs(self):
+        from noesis_ebook_translator import appconfig
         from noesis_ebook_translator.ui import SettingsDialog
 
         dialog = SettingsDialog()
         try:
-            self.assertEqual(dialog.tabs.count(), 7)
+            self.assertEqual(dialog.tabs.count(), 8)
+            from noesis_ebook_translator.i18n import T
+            tabs = [dialog.tabs.tabText(i) for i in range(dialog.tabs.count())]
+            self.assertIn(T("settings.tab.providers").replace("&", "&&"), tabs)
             values = dialog.values()
             for key in ("ui_theme", "reader_theme", "reader_font", "reader_flow",
-                        "export_format", "output_dir", "quality_samples"):
+                        "export_format", "output_dir", "quality_samples",
+                        "provider_slots"):
                 self.assertIn(key, values)
+            self.assertEqual(len(values["provider_slots"]),
+                             appconfig.MAX_PROVIDER_SLOTS)
         finally:
             dialog.close()
 

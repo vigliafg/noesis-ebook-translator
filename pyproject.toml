@@ -65,8 +65,9 @@ py-modules = ["main"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-# Per-language UI catalogs (loaded at runtime by i18n.py).
-"noesis_ebook_translator" = ["locales/*.json"]
+# Per-language UI catalogs (loaded at runtime by i18n.py) and the bundled
+# provider model snapshot (offline fallback for the provider catalogue).
+"noesis_ebook_translator" = ["locales/*.json", "data/*.json"]
 
 [tool.setuptools.packages.find]
 include = ["noesis_ebook_translator*"]
