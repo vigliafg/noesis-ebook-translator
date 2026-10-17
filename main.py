@@ -1172,6 +1172,29 @@ class MainWindow(QMainWindow):
             return [by_file.get(f, f) for f in files]
         return [c.name or c.file for c in tree if c.file]
 
+    def _confirm_output_path(self) -> bool:
+        """Ask before overwriting; warn loudly before replacing the original.
+
+        Returns ``False`` when the user declines, so the run must not start.
+        """
+        path = self._output_path
+        if not path:
+            return True
+        replacing_original = bool(
+            self._input_path
+            and os.path.abspath(path) == os.path.abspath(self._input_path))
+        if replacing_original:
+            message = T("msg.overwrite_original")
+        elif os.path.exists(path):
+            message = T("msg.overwrite_confirm")
+        else:
+            return True
+        answer = QMessageBox.question(
+            self, T("app.title"), message.format(path),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        return answer == QMessageBox.StandardButton.Yes
+
     def _start_translation(self, cfg: dict) -> None:
         if self.worker is not None:
             return
@@ -1188,9 +1211,10 @@ class MainWindow(QMainWindow):
         folder = cfg.get("folder") or os.path.dirname(self._input_path)
         name = cfg.get("name") or os.path.splitext(
             os.path.basename(self._input_path))[0]
-        if not name.lower().endswith(".epub"):
-            name += ".epub"
-        self._output_path = os.path.join(folder, name)
+        # Convention: "<name>-<language>.epub", always (see book.output_name).
+        self._output_path = os.path.join(folder, book.output_name(name, target))
+        if not cfg.get("output_confirmed") and not self._confirm_output_path():
+            return
         self._refresh_choices(cfg if cfg else None)
 
         api_key = cfg.get("api_key", "")

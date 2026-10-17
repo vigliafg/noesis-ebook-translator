@@ -12,10 +12,10 @@ import os
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QPushButton, QRadioButton,
-    QVBoxLayout, QWizard, QWizardPage)
+    QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
+    QRadioButton, QVBoxLayout, QWizard, QWizardPage)
 
-from .. import appconfig, chapters as chapters_mod
+from .. import appconfig, book as book_mod, chapters as chapters_mod
 from ..engines.languages import google as GOOGLE_LANGUAGES
 from ..i18n import T
 
@@ -117,6 +117,11 @@ class TranslateWizard(QWizard):
         base = os.path.splitext(os.path.basename(input_path or "book.epub"))[0]
         self.edt_name = QLineEdit(base)
         output_form.addRow(T("label.output_name"), self.edt_name)
+        # The suffix is applied automatically: show the real file name up front.
+        self.lbl_output_file = QLabel("")
+        self.lbl_output_file.setObjectName("bandHint")
+        self.lbl_output_file.setWordWrap(True)
+        output_form.addRow(T("label.output_file"), self.lbl_output_file)
         folder_row = QHBoxLayout()
         self.edt_folder = QLineEdit(os.path.dirname(input_path or ""))
         browse = QPushButton(T("action.browse"))
@@ -124,6 +129,11 @@ class TranslateWizard(QWizard):
         folder_row.addWidget(self.edt_folder, 1)
         folder_row.addWidget(browse)
         output_form.addRow(T("label.output_folder"), folder_row)
+        self.edt_name.textChanged.connect(self._update_output_preview)
+        self.edt_folder.textChanged.connect(self._update_output_preview)
+        self.cmb_target.currentTextChanged.connect(self._update_output_preview)
+        self._output_confirmed = False
+        self._update_output_preview()
 
         self.addPage(content)
         self.addPage(engine_page)
@@ -177,6 +187,47 @@ class TranslateWizard(QWizard):
             self.edt_folder.setText(folder)
 
     # ------------------------------------------------------------------
+    def output_path(self) -> str:
+        """The file this wizard would write (suffix and ``.epub`` included)."""
+        folder = (self.edt_folder.text().strip()
+                  or os.path.dirname(self.input_path or ""))
+        name = self.edt_name.text().strip() or "book"
+        return os.path.join(folder, book_mod.output_name(
+            name, self.cmb_target.currentText()))
+
+    def _update_output_preview(self, *_args) -> None:
+        if not hasattr(self, "lbl_output_file"):  # pragma: no cover - early call
+            return
+        path = self.output_path()
+        self.lbl_output_file.setText(os.path.basename(path))
+        self.lbl_output_file.setToolTip(path)
+
+    def accept(self) -> None:
+        """Confirm an existing target *before* closing.
+
+        Declining must keep the wizard open with every field intact, which is why
+        the question lives here and not after ``exec()``.
+        """
+        if not self._confirm_overwrite():
+            return
+        self._output_confirmed = True
+        super().accept()
+
+    def _confirm_overwrite(self) -> bool:
+        path = self.output_path()
+        if not os.path.exists(path):
+            return True
+        replacing_original = bool(
+            self.input_path
+            and os.path.abspath(path) == os.path.abspath(self.input_path))
+        message = T("msg.overwrite_original" if replacing_original
+                    else "msg.overwrite_confirm")
+        answer = QMessageBox.question(
+            self, T("app.title"), message.format(path),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        return answer == QMessageBox.StandardButton.Yes
+
     def selected_chapters(self) -> list[str]:
         if self.chapter_list is None:
             return []
@@ -204,4 +255,6 @@ class TranslateWizard(QWizard):
             "grouping": "single" if self.radio_single.isChecked() else "grouped",
             "folder": folder,
             "name": name,
+            # The wizard already asked about an existing target in accept().
+            "output_confirmed": self._output_confirmed,
         }

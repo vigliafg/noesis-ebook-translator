@@ -63,7 +63,8 @@ class TestRealEngineBehaviours(unittest.TestCase):
                "folder": self.tmp, "name": name, "bilingual": False}
         cfg.update(overrides)
         window._start_translation(cfg)
-        return window, os.path.join(self.tmp, name)
+        # The app appends its "<name>-<language>" suffix: read the real path back.
+        return window, window._output_path
 
     def _wait(self, window, *, timeout=90.0, sample=False):
         """Run the event loop until the worker is done; return the running peak."""

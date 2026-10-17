@@ -9,6 +9,7 @@ Qt GUI (``main.py``) and the CLI/TUI edition both drive.
 from __future__ import annotations
 
 import os
+import re
 from typing import Any, Callable, Iterable
 
 import ebooklib
@@ -31,7 +32,7 @@ from .lib.utils import log, uid
 
 __all__ = [
     "translate_epub", "preview_translation", "list_engine_names",
-    "default_output_path",
+    "default_output_path", "output_name", "language_slug",
 ]
 
 
@@ -129,9 +130,32 @@ def list_engine_names() -> list[str]:
     return sorted({e.name for e in builtin_engines if e.name is not None})
 
 
+def language_slug(language: str) -> str:
+    """Lowercase, hyphen-separated form of a language name.
+
+    ``"Italian"`` -> ``"italian"``, ``"Chinese (Simplified)"`` ->
+    ``"chinese-simplified"``, ``"Portuguese (Brazil)"`` -> ``"portuguese-brazil"``.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", (language or "").lower()).strip("-")
+    return slug or "translated"
+
+
+def output_name(name: str, target_lang: str) -> str:
+    """The file name of a translation: ``<name>-<language>.epub``.
+
+    The suffix is always applied (that is the app's convention) and the extension
+    is forced to ``.epub``: a user typing ``Dune`` or ``Dune.epub`` gets
+    ``Dune-italian.epub``. Any folder in ``name`` is ignored on purpose -- the
+    destination folder comes from the wizard.
+    """
+    stem = os.path.splitext(os.path.basename(name or ""))[0].strip() or "book"
+    return f"{stem}-{language_slug(target_lang)}.epub"
+
+
 def default_output_path(input_path: str, target_lang: str = "Italian") -> str:
-    base = os.path.splitext(input_path)[0]
-    return f"{base}_{target_lang.upper()}.epub"
+    folder = os.path.dirname(input_path)
+    stem = os.path.splitext(os.path.basename(input_path))[0]
+    return os.path.join(folder, output_name(stem, target_lang))
 
 
 def _apply_settings(settings: dict[str, Any] | None) -> None:

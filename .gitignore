@@ -21,9 +21,11 @@ venv/
 env/
 ENV/
 
-# MkDocs build output (published to gh-pages, not committed)
+# MkDocs build output (published to gh-pages, not committed). Anchor the rule to
+# the repository root: a bare ``site/`` also swallowed ``docs/site/``, which is the
+# *source* of the 5-language guide (the docs workflow triggers on it).
 docs/_site/
-site/
+/site/
 
 # Unit test / coverage
 .tox/

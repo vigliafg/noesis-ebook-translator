@@ -135,7 +135,12 @@ class TestTranslatePipeline(unittest.TestCase):
         from noesis_ebook_translator import book
 
         self.assertTrue(
-            book.default_output_path("/x/Book.epub", "Italian").endswith("_ITALIAN.epub"))
+            book.default_output_path("/x/Book.epub", "Italian")
+            .endswith("Book-italian.epub"))
+        # The language name is slugged, the folder is kept.
+        self.assertEqual(
+            book.default_output_path("/x/Book.epub", "Chinese (Simplified)"),
+            "/x/Book-chinese-simplified.epub")
 
     def test_nested_toc_titles_are_translated_too(self):
         """Every TOC level must be written back, not just the top one.

@@ -200,6 +200,21 @@ V del corpus). Le intestazioni senza documento restano come righe
   corpus locale dell'utente arriva a **7541 voci** (Ferri's): refresh ~4 ms e
   cambio filtro ~20 ms, contro 2,4 s e 1,7 s della versione "tutte le righe".
 
+### Nome del file tradotto (e sovrascritture)
+
+Il nome scelto nel wizard è solo la **base**: l'app aggiunge **sempre** il suffisso
+`-<lingua>` (slug minuscolo: `Italian` → `-italian`, `Chinese (Simplified)` →
+`-chinese-simplified`) e forza l'estensione `.epub`. Vive in `book.output_name()` /
+`book.language_slug()` (**condivisi**) e `default_output_path()` lo usa, quindi CLI,
+banda 1 e wizard mostrano lo **stesso** nome.
+
+Se il file risultante esiste già l'app **chiede conferma**: `TranslateWizard.accept()`
+(dentro il wizard, così «No» lascia aperti i campi) e
+`MainWindow._confirm_output_path()` come rete di sicurezza per gli altri chiamanti.
+Se il percorso coincide con il **libro originale** compare un avviso specifico con
+default **No**. Prima di questa regola il nome di default del wizard era il percorso
+dell'originale: premere Fine lo **sovrascriveva**.
+
 **Guida**: `docs/site/` (MkDocs Material + i18n, 5 lingue) è pubblicata su
 GitHub Pages da `.github/workflows/docs.yml`.
 

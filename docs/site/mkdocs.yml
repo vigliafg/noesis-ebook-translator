@@ -1,0 +1,59 @@
+# MkDocs configuration for the Noesis Ebook Translator help site.
+#
+# Published to GitHub Pages by `.github/workflows/docs.yml`. Five languages
+# (it/en/fr/es/de) are provided by the `mkdocs-static-i18n` plugin; the site is
+# built per language and the app links to `/<lang>/`.
+site_name: Noesis Ebook Translator
+site_description: >-
+  Translate EPUB ebooks while keeping formatting, index and illustrations.
+site_url: https://vigliafg.github.io/noesis-ebook-translator/
+repo_url: https://github.com/vigliafg/noesis-ebook-translator
+copyright: GPLv3 · based on bookfere's Ebook Translator engine
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.top
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: true
+      languages:
+        - locale: it
+          default: true
+          name: Italiano
+        - locale: en
+          name: English
+        - locale: fr
+          name: Français
+        - locale: es
+          name: Español
+        - locale: de
+          name: Deutsch
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - FAQ: faq.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - toc:
+      permalink: true
