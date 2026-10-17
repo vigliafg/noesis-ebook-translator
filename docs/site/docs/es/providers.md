@@ -19,3 +19,7 @@ automáticamente**: se envía una traducción breve y el resultado aparece inlin
 
 Solo los proveedores **activados** aparecen en la cinta/asistente; el proveedor se
 elige en cada traducción.
+
+Los modelos que necesitan otro protocolo distinto del endpoint OpenAI (p. ej.
+Claude y Gemini en OpenCode Go) se ocultan: solo se listan los traducibles. Si la
+lista en caché tiene más de 24 horas, la app la actualiza sola.

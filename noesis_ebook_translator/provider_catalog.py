@@ -35,6 +35,8 @@ __all__ = [
     "base_url",
     "models_url",
     "needs_api_key",
+    "models_public",
+    "route_for",
     "default_models",
     "fetch_models",
     "test_model",
@@ -71,6 +73,8 @@ class Provider:
     builtin: bool = False
     #: True for the user-supplied base URL / key slot (Ollama, LM Studio, …).
     custom: bool = False
+    #: True when the model list can be fetched without an API key.
+    models_public: bool = False
     #: i18n key for a UI notice (e.g. OpenCode Go's terms of use).
     note: str = ""
     extra_headers: tuple[tuple[str, str], ...] = ()
@@ -103,6 +107,7 @@ PROVIDERS: tuple[Provider, ...] = (
         env_hint="OPENCODE_API_KEY",
         doc="https://opencode.ai/v2/docs/console/models/",
         default_model="",
+        models_public=True,
     ),
     Provider(
         id="opencode-go", name="OpenCode Go",
@@ -113,6 +118,7 @@ PROVIDERS: tuple[Provider, ...] = (
         default_model="deepseek-v4.1-flash",
         note="provider.note.opencode_go",
         extra_headers=(("x-opencode-session", "noesis-ebook-translator"),),
+        models_public=True,
     ),
     Provider(
         id="openrouter", name="OpenRouter",
@@ -122,6 +128,7 @@ PROVIDERS: tuple[Provider, ...] = (
         doc="https://openrouter.ai/models",
         default_model="deepseek/deepseek-chat",
         engine_name="OpenRouter", builtin=True,
+        models_public=True,
     ),
     Provider(
         id="groq", name="Groq",
@@ -276,10 +283,39 @@ def _load_snapshot() -> dict[str, Any]:
         return {}
 
 
+def route_for(provider_id: str, model: str) -> str:
+    """API base URL of a model that does **not** use the provider's chat route.
+
+    Some providers (OpenCode, OpenCode Go) expose models that need a different
+    protocol — e.g. Claude models on ``/anthropic/v1`` and Gemini models on
+    ``/google/v1beta``. The snapshot records those routes so this app can hide
+    the models it cannot translate with the generic OpenAI transport.
+    Returns ``""`` when the model uses the default route (or is unknown).
+    """
+    routes = (_load_snapshot().get("routes") or {}).get(provider_id) or {}
+    return str(routes.get(model) or "")
+
+
+def _routable(provider_id: str, model: str) -> bool:
+    """True when ``model`` speaks the provider's OpenAI-compatible endpoint."""
+    provider = get(provider_id)
+    route = route_for(provider_id, model)
+    if provider is None or not route:
+        return True
+    return route.rstrip("/") == provider.base_url.rstrip("/")
+
+
+def models_public(provider_id: str) -> bool:
+    """True when the model list can be fetched without an API key."""
+    provider = get(provider_id)
+    return bool(provider and provider.models_public)
+
+
 def default_models(provider_id: str) -> list[str]:
     """Bundled (offline) model list for ``provider_id``."""
     snapshot = (_load_snapshot().get("models") or {}).get(provider_id) or []
-    return [str(model) for model in snapshot]
+    return [str(model) for model in snapshot
+            if _routable(provider_id, str(model))]
 
 
 # --------------------------------------------------------------------- HTTP
@@ -352,7 +388,10 @@ def fetch_models(provider_id: str, api_key: str = "", *,
     models = parse_models(payload)
     if not models:
         raise ValueError("empty model list")
-    return models
+    # Hide models that need a different protocol (e.g. OpenCode's Claude/Gemini
+    # models live on /anthropic/v1 and /google/v1beta): they would fail here.
+    routable = [model for model in models if _routable(provider_id, model)]
+    return routable or models
 
 
 # ----------------------------------------------------------------- model test

@@ -1,4 +1,5 @@
 """Provider slots, engine filtering and the model cache (no network)."""
+import time
 import unittest
 
 from noesis_ebook_translator import appconfig
@@ -117,6 +118,19 @@ class TestModelCache(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             appconfig.refresh_provider_models("mistral", "k", _fetch=boom)
         self.assertEqual(appconfig.provider_models("mistral"), ["cached"])
+
+    def test_models_are_stale_without_cache(self):
+        self.assertTrue(appconfig.models_are_stale("groq"))
+
+    def test_fresh_cache_is_not_stale(self):
+        appconfig.save_provider_models("groq", ["a"])
+        self.assertFalse(appconfig.models_are_stale("groq"))
+
+    def test_old_cache_is_stale(self):
+        appconfig.save_settings({"model_cache": {"groq": {
+            "at": int(time.time()) - appconfig.MODEL_CACHE_TTL - 10,
+            "models": ["a"]}}})
+        self.assertTrue(appconfig.models_are_stale("groq"))
 
 
 if __name__ == "__main__":

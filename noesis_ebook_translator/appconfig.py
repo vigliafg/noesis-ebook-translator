@@ -33,6 +33,8 @@ __all__ = [
     "provider_id_for_engine",
     "provider_models",
     "save_provider_models",
+    "model_cache_age",
+    "models_are_stale",
     "refresh_provider_models",
 ]
 
@@ -363,6 +365,12 @@ def model_cache_age(provider_id: str) -> float | None:
     entry = cache.get(provider_id) or {}
     at = entry.get("at")
     return None if at is None else max(0.0, time.time() - float(at))
+
+
+def models_are_stale(provider_id: str) -> bool:
+    """True when the cached model list is absent or older than the TTL."""
+    age = model_cache_age(provider_id)
+    return age is None or age > MODEL_CACHE_TTL
 
 
 def refresh_provider_models(provider_id: str, api_key: str = "", *,

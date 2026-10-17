@@ -38,10 +38,10 @@ class TestSettingsProviders(unittest.TestCase):
         appconfig.save_settings({"provider_slots": [], "model_cache": {},
                                  "engine_preferences": {}})
 
-    def _dialog(self, runner=_ok_runner):
+    def _dialog(self, runner=_ok_runner, fetcher=_fake_fetch):
         from noesis_ebook_translator.ui import SettingsDialog
         return SettingsDialog(model_test_runner=runner,
-                              models_fetcher=_fake_fetch,
+                              models_fetcher=fetcher,
                               synchronous_tests=True)
 
     def test_providers_tab_and_four_rows(self):
@@ -111,6 +111,40 @@ class TestSettingsProviders(unittest.TestCase):
             row._reload_models("mistral")
             # The bundled snapshot is present for mistral.
             self.assertGreater(row.cmb_model.count(), 0)
+        finally:
+            dialog.close()
+
+    def test_stale_model_list_is_refreshed_automatically(self):
+        dialog = self._dialog()
+        try:
+            row = dialog._slot_rows[0]
+            row.set_values({"enabled": True, "provider": "groq",
+                            "api_key": "k", "model": "", "endpoint": ""})
+            row._auto_refresh()
+            items = [row.cmb_model.itemText(i)
+                     for i in range(row.cmb_model.count())]
+            self.assertEqual(items, ["model-a", "model-b"])
+        finally:
+            dialog.close()
+
+    def test_fresh_cache_is_not_refetched(self):
+        from noesis_ebook_translator import appconfig
+        appconfig.save_provider_models("groq", ["cached-model"])
+        calls = []
+
+        def fetcher(provider_id, key):
+            calls.append(provider_id)
+            return ["other"]
+
+        dialog = self._dialog(fetcher=fetcher)
+        try:
+            row = dialog._slot_rows[0]
+            row.set_values({"enabled": True, "provider": "groq",
+                            "api_key": "k", "model": "cached-model",
+                            "endpoint": ""})
+            row._auto_refresh()
+            self.assertEqual(calls, [])
+            self.assertEqual(row.cmb_model.currentText(), "cached-model")
         finally:
             dialog.close()
 

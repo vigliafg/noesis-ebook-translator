@@ -31,6 +31,8 @@ class ProviderSlotRow(QGroupBox):
         super().__init__(T("label.provider_slot").format(n=index + 1), parent)
         self.index = index
         self._fetcher = models_fetcher or appconfig.refresh_provider_models
+        self._auto_refreshed: set[str] = set()
+        self._synchronous = synchronous_tests
 
         form = QFormLayout(self)
         self.chk_enabled = QCheckBox(T("label.enable"))
@@ -141,14 +143,16 @@ class ProviderSlotRow(QGroupBox):
         self.edt_key.setEnabled(active and bool(provider and not provider.custom))
         self.edt_endpoint.setEnabled(active and is_custom)
 
-    def _reload_models(self, provider_id: str) -> None:
+    def _reload_models(self, provider_id: str,
+                       models: list[str] | None = None) -> None:
         current = self.cmb_model.currentText()
         self.cmb_model.clear()
         if not provider_id:
             return
-        models = appconfig.provider_models(provider_id) or []
+        if models is None:
+            models = appconfig.provider_models(provider_id) or []
         if models:
-            self.cmb_model.addItems(models)
+            self.cmb_model.addItems(list(models))
         if current:
             self.cmb_model.setCurrentText(current)
         elif models:
@@ -165,10 +169,42 @@ class ProviderSlotRow(QGroupBox):
             self.btn_refresh.setEnabled(True)
             if isinstance(result, Exception) or not result:
                 return
-            self._reload_models(provider_id)
+            self._reload_models(provider_id, list(result))
             self._schedule_test()
 
+        if self._synchronous:
+            try:
+                result: Any = self._fetcher(provider_id, key)
+            except Exception as exc:  # noqa: BLE001 - silent fallback
+                result = exc
+            done(result)
+            return
         run_async(lambda: self._fetcher(provider_id, key), done, self)
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().showEvent(event)
+        self._auto_refresh()
+
+    def _auto_refresh(self) -> None:
+        """Refresh a stale model list once, without the user asking.
+
+        Only for providers whose list is public or when a key is already
+        present (a 401 would just be noise), and at most once per row/session.
+        """
+        provider_id = self.provider_id()
+        if not provider_id or provider_id in self._auto_refreshed:
+            return
+        if not self.chk_enabled.isChecked():
+            return
+        if not appconfig.models_are_stale(provider_id):
+            return
+        provider = provider_catalog.get(provider_id)
+        if provider is None:
+            return
+        if not (provider.models_public or self.edt_key.text().strip()):
+            return
+        self._auto_refreshed.add(provider_id)
+        self._refresh_models()
 
     def _schedule_test(self, *_args) -> None:
         if not self.chk_enabled.isChecked() or not self.provider_id():

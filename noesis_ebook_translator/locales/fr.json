@@ -318,7 +318,7 @@
   "provider.err.timeout": "délai dépassé",
   "provider.err.network": "erreur réseau",
   "provider.err.empty": "réponse vide",
-  "provider.note.opencode_go": "OpenCode Go est conçu pour les agents de code et surveille le trafic pour détecter les abus ; traduire des livres entiers peut sortir de son usage prévu.",
+  "provider.note.opencode_go": "OpenCode Go est conçu pour les agents de code et surveille le trafic pour détecter les abus ; traduire des livres entiers peut sortir de son usage prévu. Seuls les modèles compatibles avec l'endpoint OpenAI sont listés (Claude et Gemini utilisent des routes dédiées).",
   "label.enable": "Activer",
   "settings.providers_hint": "Configurez jusqu'à 4 fournisseurs, chacun avec sa clé API et son modèle. Le modèle choisi est testé automatiquement."
 }

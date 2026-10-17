@@ -111,6 +111,9 @@ più un **endpoint personalizzato** (Ollama, LM Studio, vLLM, LiteLLM…).
 - Le **liste modelli** sono aggiornate **live** dall'endpoint `/models` del
   provider (con cache e fallback incluso per l'uso offline) e con il pulsante
   *Aggiorna modelli*.
+- I modelli che richiedono un protocollo diverso dall'endpoint OpenAI (p.es.
+  Claude e Gemini su OpenCode Go) vengono **nascosti**: restano solo quelli
+  traducibili; se la lista in cache ha più di 24 ore l'app la riaggiorna da sola.
 - Il **modello scelto viene testato automaticamente** (una traduzione breve) e
   l'esito compare inline: `✓ modello OK · 1,2s` oppure `✗ motivo` con *Riprova*.
 - Solo i provider **abilitati** compaiono nella tendina del ribbon e del wizard;

@@ -19,3 +19,8 @@ getestet**: eine kurze Übersetzung wird gesendet und das Ergebnis erscheint inl
 
 Nur **aktivierte** Anbieter erscheinen im Ribbon/Assistenten; der Anbieter wird
 bei jeder Übersetzung gewählt.
+
+Modelle, die ein anderes Protokoll als den OpenAI-Endpunkt benötigen (z. B.
+Claude und Gemini bei OpenCode Go), werden ausgeblendet: es werden nur die
+übersetzbaren aufgeführt. Ist die zwischengespeicherte Liste älter als 24
+Stunden, aktualisiert die App sie selbst.

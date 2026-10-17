@@ -318,7 +318,7 @@
   "provider.err.timeout": "Zeitüberschreitung",
   "provider.err.network": "Netzwerkfehler",
   "provider.err.empty": "leere Antwort",
-  "provider.note.opencode_go": "OpenCode Go ist für Coding-Agenten gedacht und überwacht den Datenverkehr auf Missbrauch; das Übersetzen ganzer Bücher kann außerhalb des vorgesehenen Einsatzes liegen.",
+  "provider.note.opencode_go": "OpenCode Go ist für Coding-Agenten gedacht und überwacht den Datenverkehr auf Missbrauch; das Übersetzen ganzer Bücher kann außerhalb des vorgesehenen Einsatzes liegen. Es werden nur Modelle aufgeführt, die mit dem OpenAI-Endpunkt kompatibel sind (Claude und Gemini nutzen eigene Routen).",
   "label.enable": "Aktivieren",
   "settings.providers_hint": "Bis zu 4 Anbieter konfigurieren, jeder mit eigenem API-Schlüssel und Modell. Das gewählte Modell wird automatisch getestet."
 }

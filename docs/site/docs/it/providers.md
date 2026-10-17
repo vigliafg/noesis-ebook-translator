@@ -19,3 +19,7 @@ inline (`✓ modello OK · 1,2s`, oppure `✗ motivo` con *Riprova*).
 
 Solo i provider **abilitati** compaiono nel ribbon/wizard e il provider si sceglie
 a ogni traduzione.
+
+I modelli che richiedono un protocollo diverso dall'endpoint OpenAI (p.es. Claude
+e Gemini su OpenCode Go) vengono nascosti: restano solo quelli traducibili. Se la
+lista in cache ha più di 24 ore, l'app la riaggiorna da sola.

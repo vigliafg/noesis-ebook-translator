@@ -19,3 +19,7 @@ automatically**: a short translation is sent and the result appears inline
 
 Only the **enabled** providers appear in the ribbon/wizard, and you pick the one
 to use at every translation.
+
+Models that need a different protocol than the OpenAI endpoint (e.g. Claude and
+Gemini on OpenCode Go) are hidden: only the translatable ones are listed. When
+the cached list is older than 24 hours, the app refreshes it automatically.

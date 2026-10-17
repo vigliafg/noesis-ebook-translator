@@ -47,6 +47,47 @@ class TestCatalogue(unittest.TestCase):
         self.assertEqual(names.count("OpenRouter"), 1)
         self.assertEqual(names.count("Groq"), 1)
 
+    def test_public_model_lists(self):
+        self.assertTrue(provider_catalog.models_public("opencode"))
+        self.assertTrue(provider_catalog.models_public("opencode-go"))
+        self.assertTrue(provider_catalog.models_public("openrouter"))
+        self.assertFalse(provider_catalog.models_public("groq"))
+        self.assertFalse(provider_catalog.models_public("custom"))
+
+
+class TestModelRoutes(unittest.TestCase):
+    """Models that need another protocol are hidden (OpenCode / OpenCode Go)."""
+
+    def test_opencode_go_hides_other_routes(self):
+        self.assertTrue(provider_catalog.route_for("opencode-go",
+                                                   "claude-haiku-5-5"))
+        self.assertTrue(provider_catalog.route_for(
+            "opencode-go", "gemini-4-argon-contributor"))
+        self.assertEqual(
+            provider_catalog.route_for("opencode-go", "deepseek-v4.1-flash"),
+            "")
+        visible = provider_catalog.default_models("opencode-go")
+        self.assertIn("deepseek-v4.1-flash", visible)
+        self.assertNotIn("claude-haiku-5-5", visible)
+        self.assertNotIn("gemini-4-argon-contributor", visible)
+
+    def test_fetch_models_drops_other_routes(self):
+        def fake_request(url, **kwargs):
+            return {"data": [{"id": "claude-haiku-5-5"},
+                             {"id": "deepseek-v4.1-flash"}]}
+
+        models = provider_catalog.fetch_models("opencode-go", "k",
+                                               _request=fake_request)
+        self.assertEqual(models, ["deepseek-v4.1-flash"])
+
+    def test_unknown_models_are_kept(self):
+        def fake_request(url, **kwargs):
+            return {"data": [{"id": "brand-new-model"}]}
+
+        models = provider_catalog.fetch_models("opencode-go", "k",
+                                               _request=fake_request)
+        self.assertEqual(models, ["brand-new-model"])
+
 
 class TestParseModels(unittest.TestCase):
     def test_openai_shape(self):

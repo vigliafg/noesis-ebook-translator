@@ -82,39 +82,66 @@ def _live_models(provider_id: str) -> list[str] | None:
     return models or None
 
 
+def _routes(provider, entry) -> dict[str, str]:
+    """Models that need a different API route than the provider's chat base.
+
+    OpenCode and OpenCode Go expose Claude models on ``/anthropic/v1`` and
+    Gemini models on ``/google/v1beta``; the generic OpenAI transport can only
+    use the models on the chat-completions base, so the others are recorded
+    here and hidden from the pickers.
+    """
+    base = (provider.base_url or "").rstrip("/")
+    routes: dict[str, str] = {}
+    for model in (entry.get("models") or {}).values():
+        api = ((model.get("provider") or {}).get("api") or "").rstrip("/")
+        if api and api != base:
+            routes[str(model.get("id"))] = api
+    return routes
+
+
 def build_snapshot() -> dict:
     print(f"fetching {MODELS_DEV} ...")
     catalogue = _get_json(MODELS_DEV)
     models: dict[str, list[str]] = {}
+    routes: dict[str, dict[str, str]] = {}
     for provider in PROVIDERS:
         if provider.custom:
             continue
         md_id = MODELS_DEV_IDS.get(provider.id, provider.id)
         entry = catalogue.get(md_id)
         md_ids = set(_text_models(entry.get("models") or {})) if entry else set()
+        special = _routes(provider, entry) if entry else {}
+        if special:
+            routes[provider.id] = special
+        routable = md_ids - set(special)
         if provider.id in PUBLIC:
             live = _live_models(provider.id)
             if live:
-                # Drop non-text models (embeddings/audio/image) using models.dev
-                # as the reference when it knows the provider.
-                kept = [m for m in live if m in md_ids] if md_ids else list(live)
+                # Drop non-text models (embeddings/audio/image) and models that
+                # need another protocol, using models.dev as the reference.
+                kept = ([m for m in live if m in routable] if md_ids
+                        else list(live))
                 kept = kept or list(live)
                 models[provider.id] = sorted(set(kept), key=str.lower)
-                print(f"  {provider.id}: {len(models[provider.id])} (live)")
+                print(f"  {provider.id}: {len(models[provider.id])} (live)"
+                      + (f", {len(special)} hidden (other routes)"
+                         if special else ""))
                 continue
         if not entry:
             print(f"  ! {provider.id}: not in models.dev (id {md_id})",
                   file=sys.stderr)
             continue
-        ids = sorted(md_ids, key=str.lower)
+        ids = sorted(routable, key=str.lower)
         if ids:
             models[provider.id] = ids
-        print(f"  {provider.id}: {len(ids)} (models.dev/{md_id})")
+        print(f"  {provider.id}: {len(ids)} (models.dev/{md_id})"
+              + (f", {len(special)} hidden (other routes)" if special else ""))
     return {
         "generated_at": _dt.datetime.now(_dt.timezone.utc)
         .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "source": "models.dev + public /models endpoints",
         "models": models,
+        "routes": routes,
     }
 
 
