@@ -116,6 +116,8 @@ più un **endpoint personalizzato** (Ollama, LM Studio, vLLM, LiteLLM…).
   traducibili; se la lista in cache ha più di 24 ore l'app la riaggiorna da sola.
 - Il **modello scelto viene testato automaticamente** (una traduzione breve) e
   l'esito compare inline: `✓ modello OK · 1,2s` oppure `✗ motivo` con *Riprova*.
+- Lo stesso test parte dal **wizard «Traduci»** e l'esito resta visibile nel
+  ribbon come **badge ✓/✗** accanto al modello.
 - Solo i provider **abilitati** compaiono nella tendina del ribbon e del wizard;
   il provider si sceglie a ogni traduzione.
 

@@ -320,5 +320,7 @@
   "provider.err.empty": "risposta vuota",
   "provider.note.opencode_go": "OpenCode Go è pensato per gli agent di programmazione e monitora il traffico per abusi; tradurre interi libri può uscire dall'uso previsto. Sono elencati solo i modelli compatibili con l'endpoint OpenAI (Claude e Gemini usano route dedicate).",
   "label.enable": "Attiva",
-  "settings.providers_hint": "Configura fino a 4 provider, ognuno con la propria chiave API e il proprio modello. Il modello scelto viene testato automaticamente."
+  "settings.providers_hint": "Configura fino a 4 provider, ognuno con la propria chiave API e il proprio modello. Il modello scelto viene testato automaticamente.",
+  "model_test.ok_tooltip": "Ultimo test riuscito il {when} ({model}).",
+  "model_test.fail_tooltip": "Ultimo test fallito il {when}: {error}"
 }

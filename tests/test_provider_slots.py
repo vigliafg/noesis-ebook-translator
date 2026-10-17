@@ -83,7 +83,7 @@ class TestProviderSlots(unittest.TestCase):
 
 class TestModelCache(unittest.TestCase):
     def setUp(self):
-        appconfig.save_settings({"model_cache": {}})
+        appconfig.save_settings({"model_cache": {}, "model_tests": {}})
 
     def test_snapshot_when_no_cache(self):
         models = appconfig.provider_models("groq")
@@ -131,6 +131,31 @@ class TestModelCache(unittest.TestCase):
             "at": int(time.time()) - appconfig.MODEL_CACHE_TTL - 10,
             "models": ["a"]}}})
         self.assertTrue(appconfig.models_are_stale("groq"))
+
+
+class TestModelTestResults(unittest.TestCase):
+    def setUp(self):
+        appconfig.save_settings({"model_tests": {}})
+
+    def test_success_is_stored_for_the_model(self):
+        self.assertEqual(appconfig.model_test_status("Groq"), {})
+        appconfig.save_model_test("Groq", ok=True, model="llama")
+        status = appconfig.model_test_status("Groq", "llama")
+        self.assertTrue(status["ok"])
+        self.assertEqual(status["model"], "llama")
+        # A different model has no (valid) result.
+        self.assertEqual(appconfig.model_test_status("Groq", "other"), {})
+
+    def test_failure_records_the_error(self):
+        appconfig.save_model_test("ChatGPT", ok=False, model="gpt-x",
+                                  error="HTTP 401 unauthorized")
+        status = appconfig.model_test_status("ChatGPT", "gpt-x")
+        self.assertFalse(status["ok"])
+        self.assertIn("401", status["error"])
+
+    def test_empty_engine_name_is_ignored(self):
+        appconfig.save_model_test("", ok=True, model="x")
+        self.assertEqual(appconfig.load_settings().get("model_tests"), {})
 
 
 if __name__ == "__main__":

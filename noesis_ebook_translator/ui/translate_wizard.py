@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 from .. import appconfig, book as book_mod, chapters as chapters_mod
 from ..engines.languages import google as GOOGLE_LANGUAGES
 from ..i18n import T
+from .provider_test import ModelTestWidget
 
 __all__ = ["TranslateWizard"]
 
@@ -26,10 +27,12 @@ class TranslateWizard(QWizard):
     def __init__(self, parent=None, *, mode: str = "book",
                  input_path: str | None = None,
                  source: str = "English", target: str = "Italian",
-                 engine: str | None = None) -> None:
+                 engine: str | None = None,
+                 model_test_runner=None, synchronous_tests: bool = False) -> None:
         super().__init__(parent)
         self.mode = "chapters" if mode == "chapters" else "book"
         self.input_path = input_path
+        self._shown = False
         self.setWindowTitle(T("wizard.translate_title"))
         self.resize(680, 540)
         settings = appconfig.load_settings()
@@ -80,7 +83,13 @@ class TranslateWizard(QWizard):
         engine_form.addRow(T("panel.engine"), self.cmb_engine)
         engine_form.addRow(T("label.api_key"), self.edt_api_key)
         engine_form.addRow(T("label.model"), self.cmb_model)
+        self.test_model = ModelTestWidget(
+            self, runner=model_test_runner, synchronous=synchronous_tests)
+        self.test_model.setVisible(False)
+        engine_form.addRow("", self.test_model)
         self.cmb_engine.currentTextChanged.connect(self._on_engine_changed)
+        self.cmb_model.currentTextChanged.connect(self._schedule_model_test)
+        self.edt_api_key.editingFinished.connect(self._schedule_model_test)
         self._on_engine_changed(self.cmb_engine.currentText())
 
         # -- page 3: options ---------------------------------------------
@@ -180,6 +189,39 @@ class TranslateWizard(QWizard):
             self.cmb_model.setCurrentText(pref["model"])
         keys = pref.get("api_keys") or []
         self.edt_api_key.setText(keys[0] if keys else "")
+        self._schedule_model_test()
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        super().showEvent(event)
+        self._shown = True
+        self._schedule_model_test()
+
+    def _schedule_model_test(self, *_args) -> None:
+        """Probe the chosen model with a short translation before translating.
+
+        Only engines that need an API key are probed; the probe is skipped until
+        the wizard is actually shown, so building it in tests/headless never
+        touches the network.
+        """
+        if not self._shown:
+            return
+        name = self.cmb_engine.currentText().strip()
+        info = appconfig.engine_info(name) if name else {"need_api_key": False}
+        need_key = bool(info.get("need_api_key"))
+        self.test_model.setVisible(need_key)
+        if not need_key:
+            self.test_model.schedule("", "", "")
+            return
+        api_key = self.edt_api_key.text().strip()
+        model = self.cmb_model.currentText().strip()
+        if not api_key or not model:
+            self.test_model.schedule("", "", "")
+            return
+        provider_id = appconfig.provider_id_for_engine(name) or name
+        self.test_model.schedule(
+            provider_id, api_key, model, engine_name=name,
+            endpoint=(appconfig.get_engine_preference(name) or {}).get(
+                "endpoint", "") or "")
 
     def _browse_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, T("label.output_folder"))

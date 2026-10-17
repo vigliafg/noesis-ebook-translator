@@ -430,7 +430,7 @@ PROBE_TEXT = "Hello"
 
 
 def test_model(provider_id: str, api_key: str, model: str, *,
-               translator: Any = None,
+               translator: Any = None, endpoint: str = "",
                source_lang: str = "English", target_lang: str = "Italian",
                request_attempt: int = 1, request_timeout: float = 15.0,
                text: str = PROBE_TEXT) -> TestResult:
@@ -439,7 +439,11 @@ def test_model(provider_id: str, api_key: str, model: str, *,
     Performs a **single short translation** (one attempt, short timeout) — the
     only honest check that a model works for this app. ``translator`` may be
     injected (tests); otherwise the engine registered for the provider is built
-    from the current configuration.
+    with a transient subclass, so the probe never mutates the shared engine
+    configuration (it can run while a translation is in progress).
+
+    ``provider_id`` may also be a verbatim engine name (e.g. ``ChatGPT``); in
+    that case ``endpoint`` is ignored.
 
     Nothing is persisted here: the caller owns the API key / model values.
     """
@@ -452,26 +456,34 @@ def test_model(provider_id: str, api_key: str, model: str, *,
     engine_name_str = engine_name(provider_id)
     started = time.time()
     helper = translator
-    restore: tuple[Any, Any] | None = None
     try:
         if helper is None:
-            from .lib.translation import get_engine_class
-            engine_class = get_engine_class(engine_name_str)
-            original = dict(getattr(engine_class, "config", {}) or {})
-            probe_config = dict(original)
+            from .engines import builtin_engines
+            engine_class = next(
+                (engine for engine in builtin_engines
+                 if engine.name == engine_name_str), None)
+            if engine_class is None:
+                from .lib.translation import get_engine_class
+                engine_class = get_engine_class(engine_name_str)
+            probe_config = dict(getattr(engine_class, "config", {}) or {})
             probe_config.update({
                 "api_keys": [api_key] if api_key else [],
                 "model": model,
+                # A probe is a single short request: no SSE parsing needed.
+                "stream": False,
                 "request_attempt": request_attempt,
                 "request_timeout": request_timeout,
             })
             if provider is not None:
                 probe_config.setdefault("provider", provider_id)
-                if provider.custom and provider.base_url:
-                    probe_config.setdefault("endpoint", provider.base_url)
-            engine_class.set_config(probe_config)
-            restore = (engine_class, original)
-            helper = engine_class()
+                if provider.custom:
+                    probe_config["endpoint"] = endpoint or provider.base_url
+            # A transient subclass keeps the probe thread-safe: the shared
+            # engine class keeps the configuration used by real translations.
+            probe_class = type(
+                f"Probe{engine_class.__name__}", (engine_class,),
+                {"config": probe_config, "model": model})
+            helper = probe_class()
         if hasattr(helper, "set_source_lang"):
             helper.set_source_lang(source_lang)
         if hasattr(helper, "set_target_lang"):
@@ -490,13 +502,6 @@ def test_model(provider_id: str, api_key: str, model: str, *,
         message = str(exc) or exc.__class__.__name__
         return TestResult(ok=False, latency_ms=latency, message=message[:400],
                           error_kind=_classify(message))
-    finally:
-        if restore is not None:
-            engine_class, original = restore
-            try:
-                engine_class.set_config(original)
-            except Exception:  # noqa: BLE001 - best effort
-                pass
 
 
 # The headless engine inlines this module into a single file, where the relative

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 import traceback
 
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
@@ -529,6 +530,33 @@ class MainWindow(QMainWindow):
             self.cmb_model.addItem(pref.get("model", ""))
         if pref.get("model"):
             self.cmb_model.setCurrentText(pref["model"])
+        self._update_model_badge(name)
+
+    def _update_model_badge(self, name: str | None = None) -> None:
+        """Show the last live model test outcome next to the model combo."""
+        label = getattr(self, "lbl_model_test", None)
+        if label is None:
+            return
+        name = name or self.cmb_engine.currentText()
+        model = self.cmb_model.currentText().strip()
+        status = appconfig.model_test_status(name, model)
+        if not status:
+            label.setText("")
+            label.setToolTip("")
+            label.setVisible(False)
+            return
+        when = time.strftime("%d/%m %H:%M", time.localtime(status.get("at", 0)))
+        if status.get("ok"):
+            label.setText("\u2713")
+            label.setStyleSheet("color: #2e7d32;")
+            label.setToolTip(T("model_test.ok_tooltip").format(
+                when=when, model=model))
+        else:
+            label.setText("\u2717")
+            label.setStyleSheet("color: #c62828;")
+            label.setToolTip(T("model_test.fail_tooltip").format(
+                when=when, error=(status.get("error") or "?").strip()))
+        label.setVisible(True)
 
     def _set_theme(self, mode: str) -> None:
         """Apply the *app* theme (the reader theme is separate)."""
@@ -1146,12 +1174,12 @@ class MainWindow(QMainWindow):
             target=self.cmb_target.currentText(),
             engine=self.cmb_engine.currentText())
         if wizard.exec():
+            self._update_model_badge()
             self._start_translation(wizard.config())
 
     # Backwards-compatible alias.
     def on_translate(self) -> None:
         self.on_translate_book()
-
     def on_translate_chapters(self) -> None:
         if not self._input_path:
             self._status_message(T("msg.no_input"))
@@ -1167,6 +1195,7 @@ class MainWindow(QMainWindow):
             if not cfg.get("chapters"):
                 self._status_message(T("msg.no_input"))
                 return
+            self._update_model_badge()
             self._start_translation(cfg)
 
     def _chapter_labels(self, files) -> list[str]:

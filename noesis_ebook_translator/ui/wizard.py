@@ -70,6 +70,9 @@ class OnboardingWizard(QWizard):
             self.cmb_provider.addItem(choice["name"], choice["id"])
         self.edt_api_key = QLineEdit()
         self.edt_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.edt_endpoint = QLineEdit()
+        self.edt_endpoint.setPlaceholderText("https://host/v1")
+        self.lbl_endpoint = QLabel(T("label.custom_endpoint"))
         self.edt_model = QComboBox()
         self.edt_model.setEditable(True)
         self.lbl_provider_note = QLabel("")
@@ -80,6 +83,7 @@ class OnboardingWizard(QWizard):
         provider_form = QFormLayout()
         provider_form.addRow(T("label.provider"), self.cmb_provider)
         provider_form.addRow(T("label.api_key"), self.edt_api_key)
+        provider_form.addRow(self.lbl_endpoint, self.edt_endpoint)
         provider_form.addRow(T("label.model"), self.edt_model)
         provider_page = QWizardPage()
         provider_page.setTitle(T("wizard.engine_title"))
@@ -125,10 +129,13 @@ class OnboardingWizard(QWizard):
 
     def _on_provider_changed(self, *_args) -> None:
         provider = self._current_provider()
+        is_custom = bool(provider and provider.custom)
         self.edt_api_key.setEnabled(bool(provider and not provider.custom))
         if provider:
             self.edt_api_key.setPlaceholderText(
                 provider.env_hint or T("label.api_key"))
+        self.lbl_endpoint.setVisible(is_custom)
+        self.edt_endpoint.setVisible(is_custom)
         self.edt_model.clear()
         if provider is not None:
             models = appconfig.provider_models(provider.id) or []
@@ -151,6 +158,8 @@ class OnboardingWizard(QWizard):
                 continue
             if not self.edt_api_key.text() and slot.get("api_key"):
                 self.edt_api_key.setText(slot["api_key"])
+            if not self.edt_endpoint.text() and slot.get("endpoint"):
+                self.edt_endpoint.setText(slot["endpoint"])
             if slot.get("model") and not self.edt_model.currentText():
                 self.edt_model.setCurrentText(slot["model"])
             return
@@ -159,8 +168,10 @@ class OnboardingWizard(QWizard):
         provider = self._current_provider()
         if provider is None:
             return
-        self.test_provider.schedule(provider.id, self.edt_api_key.text().strip(),
-                                    self.edt_model.currentText().strip())
+        self.test_provider.schedule(
+            provider.id, self.edt_api_key.text().strip(),
+            self.edt_model.currentText().strip(),
+            endpoint=self.edt_endpoint.text().strip())
 
     def selected(self) -> dict:
         return {
@@ -170,6 +181,7 @@ class OnboardingWizard(QWizard):
             "provider_id": self.cmb_provider.currentData() or "",
             "api_key": self.edt_api_key.text().strip(),
             "model": self.edt_model.currentText().strip(),
+            "endpoint": self.edt_endpoint.text().strip(),
         }
 
     def apply(self) -> dict:
@@ -178,6 +190,7 @@ class OnboardingWizard(QWizard):
         provider_id = values.pop("provider_id", "")
         api_key = values.pop("api_key", "")
         model = values.pop("model", "")
+        endpoint = values.pop("endpoint", "")
         values["onboarding_done"] = True
         appconfig.save_settings(values)
         if provider_id:
@@ -191,7 +204,8 @@ class OnboardingWizard(QWizard):
             if target is None:
                 target = slots[0]
             target.update({"enabled": True, "provider": provider_id,
-                           "api_key": api_key, "model": model})
+                           "api_key": api_key, "model": model,
+                           "endpoint": endpoint})
             appconfig.set_provider_slots(slots)
             appconfig.save_settings({"translate_engine": engine})
         if values.get("ui_language"):

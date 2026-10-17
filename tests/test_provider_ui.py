@@ -36,7 +36,7 @@ class TestSettingsProviders(unittest.TestCase):
     def setUp(self):
         from noesis_ebook_translator import appconfig
         appconfig.save_settings({"provider_slots": [], "model_cache": {},
-                                 "engine_preferences": {}})
+                                 "engine_preferences": {}, "model_tests": {}})
 
     def _dialog(self, runner=_ok_runner, fetcher=_fake_fetch):
         from noesis_ebook_translator.ui import SettingsDialog
@@ -159,6 +159,7 @@ class TestOnboardingProviders(unittest.TestCase):
         from noesis_ebook_translator import appconfig
         appconfig.save_settings({"provider_slots": [], "model_cache": {},
                                  "engine_preferences": {},
+                                 "model_tests": {},
                                  "onboarding_done": False})
 
     def test_onboarding_saves_slot_one(self):
@@ -198,6 +199,111 @@ class TestOnboardingProviders(unittest.TestCase):
             self.assertTrue(wizard.lbl_provider_note.text())
         finally:
             wizard.close()
+
+
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+class TestProbePersistence(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        from noesis_ebook_translator import appconfig
+        appconfig.save_settings({"provider_slots": [], "model_cache": {},
+                                 "engine_preferences": {}, "model_tests": {}})
+
+    def test_settings_probe_is_persisted(self):
+        from noesis_ebook_translator import appconfig
+        from noesis_ebook_translator.ui import SettingsDialog
+        dialog = SettingsDialog(model_test_runner=_ok_runner,
+                                models_fetcher=_fake_fetch,
+                                synchronous_tests=True)
+        try:
+            row = dialog._slot_rows[0]
+            row.set_values({"enabled": True, "provider": "groq",
+                            "api_key": "k", "model": "model-a",
+                            "endpoint": ""})
+            row.test.run_now()
+        finally:
+            dialog.close()
+        self.assertTrue(appconfig.model_test_status("Groq", "model-a").get("ok"))
+
+    def test_translate_wizard_probes_and_persists(self):
+        from noesis_ebook_translator import appconfig
+        from noesis_ebook_translator.ui import TranslateWizard
+        appconfig.set_provider_slots([{"enabled": True, "provider": "groq",
+                                       "api_key": "sk",
+                                       "model": "llama-3.3-70b-versatile"}])
+        wizard = TranslateWizard(None, mode="book", engine="Groq",
+                                 model_test_runner=_ok_runner,
+                                 synchronous_tests=True)
+        try:
+            self.assertFalse(wizard.test_model.isVisible())
+            wizard._shown = True
+            wizard._schedule_model_test()
+            wizard.test_model.run_now()
+            self.assertIn("OK", wizard.test_model.status.text())
+        finally:
+            wizard.close()
+        status = appconfig.model_test_status("Groq",
+                                             "llama-3.3-70b-versatile")
+        self.assertTrue(status.get("ok"))
+
+    def test_translate_wizard_skips_free_engines(self):
+        from noesis_ebook_translator.ui import TranslateWizard
+        wizard = TranslateWizard(None, mode="book", engine="Google(Free)New",
+                                 model_test_runner=_ok_runner,
+                                 synchronous_tests=True)
+        try:
+            wizard._shown = True
+            wizard._schedule_model_test()
+            self.assertTrue(wizard.test_model.isHidden())
+            self.assertEqual(wizard.test_model.last_pending()[0], "")
+        finally:
+            wizard.close()
+
+
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+class TestRibbonBadge(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        from noesis_ebook_translator import appconfig
+        appconfig.ensure_defaults()
+        appconfig.save_settings({"model_tests": {}, "engine_preferences": {}})
+
+    def test_ok_badge(self):
+        from noesis_ebook_translator import appconfig
+        import main
+        appconfig.save_model_test("ChatGPT", ok=True, model="gpt-4o")
+        window = main.MainWindow()
+        try:
+            window.cmb_engine.setCurrentText("ChatGPT")
+            window.cmb_model.setCurrentText("gpt-4o")
+            window._update_model_badge()
+            self.assertEqual(window.lbl_model_test.text(), "\u2713")
+            self.assertFalse(window.lbl_model_test.isHidden())
+        finally:
+            window.close()
+
+    def test_failed_badge_and_unknown_model(self):
+        from noesis_ebook_translator import appconfig
+        import main
+        appconfig.save_model_test("ChatGPT", ok=False, model="gpt-4o",
+                                  error="HTTP 401")
+        window = main.MainWindow()
+        try:
+            window.cmb_engine.setCurrentText("ChatGPT")
+            window.cmb_model.setCurrentText("gpt-4o")
+            window._update_model_badge()
+            self.assertEqual(window.lbl_model_test.text(), "\u2717")
+            window.cmb_model.setCurrentText("another-model")
+            window._update_model_badge()
+            self.assertTrue(window.lbl_model_test.isHidden())
+        finally:
+            window.close()
 
 
 if __name__ == "__main__":

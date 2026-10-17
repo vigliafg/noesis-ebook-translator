@@ -231,6 +231,38 @@ class TestModelProbe(unittest.TestCase):
                 raise self.error
             return self.result
 
+    def test_probe_builds_a_transient_engine(self):
+        """The probe must not mutate the shared engine configuration."""
+        from noesis_ebook_translator.engines import base as base_mod
+
+        engine = _engine("Groq")
+        engine.set_config({"api_keys": ["original"], "model": "original-model"})
+        before = dict(engine.config)
+        captured = {}
+
+        def fake_request(url=None, data=None, headers=None, method=None,
+                         **kwargs):
+            captured["url"] = url
+            captured["auth"] = (headers or {}).get("Authorization")
+            captured["body"] = json.loads(data)
+            return json.dumps({"choices": [
+                {"message": {"content": "Ciao"}}]})
+
+        original = base_mod.request
+        base_mod.request = fake_request
+        try:
+            result = provider_catalog.test_model("groq", "probe-key",
+                                                 "probe-model")
+        finally:
+            base_mod.request = original
+
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(result.sample, "Ciao")
+        self.assertEqual(captured["auth"], "Bearer probe-key")
+        self.assertEqual(captured["body"]["model"], "probe-model")
+        self.assertFalse(captured["body"].get("stream"))
+        self.assertEqual(engine.config, before)
+
     def test_ok(self):
         result = provider_catalog.test_model(
             "groq", "k", "llama",

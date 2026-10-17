@@ -23,3 +23,5 @@ to use at every translation.
 Models that need a different protocol than the OpenAI endpoint (e.g. Claude and
 Gemini on OpenCode Go) are hidden: only the translatable ones are listed. When
 the cached list is older than 24 hours, the app refreshes it automatically.
+
+The model test also runs from the Translate wizard, and the outcome stays visible in the ribbon as a ✓/✗ badge next to the model.

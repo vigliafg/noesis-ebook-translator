@@ -210,7 +210,8 @@ class ProviderSlotRow(QGroupBox):
         if not self.chk_enabled.isChecked() or not self.provider_id():
             return
         self.test.schedule(self.provider_id(), self.edt_key.text().strip(),
-                           self.cmb_model.currentText().strip())
+                           self.cmb_model.currentText().strip(),
+                           endpoint=self.edt_endpoint.text().strip())
 
     def stop(self) -> None:
         self.test.stop()

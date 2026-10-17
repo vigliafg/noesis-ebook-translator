@@ -602,6 +602,22 @@ def build_workflow(window) -> WorkflowBar:
     window.cmb_model = p.labelled_combo("label.model", tooltip=T("label.model"),
                                         max_width=150)
     window.cmb_model.setEditable(True)
+    # Live model-test badge: ✓ / ✗ for the last probe of the selected engine.
+    _badge_box = QWidget()
+    _badge_layout = QVBoxLayout(_badge_box)
+    _badge_layout.setContentsMargins(0, 0, 0, 0)
+    _badge_layout.setSpacing(1)
+    _badge_spacer = QLabel(" ")
+    _badge_spacer.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+    window.lbl_model_test = QLabel("")
+    window.lbl_model_test.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+    window.lbl_model_test.setFixedWidth(18)
+    window.lbl_model_test.setVisible(False)
+    _badge_layout.addWidget(_badge_spacer)
+    _badge_layout.addWidget(window.lbl_model_test)
+    p._add(_badge_box)
+    window.cmb_model.currentTextChanged.connect(
+        lambda _text: window._update_model_badge(window.cmb_engine.currentText()))
     p.panel("panel.languages", launcher=launcher(2))
     window.cmb_source = p.labelled_combo(
         "label.source", ["Auto detect"] + list(GOOGLE_LANGUAGES),

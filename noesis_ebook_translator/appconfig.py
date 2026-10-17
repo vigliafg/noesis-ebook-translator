@@ -35,6 +35,8 @@ __all__ = [
     "save_provider_models",
     "model_cache_age",
     "models_are_stale",
+    "save_model_test",
+    "model_test_status",
     "refresh_provider_models",
 ]
 
@@ -97,6 +99,9 @@ APP_DEFAULTS: dict[str, Any] = {
     # Live model lists fetched from the providers, keyed by provider id:
     # {"groq": {"at": <epoch>, "models": [...]}}.
     "model_cache": {},
+    # Last live model test per engine (desktop-only):
+    # {"Groq": {"at": <epoch>, "ok": true, "model": "...", "error": ""}}.
+    "model_tests": {},
 }
 
 #: Preference keys surfaced by the GUI for the selected engine.
@@ -371,6 +376,31 @@ def models_are_stale(provider_id: str) -> bool:
     """True when the cached model list is absent or older than the TTL."""
     age = model_cache_age(provider_id)
     return age is None or age > MODEL_CACHE_TTL
+
+
+def save_model_test(engine_name: str, *, ok: bool, model: str = "",
+                    error: str = "") -> None:
+    """Remember the outcome of the last live probe for ``engine_name``."""
+    if not engine_name:
+        return
+    config = get_config()
+    tests = dict(config.get("model_tests") or {})
+    tests[engine_name] = {"at": int(time.time()), "ok": bool(ok),
+                          "model": str(model or ""),
+                          "error": str(error or "")[:400]}
+    config.set("model_tests", tests)
+    config.commit()
+
+
+def model_test_status(engine_name: str, model: str | None = None) -> dict[str, Any]:
+    """Last probe for ``engine_name`` (``{}`` when absent or for another model)."""
+    tests = get_config().get("model_tests") or {}
+    entry = dict(tests.get(engine_name) or {})
+    if not entry:
+        return {}
+    if model is not None and str(entry.get("model") or "") != str(model or ""):
+        return {}
+    return entry
 
 
 def refresh_provider_models(provider_id: str, api_key: str = "", *,

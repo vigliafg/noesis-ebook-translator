@@ -24,3 +24,5 @@ fournisseur se choisit à chaque traduction.
 Les modèles qui nécessitent un autre protocole que l'endpoint OpenAI (p. ex.
 Claude et Gemini sur OpenCode Go) sont masqués : seuls les modèles traduisibles
 sont listés. Si la liste en cache a plus de 24 heures, l'app l'actualise seule.
+
+Le test du modèle se lance aussi depuis l'assistant « Traduire » ; le résultat reste visible dans le ruban sous forme de badge ✓/✗ à côté du modèle.

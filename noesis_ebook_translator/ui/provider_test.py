@@ -13,7 +13,7 @@ from typing import Any, Callable
 from PyQt6.QtCore import QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
-from .. import provider_catalog
+from .. import appconfig, provider_catalog
 from ..i18n import T
 
 __all__ = ["ModelTestWidget", "run_async"]
@@ -85,9 +85,16 @@ class ModelTestWidget(QWidget):
         self._set_status(T("provider.test_idle"), "")
 
     # ------------------------------------------------------------- public
-    def schedule(self, provider_id: str, api_key: str, model: str) -> None:
-        """Queue a debounced test for the current selection."""
-        self._pending = (provider_id or "", api_key or "", model or "")
+    def schedule(self, provider_id: str, api_key: str, model: str,
+                 engine_name: str = "", endpoint: str = "") -> None:
+        """Queue a debounced test for the current selection.
+
+        ``provider_id`` may also be a verbatim engine name (e.g. ``ChatGPT``);
+        ``engine_name`` is the name used to persist the outcome for the badge,
+        ``endpoint`` the base URL for a custom provider.
+        """
+        self._pending = (provider_id or "", api_key or "", model or "",
+                         engine_name or "", endpoint or "")
         if not provider_id:
             self._set_status(T("provider.test_idle"), "")
             return
@@ -99,13 +106,17 @@ class ModelTestWidget(QWidget):
         self._timer.stop()
         if not self._pending:
             return
-        provider_id, api_key, model = self._pending
+        pending = self._pending
+        provider_id, api_key, model, _engine, endpoint = pending
         if not provider_id or not model:
             self._set_status(T("provider.test_incomplete"), "warn")
             return
         self._set_status(T("provider.testing"), "running")
 
         def probe() -> Any:
+            if endpoint:
+                return self._runner(provider_id, api_key, model,
+                                    endpoint=endpoint)
             return self._runner(provider_id, api_key, model)
 
         if self._synchronous:
@@ -113,23 +124,27 @@ class ModelTestWidget(QWidget):
                 result = probe()
             except Exception as exc:  # noqa: BLE001 - shown inline
                 result = exc
-            self._handle(result)
+            self._handle(result, pending)
             return
         self._serial += 1
         serial = self._serial
         self._thread = run_async(
-            probe, lambda result, s=serial: self._on_done(s, result), self)
+            probe,
+            lambda result, s=serial, p=pending: self._on_done(s, result, p),
+            self)
 
-    def last_pending(self) -> tuple[str, str, str] | None:
+    def last_pending(self) -> tuple[str, str, str, str, str] | None:
         return self._pending
 
     # ------------------------------------------------------------ internals
-    def _on_done(self, serial: int, result: Any) -> None:
+    def _on_done(self, serial: int, result: Any,
+                 pending: tuple[str, str, str, str, str]) -> None:
         if serial != self._serial:  # a newer test superseded this one
             return
-        self._handle(result)
+        self._handle(result, pending)
 
-    def _handle(self, result: Any) -> None:
+    def _handle(self, result: Any,
+                pending: tuple[str, str, str, str, str] | None = None) -> None:
         if not isinstance(result, provider_catalog.TestResult):
             result = provider_catalog.TestResult(
                 ok=False, error_kind="network", message=str(result))
@@ -139,6 +154,14 @@ class ModelTestWidget(QWidget):
         else:
             self._set_status(
                 T("provider.test_fail").format(reason=self._reason(result)), "fail")
+        if pending is not None:
+            provider_id, _key, model, engine_name, _endpoint = pending
+            engine = engine_name or (
+                provider_catalog.engine_name(provider_id)
+                if provider_catalog.get(provider_id) else provider_id)
+            if engine:
+                appconfig.save_model_test(engine, ok=result.ok, model=model,
+                                          error=result.message)
         self.finished.emit(result)
 
     @staticmethod

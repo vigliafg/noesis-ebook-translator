@@ -24,3 +24,5 @@ Modelle, die ein anderes Protokoll als den OpenAI-Endpunkt benötigen (z. B.
 Claude und Gemini bei OpenCode Go), werden ausgeblendet: es werden nur die
 übersetzbaren aufgeführt. Ist die zwischengespeicherte Liste älter als 24
 Stunden, aktualisiert die App sie selbst.
+
+Der Modelltest startet auch aus dem Übersetzungs-Assistenten; das Ergebnis bleibt im Ribbon als ✓/✗-Badge neben dem Modell sichtbar.
