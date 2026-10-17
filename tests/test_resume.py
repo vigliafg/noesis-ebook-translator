@@ -169,6 +169,35 @@ class ResumeTest(unittest.TestCase):
         self.assertGreater(self.calls, 0)
         self.assertEqual(_missing(self.cache_path), 0)
 
+    def test_on_resume_reports_cached_segments(self):
+        self._run("1")
+        seen = []
+        self._run("1", on_resume=lambda done, total: seen.append((done, total)))
+        self.assertTrue(seen)
+        done, total = seen[-1]
+        self.assertGreater(done, 0)
+        self.assertEqual(done, total)      # fully cached before translating
+        self.assertEqual(self.calls, 0)
+
+    def test_app_uses_a_persistent_cache_directory(self):
+        """A reboot must not wipe the cache: it lives under the app data dir."""
+        cfg = os.path.join(self.tmp, "appcfg")
+        env = dict(os.environ, NOESIS_CONFIG_DIR=cfg, QT_QPA_PLATFORM="offscreen")
+        code = (
+            "import main\n"
+            "from noesis_ebook_translator.paths import data_dir\n"
+            "from noesis_ebook_translator.lib.cache import TranslationCache\n"
+            "print(TranslationCache.cache_path)\n"
+            "print(data_dir())\n"
+        )
+        proc = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env,
+                              capture_output=True, text=True, timeout=180)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        cache_path, data_dir = proc.stdout.strip().splitlines()
+        self.assertTrue(cache_path.startswith(str(data_dir) + os.sep),
+                        cache_path)
+        self.assertIn("translator-cache", cache_path)
+
     def test_final_write_is_atomic(self):
         out = os.path.join(self.tmp, "atomic.epub")
         original = book.epub.write_epub

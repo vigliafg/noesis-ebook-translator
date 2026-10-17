@@ -238,6 +238,11 @@ Il motivo per cui la tabella è necessaria: la cache verbatim indicizza per
 scarta tutto ciò che è fuori selezione. `cache.info` conserva modello, lingua e
 selezione; `on_resume(done, total)` dice alla GUI quanti segmenti arrivano dalla cache.
 
+La cache (e la tabella di ripresa) vive in `<dati app>/translator-cache/cache`:
+`main.py` imposta `cache_path` **prima** di importare `book`, perché la cache
+verbatim userebbe la directory temporanea di sistema (`/tmp`), che un riavvio può
+svuotare. Al primo avvio le cache di una versione precedente vengono migrate.
+
 ### Nome del file tradotto (e sovrascritture)
 
 Il nome scelto nel wizard è solo la **base**: l'app aggiunge **sempre** il suffisso

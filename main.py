@@ -20,6 +20,49 @@ from PyQt6.QtWidgets import (
     QMainWindow, QMessageBox, QPlainTextEdit, QPushButton, QTabWidget,
     QVBoxLayout, QWidget)
 
+def _use_persistent_translation_cache() -> None:
+    """Keep the translation cache out of the system temp directory.
+
+    The verbatim engine defaults to ``/tmp`` (or the OS temp dir), which a reboot
+    can wipe — exactly when the crash-safe resume (hours of work) is needed.
+    Point it at the app's data directory, carrying over any caches an older
+    version left behind.
+
+    Must run **before** ``noesis_ebook_translator.book`` is imported: the cache
+    path is resolved once, when ``lib.cache`` is imported.
+    """
+    try:
+        import shutil as _shutil
+
+        from noesis_ebook_translator.lib.config import get_config
+        from noesis_ebook_translator.paths import data_dir
+
+        base = os.path.join(str(data_dir()), "translator-cache")
+        os.makedirs(base, exist_ok=True)
+        config = get_config()
+        previous = config.get("cache_path") or ""
+        if previous == base:
+            return
+        new_db = os.path.join(base, "cache")
+        os.makedirs(new_db, exist_ok=True)
+        old_db = os.path.join(previous, "cache") if previous else ""
+        if old_db and os.path.isdir(old_db):
+            for name in os.listdir(old_db):
+                if not name.endswith(".db"):
+                    continue
+                target = os.path.join(new_db, name)
+                if not os.path.exists(target):
+                    try:  # best effort: /tmp and the data dir may differ
+                        _shutil.move(os.path.join(old_db, name), target)
+                    except OSError:
+                        pass
+        config.save(cache_path=base)
+    except Exception:  # pragma: no cover - never block startup for a cache path
+        pass
+
+
+_use_persistent_translation_cache()
+
 from noesis_ebook_translator import APP_NAME, __version__, appconfig, book, theme
 from noesis_ebook_translator import exporter as exporter_mod
 from noesis_ebook_translator.i18n import T, get_language, set_language

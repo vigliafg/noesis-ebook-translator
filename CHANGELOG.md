@@ -38,7 +38,9 @@ la storia completa è nei commit (`git log`).
   modello + lingua), quindi un crash o una mancanza di corrente non fanno perdere
   nulla: rilanciando la traduzione si riparte dai soli segmenti mancanti, anche
   cambiando la selezione dei capitoli. L'EPUB finale è scritto in modo atomico
-  (`*.part` + `os.replace`) e la GUI segnala «Ripresa: N/M segmenti».
+  (`*.part` + `os.replace`) e la GUI segnala «Ripresa: N/M segmenti». La cache
+  vive sotto la directory dati dell'app (`translator-cache/cache`), non in `/tmp`,
+  così sopravvive al riavvio.
 - `tools/fetch_provider_catalog.py` per rigenerare lo snapshot incluso nel
   bundle (utile solo per lo sviluppo: l'app si aggiorna dalla UI).
 
