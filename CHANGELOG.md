@@ -46,3 +46,6 @@ la storia completa è nei commit (`git log`).
   a metà traduzione.
 - Il wizard di primo avvio non supportava l'**endpoint personalizzato**: ora ha
   il campo URL base e la sonda lo usa.
+- `tools/fetch_provider_catalog.py --check` confrontava anche `generated_at`,
+  quindi falliva sempre: ora confronta solo modelli e rotte e indica i provider
+  cambiati.

@@ -145,6 +145,25 @@ def build_snapshot() -> dict:
     }
 
 
+def payload(snapshot: dict) -> dict:
+    """The parts of the snapshot that matter for ``--check``.
+
+    ``generated_at`` changes on every run, so comparing it would make the
+    freshness check fail forever. Only the model lists and routes are compared.
+    """
+    return {"models": snapshot.get("models") or {},
+            "routes": snapshot.get("routes") or {}}
+
+
+def changed_providers(current: dict, fresh: dict) -> list[str]:
+    """Provider ids whose model list (or routes) differ between snapshots."""
+    before, after = payload(current), payload(fresh)
+    ids = sorted(set(before["models"]) | set(after["models"]))
+    return [pid for pid in ids
+            if before["models"].get(pid) != after["models"].get(pid)
+            or before["routes"].get(pid) != after["routes"].get(pid)]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -155,9 +174,15 @@ def main(argv: list[str] | None = None) -> int:
     snapshot = build_snapshot()
     text = json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n"
     if args.check:
-        current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.is_file() else ""
-        if current != text:
-            print("snapshot is outdated", file=sys.stderr)
+        try:
+            current = json.loads(OUTPUT.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            current = {}
+        if payload(current) != payload(snapshot):
+            outdated = changed_providers(current, snapshot)
+            print("snapshot is outdated"
+                  + (f": {', '.join(outdated)}" if outdated else ""),
+                  file=sys.stderr)
             return 1
         print("snapshot is up to date")
         return 0
