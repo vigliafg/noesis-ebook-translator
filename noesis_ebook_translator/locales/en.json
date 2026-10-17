@@ -322,5 +322,6 @@
   "label.enable": "Enable",
   "settings.providers_hint": "Configure up to 4 providers, each with its own API key and model. The chosen model is tested automatically.",
   "model_test.ok_tooltip": "Last successful test on {when} ({model}).",
-  "model_test.fail_tooltip": "Last failed test on {when}: {error}"
+  "model_test.fail_tooltip": "Last failed test on {when}: {error}",
+  "action.refresh_all_models": "Refresh all lists"
 }

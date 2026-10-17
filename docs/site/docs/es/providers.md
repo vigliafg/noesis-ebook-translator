@@ -13,7 +13,7 @@ Se configuran en **Ajustes → Proveedores** (o durante el asistente inicial):
   personalizado** (Ollama, LM Studio, vLLM, LiteLLM…).
 
 Las listas de modelos se obtienen **en vivo** (con respaldo incluido para uso sin
-conexión) y se actualizan con *Actualizar modelos*. El modelo elegido se **prueba
+conexión) y se actualizan con *Actualizar modelos* (un proveedor), *Actualizar todas las listas* en Ajustes, o desde el asistente inicial. El modelo elegido se **prueba
 automáticamente**: se envía una traducción breve y el resultado aparece inline
 (`✓ modelo OK · 1,2 s`, o `✗ motivo` con *Reintentar*).
 

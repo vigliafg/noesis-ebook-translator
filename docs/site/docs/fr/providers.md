@@ -14,7 +14,7 @@ bienvenue) :
   personnalisé** (Ollama, LM Studio, vLLM, LiteLLM…).
 
 Les listes de modèles sont récupérées **en direct** (avec un repli intégré hors
-ligne) et actualisées via *Actualiser les modèles*. Le modèle choisi est **testé
+ligne) et actualisées via *Actualiser les modèles* (un fournisseur), *Actualiser toutes les listes* dans les Paramètres, ou depuis l'assistant de bienvenue. Le modèle choisi est **testé
 automatiquement** : une courte traduction est envoyée et le résultat s'affiche
 inline (`✓ modèle OK · 1,2 s`, ou `✗ raison` avec *Réessayer*).
 

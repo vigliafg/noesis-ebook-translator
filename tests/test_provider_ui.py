@@ -127,6 +127,47 @@ class TestSettingsProviders(unittest.TestCase):
         finally:
             dialog.close()
 
+    def test_refresh_all_lists(self):
+        calls = []
+
+        def fetcher(provider_id, key):
+            calls.append(provider_id)
+            return ["m1", "m2"]
+
+        dialog = self._dialog(fetcher=fetcher)
+        try:
+            dialog._slot_rows[0].set_values({
+                "enabled": True, "provider": "groq", "api_key": "k",
+                "model": "", "endpoint": ""})
+            dialog._slot_rows[1].set_values({
+                "enabled": True, "provider": "mistral", "api_key": "k",
+                "model": "", "endpoint": ""})
+            dialog._refresh_all_models()
+            self.assertEqual(sorted(calls), ["groq", "mistral"])
+            row = dialog._slot_rows[0]
+            self.assertEqual([row.cmb_model.itemText(i)
+                              for i in range(row.cmb_model.count())],
+                             ["m1", "m2"])
+        finally:
+            dialog.close()
+
+    def test_refresh_all_skips_providers_without_a_key(self):
+        calls = []
+
+        def fetcher(provider_id, key):
+            calls.append(provider_id)
+            return ["m1"]
+
+        dialog = self._dialog(fetcher=fetcher)
+        try:
+            dialog._slot_rows[0].set_values({
+                "enabled": True, "provider": "groq", "api_key": "",
+                "model": "", "endpoint": ""})
+            dialog._refresh_all_models()
+            self.assertEqual(calls, [])
+        finally:
+            dialog.close()
+
     def test_fresh_cache_is_not_refetched(self):
         from noesis_ebook_translator import appconfig
         appconfig.save_provider_models("groq", ["cached-model"])
@@ -197,6 +238,41 @@ class TestOnboardingProviders(unittest.TestCase):
             wizard.cmb_provider.setCurrentIndex(index)
             self.assertFalse(wizard.lbl_provider_note.isHidden())
             self.assertTrue(wizard.lbl_provider_note.text())
+        finally:
+            wizard.close()
+
+    def test_onboarding_refreshes_the_model_list(self):
+        from noesis_ebook_translator.ui import OnboardingWizard
+        calls = []
+
+        def fetcher(provider_id, key):
+            calls.append((provider_id, key))
+            return ["fresh-1", "fresh-2"]
+
+        wizard = OnboardingWizard(model_test_runner=_ok_runner,
+                                  models_fetcher=fetcher,
+                                  synchronous_tests=True)
+        try:
+            index = wizard.cmb_provider.findData("groq")
+            wizard.cmb_provider.setCurrentIndex(index)
+            wizard.edt_api_key.setText("sk")
+            wizard._refresh_models()
+            items = [wizard.edt_model.itemText(i)
+                     for i in range(wizard.edt_model.count())]
+            self.assertEqual(items, ["fresh-1", "fresh-2"])
+            self.assertEqual(calls, [("groq", "sk")])
+        finally:
+            wizard.close()
+
+    def test_onboarding_refresh_is_disabled_for_custom(self):
+        from noesis_ebook_translator.ui import OnboardingWizard
+        wizard = OnboardingWizard(model_test_runner=_ok_runner,
+                                  models_fetcher=_fake_fetch,
+                                  synchronous_tests=True)
+        try:
+            index = wizard.cmb_provider.findData("custom")
+            wizard.cmb_provider.setCurrentIndex(index)
+            self.assertFalse(wizard.btn_refresh_models.isEnabled())
         finally:
             wizard.close()
 

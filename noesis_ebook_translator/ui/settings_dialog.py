@@ -185,6 +185,12 @@ class SettingsDialog(QDialog):
         hint = QLabel(T("settings.providers_hint"))
         hint.setWordWrap(True)
         outer.addWidget(hint)
+        actions = QHBoxLayout()
+        self.btn_refresh_all = QPushButton(T("action.refresh_all_models"))
+        self.btn_refresh_all.clicked.connect(self._refresh_all_models)
+        actions.addWidget(self.btn_refresh_all)
+        actions.addStretch(1)
+        outer.addLayout(actions)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         inner = QWidget()
@@ -202,6 +208,12 @@ class SettingsDialog(QDialog):
         scroll.setWidget(inner)
         outer.addWidget(scroll, 1)
         self.tabs.addTab(page, T("settings.tab.providers"))
+
+    def _refresh_all_models(self) -> None:
+        """Regenerate the model list of every configured provider."""
+        for row in self._slot_rows:
+            if row.can_refresh():
+                row._refresh_models()
 
     def _build_quality(self) -> None:
         _page, form = self._page("quality")

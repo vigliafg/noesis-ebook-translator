@@ -322,5 +322,6 @@
   "label.enable": "Activar",
   "settings.providers_hint": "Configura hasta 4 proveedores, cada uno con su clave de API y su modelo. El modelo elegido se prueba automáticamente.",
   "model_test.ok_tooltip": "Última prueba correcta el {when} ({model}).",
-  "model_test.fail_tooltip": "Última prueba fallida el {when}: {error}"
+  "model_test.fail_tooltip": "Última prueba fallida el {when}: {error}",
+  "action.refresh_all_models": "Actualizar todas las listas"
 }

@@ -83,6 +83,13 @@ class ProviderSlotRow(QGroupBox):
     def provider_id(self) -> str:
         return self.cmb_provider.currentData() or ""
 
+    def can_refresh(self) -> bool:
+        """True when a live model list can be fetched for this slot."""
+        provider = provider_catalog.get(self.provider_id())
+        if provider is None or provider.custom:
+            return False
+        return bool(provider.models_public or self.edt_key.text().strip())
+
     def values(self) -> dict[str, Any]:
         return {
             "enabled": self.chk_enabled.isChecked(),

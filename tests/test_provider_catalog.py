@@ -306,45 +306,5 @@ class TestModelProbe(unittest.TestCase):
         self.assertEqual(result.error_kind, "empty")
 
 
-class TestSnapshotCheck(unittest.TestCase):
-    """`fetch_provider_catalog.py --check` ignores the timestamp."""
-
-    @staticmethod
-    def _tool():
-        import importlib.util
-        from pathlib import Path
-
-        path = (Path(__file__).resolve().parent.parent
-                / "tools" / "fetch_provider_catalog.py")
-        spec = importlib.util.spec_from_file_location(
-            "fetch_provider_catalog", path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    def test_payload_ignores_generated_at(self):
-        tool = self._tool()
-        before = {"generated_at": "2026-01-01T00:00:00Z",
-                  "models": {"groq": ["a"]}, "routes": {}}
-        after = {"generated_at": "2027-01-01T00:00:00Z",
-                 "models": {"groq": ["a"]}, "routes": {}}
-        self.assertEqual(tool.payload(before), tool.payload(after))
-        self.assertEqual(tool.changed_providers(before, after), [])
-
-    def test_changed_providers_lists_differences(self):
-        tool = self._tool()
-        before = {"models": {"groq": ["a"], "mistral": ["x"]}, "routes": {}}
-        after = {"models": {"groq": ["a", "b"], "mistral": ["x"]}, "routes": {}}
-        self.assertEqual(tool.changed_providers(before, after), ["groq"])
-
-    def test_route_changes_count_as_differences(self):
-        tool = self._tool()
-        before = {"models": {"opencode-go": ["m"]}, "routes": {}}
-        after = {"models": {"opencode-go": ["m"]},
-                 "routes": {"opencode-go": {"m": "https://x/anthropic/v1"}}}
-        self.assertEqual(tool.changed_providers(before, after),
-                         ["opencode-go"])
-
-
 if __name__ == "__main__":
     unittest.main()

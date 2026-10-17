@@ -13,7 +13,7 @@ Konfiguration unter **Einstellungen → Anbieter** (oder im Willkommens-Assisten
   Endpunkt** (Ollama, LM Studio, vLLM, LiteLLM…).
 
 Modelllisten werden **live** geladen (mit mitgeliefertem Offline-Fallback) und
-über *Modelle aktualisieren* erneuert. Das gewählte Modell wird **automatisch
+über *Modelle aktualisieren* erneuert. Alle Listen lassen sich in den Einstellungen oder im Willkommens-Assistenten auf einmal aktualisieren. Das gewählte Modell wird **automatisch
 getestet**: eine kurze Übersetzung wird gesendet und das Ergebnis erscheint inline
 (`✓ Modell OK · 1,2 s` oder `✗ Grund` mit *Wiederholen*).
 

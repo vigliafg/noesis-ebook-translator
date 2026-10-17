@@ -13,7 +13,7 @@ Si configurano in **Impostazioni → Provider** (o nel wizard di primo avvio):
   personalizzato** (Ollama, LM Studio, vLLM, LiteLLM…).
 
 Le liste modelli vengono lette **live** dal provider (con fallback incluso per
-l'uso offline) e aggiornate con *Aggiorna modelli*. Il modello scelto viene
+l'uso offline) e aggiornate con *Aggiorna modelli* (singolo provider), con *Rigenera tutte le liste* nelle Impostazioni o dal wizard di primo avvio. Il modello scelto viene
 **testato automaticamente**: viene inviata una traduzione breve e l'esito compare
 inline (`✓ modello OK · 1,2s`, oppure `✗ motivo` con *Riprova*).
 

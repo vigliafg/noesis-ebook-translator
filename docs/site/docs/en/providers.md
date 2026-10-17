@@ -13,7 +13,7 @@ Configure them in **Settings → Providers** (or during the welcome wizard):
   endpoint** (Ollama, LM Studio, vLLM, LiteLLM…).
 
 Model lists are fetched **live** from the provider (with a bundled fallback for
-offline use) and refreshed with *Refresh models*. The chosen model is **tested
+offline use) and refreshed with *Refresh models* (single provider), *Refresh all lists* in Settings, or from the welcome wizard. The chosen model is **tested
 automatically**: a short translation is sent and the result appears inline
 (`✓ model OK · 1.2s`, or `✗ reason` with *Retry*).
 

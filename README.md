@@ -109,8 +109,9 @@ contemporaneamente, ognuno con la **propria chiave API e il proprio modello**:
 più un **endpoint personalizzato** (Ollama, LM Studio, vLLM, LiteLLM…).
 
 - Le **liste modelli** sono aggiornate **live** dall'endpoint `/models` del
-  provider (con cache e fallback incluso per l'uso offline) e con il pulsante
-  *Aggiorna modelli*.
+  provider (con cache e fallback incluso per l'uso offline); puoi rigenerarle con
+  *Aggiorna modelli* (singolo provider), con *Rigenera tutte le liste* in
+  **Impostazioni → Provider** o dal wizard di primo avvio.
 - I modelli che richiedono un protocollo diverso dall'endpoint OpenAI (p.es.
   Claude e Gemini su OpenCode Go) vengono **nascosti**: restano solo quelli
   traducibili; se la lista in cache ha più di 24 ore l'app la riaggiorna da sola.

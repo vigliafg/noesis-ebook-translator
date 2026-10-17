@@ -23,12 +23,14 @@ la storia completa è nei commit (`git log`).
   LiteLLM…).
 - **Liste modelli live** dall'endpoint `/models` del provider, con snapshot
   incluso per l'uso offline (`noesis_ebook_translator/data/providers.json`),
-  pulsante *Aggiorna modelli* e aggiornamento automatico dopo 24 ore.
+  pulsante *Aggiorna modelli* per singolo provider, **rigenerazione di tutte le
+  liste** dalle Impostazioni e dal wizard di primo avvio, e aggiornamento
+  automatico dopo 24 ore.
 - **Test automatico del modello**: una traduzione breve verifica il modello
   scelto e l'esito compare inline (`✓ Modello OK · 1,2s` oppure il motivo);
   l'ultimo esito resta visibile nel ribbon come **badge ✓/✗**.
-- `tools/fetch_provider_catalog.py` per rigenerare lo snapshot (con `--check`)
-  e una workflow settimanale che segnala quando è invecchiato.
+- `tools/fetch_provider_catalog.py` per rigenerare lo snapshot incluso nel
+  bundle (utile solo per lo sviluppo: l'app si aggiorna dalla UI).
 
 ### Changed
 
@@ -46,6 +48,3 @@ la storia completa è nei commit (`git log`).
   a metà traduzione.
 - Il wizard di primo avvio non supportava l'**endpoint personalizzato**: ora ha
   il campo URL base e la sonda lo usa.
-- `tools/fetch_provider_catalog.py --check` confrontava anche `generated_at`,
-  quindi falliva sempre: ora confronta solo modelli e rotte e indica i provider
-  cambiati.
