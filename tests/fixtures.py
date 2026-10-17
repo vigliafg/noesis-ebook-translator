@@ -299,6 +299,9 @@ def make_fake_engine():
         need_api_key = False
         lang_codes = Base.load_lang_codes(google)
         endpoint = ""
+        # A system prompt makes the fake engine an "LLM" for the wizard: the
+        # genre analysis and the style-prompt injection can be exercised offline.
+        prompt = "You are a meticulous translator. <tlang>"
 
         def translate(self, content):
             return "IT<" + content + ">"

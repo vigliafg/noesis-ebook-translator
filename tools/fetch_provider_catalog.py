@@ -33,22 +33,36 @@ sys.path.insert(0, str(ROOT))
 
 from noesis_ebook_translator import provider_catalog  # noqa: E402
 from noesis_ebook_translator.provider_catalog import (  # noqa: E402
-    PROVIDERS, parse_models)
+    MODELS_DEV_IDS, PROVIDERS, parse_models)
 
 MODELS_DEV = "https://models.dev/api.json"
 
 OUTPUT = ROOT / "noesis_ebook_translator" / "data" / "providers.json"
 
-#: Curated provider id -> models.dev provider id (they differ in a few cases).
-MODELS_DEV_IDS: dict[str, str] = {
-    "together": "togetherai",
-    "fireworks": "fireworks-ai",
-    "moonshot": "moonshotai",
-    "novita": "novita-ai",
-}
-
 #: Providers whose ``/models`` endpoint is public: prefer the live response.
 PUBLIC: tuple[str, ...] = ("opencode", "opencode-go", "openrouter")
+
+#: models.dev ids behind the verbatim builtin engines (ChatGPT, Claude, Gemini,
+#: DeepSeek, Groq, Mistral, xAI): the cost estimate uses their prices too.
+BUILTIN_COST_PROVIDERS: tuple[str, ...] = (
+    "openai", "anthropic", "google", "deepseek", "groq", "mistral", "xai",
+)
+
+
+def _costs(models: dict) -> dict[str, dict[str, float]]:
+    """Prices (USD per 1M tokens) of the models that declare both values."""
+    out: dict[str, dict[str, float]] = {}
+    for model in models.values():
+        model_id = str(model.get("id") or "")
+        cost = model.get("cost") or {}
+        if not model_id:
+            continue
+        try:
+            out[model_id] = {"input": float(cost["input"]),
+                             "output": float(cost["output"])}
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
 
 
 def _get_json(url: str, timeout: float = 30.0):
@@ -121,6 +135,7 @@ def build_snapshot() -> dict:
     models: dict[str, list[str]] = {}
     routes: dict[str, dict[str, str]] = {}
     protocols: dict[str, dict[str, str]] = {}
+    cost: dict[str, dict[str, dict[str, float]]] = {}
     for provider in PROVIDERS:
         if provider.custom:
             continue
@@ -143,6 +158,12 @@ def build_snapshot() -> dict:
                         else list(live))
                 kept = kept or list(live)
                 models[provider.id] = sorted(set(kept), key=str.lower)
+                if entry:
+                    all_costs = _costs(entry.get("models") or {})
+                    selected = {m: all_costs[m] for m in models[provider.id]
+                                if m in all_costs}
+                    if selected:
+                        cost[md_id] = selected
                 print(f"  {provider.id}: {len(models[provider.id])} (live)"
                       + (f", {len(special)} hidden (other routes)"
                          if special else ""))
@@ -154,15 +175,30 @@ def build_snapshot() -> dict:
         ids = sorted(routable, key=str.lower)
         if ids:
             models[provider.id] = ids
+            all_costs = _costs(entry.get("models") or {})
+            selected = {m: all_costs[m] for m in ids if m in all_costs}
+            if selected:
+                cost[md_id] = selected
         print(f"  {provider.id}: {len(ids)} (models.dev/{md_id})"
               + (f", {len(special)} hidden (other routes)" if special else ""))
+    for dev_id in BUILTIN_COST_PROVIDERS:
+        if dev_id in cost:
+            continue
+        entry = catalogue.get(dev_id) or {}
+        text_ids = set(_text_models(entry.get("models") or {}))
+        all_costs = _costs(entry.get("models") or {})
+        selected = {m: all_costs[m] for m in text_ids if m in all_costs}
+        if selected:
+            cost[dev_id] = selected
+        print(f"  {dev_id}: {len(selected)} prices (builtin engines)")
     return {
         "generated_at": _dt.datetime.now(_dt.timezone.utc)
         .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        "source": "models.dev + public /models endpoints",
+        "source": "models.dev + public /models endpoints (models, routes, prices)",
         "models": models,
         "routes": routes,
         "protocols": protocols,
+        "cost": cost,
     }
 
 

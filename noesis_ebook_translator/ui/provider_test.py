@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 from .. import appconfig, provider_catalog
 from ..i18n import T
 
-__all__ = ["ModelTestWidget", "run_async"]
+__all__ = ["ModelTestWidget", "run_async", "detach"]
 
 _STYLES = {
     "ok": "color: #2e7d32;",
@@ -53,6 +53,24 @@ def run_async(fn: Callable[[], Any], on_done: Callable[[Any], None],
     worker.finished.connect(worker.deleteLater)
     worker.start()
     return worker
+
+
+#: Workers whose owner went away while the thread was still running. Keeping a
+#: Python reference prevents ``QThread: Destroyed while thread is still running``
+#: (which aborts the process) when a dialog is closed mid-request.
+_DETACHED: set = set()
+
+
+def detach(worker: _Worker) -> None:
+    """Let ``worker`` finish in the background, out of reach of its old owner."""
+    if worker is None:
+        return
+    _DETACHED.add(worker)
+    try:
+        worker.setParent(None)
+    except Exception:  # noqa: BLE001 - defensive
+        pass
+    worker.finished.connect(lambda: _DETACHED.discard(worker))
 
 
 class ModelTestWidget(QWidget):

@@ -8,16 +8,19 @@ the translation.
 from __future__ import annotations
 
 import os
+import threading
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
-    QRadioButton, QVBoxLayout, QWizard, QWizardPage)
+    QRadioButton, QSpinBox, QVBoxLayout, QWizard, QWizardPage)
 
 from .. import appconfig, book as book_mod, chapters as chapters_mod
 from ..engines.languages import google as GOOGLE_LANGUAGES
 from ..i18n import T
+from .analysis_page import AnalysisPage
+from .estimate_page import EstimatePage
 from .provider_test import ModelTestWidget
 
 __all__ = ["TranslateWizard"]
@@ -28,11 +31,14 @@ class TranslateWizard(QWizard):
                  input_path: str | None = None,
                  source: str = "English", target: str = "Italian",
                  engine: str | None = None,
-                 model_test_runner=None, synchronous_tests: bool = False) -> None:
+                 model_test_runner=None, synchronous_tests: bool = False,
+                 analysis_runner=None) -> None:
         super().__init__(parent)
         self.mode = "chapters" if mode == "chapters" else "book"
         self.input_path = input_path
         self._shown = False
+        self._segments_cache: tuple[tuple, list[dict]] | None = None
+        self._segments_lock = threading.Lock()
         self.setWindowTitle(T("wizard.translate_title"))
         self.resize(680, 540)
         settings = appconfig.load_settings()
@@ -107,9 +113,21 @@ class TranslateWizard(QWizard):
             bool(settings.get("translate_sequential", True)))
         self.lbl_sequential_hint = QLabel(T("label.sequential_hint"))
         self.lbl_sequential_hint.setWordWrap(True)
+        parallel_row = QHBoxLayout()
+        self.lbl_parallel = QLabel(T("label.parallel"))
+        self.spn_parallel = QSpinBox()
+        self.spn_parallel.setRange(1, 8)
+        self.spn_parallel.setValue(int(settings.get("translate_parallel", 4) or 4))
+        self.spn_parallel.setToolTip(T("label.parallel_hint"))
+        parallel_row.addWidget(self.lbl_parallel)
+        parallel_row.addWidget(self.spn_parallel)
+        parallel_row.addStretch(1)
         for widget in (self.chk_bilingual, self.chk_cache, self.chk_batch,
                        self.chk_sequential, self.lbl_sequential_hint):
             options_layout.addWidget(widget)
+        options_layout.addLayout(parallel_row)
+        self.chk_sequential.toggled.connect(self._update_parallel)
+        self._update_parallel(self.chk_sequential.isChecked())
         self.radio_grouped = QRadioButton(T("grouping.grouped"))
         self.radio_single = QRadioButton(T("grouping.single"))
         self.radio_grouped.setChecked(True)
@@ -144,11 +162,65 @@ class TranslateWizard(QWizard):
         self._output_confirmed = False
         self._update_output_preview()
 
-        self.addPage(content)
-        self.addPage(engine_page)
-        self.addPage(options_page)
-        self.addPage(output_page)
+        self.analysis_page = AnalysisPage(
+            self, runner_factory=analysis_runner,
+            synchronous=synchronous_tests)
+        self.estimate_page = EstimatePage(self, synchronous=synchronous_tests)
+
+        # Order: the analysis decides the style prompt, and the estimate's
+        # "already in cache / cost" figure depends on that style.
+        self._content_id = self.addPage(content)
+        self._engine_id = self.addPage(engine_page)
+        self._analysis_id = self.addPage(self.analysis_page)
+        self._estimate_id = self.addPage(self.estimate_page)
+        self._options_id = self.addPage(options_page)
+        self._output_id = self.addPage(output_page)
         self.setButtonText(QWizard.WizardButton.FinishButton, T("action.translate"))
+
+    # ------------------------------------------------------------------
+    def _update_parallel(self, sequential: bool) -> None:
+        if hasattr(self, "spn_parallel"):
+            self.spn_parallel.setEnabled(not sequential)
+
+    def nextId(self) -> int:  # noqa: N802 - Qt naming
+        """Skip the analysis page for engines that have no system prompt."""
+        current = self.currentId()
+        if current == self._analysis_id:
+            engine = self.cmb_engine.currentText().strip()
+            if not appconfig.engine_supports_prompt(engine):
+                return self._estimate_id
+        return super().nextId()
+
+    def chapters_key(self) -> tuple:
+        return tuple(self.selected_chapters() or ())
+
+    def segments(self, force: bool = False) -> list[dict]:
+        """Segments of the current selection, parsed once and shared by pages."""
+        if not self.input_path:
+            return []
+        key = (self.chapters_key(), self.cmb_engine.currentText(),
+               self.cmb_target.currentText())
+        with self._segments_lock:
+            cached = self._segments_cache
+            if cached and cached[0] == key and not force:
+                return cached[1]
+        segments = book_mod.collect_segments(
+            self.input_path, chapters=self.selected_chapters() or None,
+            engine=self.cmb_engine.currentText(),
+            source_lang=self.cmb_source.currentText(),
+            target_lang=self.cmb_target.currentText())
+        with self._segments_lock:
+            self._segments_cache = (key, segments)
+        return segments
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        for page in (self.analysis_page, self.estimate_page):
+            try:
+                page.stop()
+            except Exception:  # noqa: BLE001 - closing must always succeed
+                pass
+        self.test_model.stop()
+        super().closeEvent(event)
 
     # ------------------------------------------------------------------
     def _chapter_choices(self) -> list[tuple[str, str]]:
@@ -297,6 +369,12 @@ class TranslateWizard(QWizard):
             "grouping": "single" if self.radio_single.isChecked() else "grouped",
             "folder": folder,
             "name": name,
+            # Requests sent in parallel when not sequential (1-8).
+            "concurrency": (int(self.spn_parallel.value())
+                            if not self.chk_sequential.isChecked() else 1),
+            # Genre analysis: the addendum appended to the engine's own prompt.
+            "style_prompt": self.analysis_page.style_prompt(),
+            "genre": self.analysis_page.genre(),
             # The wizard already asked about an existing target in accept().
             "output_confirmed": self._output_confirmed,
         }

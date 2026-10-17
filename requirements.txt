@@ -9,3 +9,6 @@ lxml
 
 # HTTP stack used by the verbatim Calibre-plugin translation engines
 mechanize
+
+# Token counting for the cost estimate (bundled BPE files, offline)
+tiktoken>=0.14

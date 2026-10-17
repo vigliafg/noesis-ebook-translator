@@ -20,7 +20,8 @@ XHTML = "{http://www.w3.org/1999/xhtml}"
 
 __all__ = [
     "Chapter", "load_chapters", "flatten", "resolve_selection",
-    "chapter_files", "book_meta", "isolate_chapters", "ChapterError",
+    "chapter_files", "book_meta", "isolate_chapters", "toc_anchors",
+    "ChapterError",
 ]
 
 
@@ -238,6 +239,11 @@ def _toc_anchor_map(book) -> dict[str, set[str]]:
 
     walk(book.toc)
     return anchors
+
+
+def toc_anchors(book) -> dict[str, set[str]]:
+    """Public alias of the TOC anchor map (``{file: {anchor, ...}}``)."""
+    return _toc_anchor_map(book)
 
 
 def isolate_chapters(book, selected) -> None:

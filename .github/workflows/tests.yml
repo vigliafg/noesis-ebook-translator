@@ -51,5 +51,8 @@ jobs:
           # Optional dependency covered by the export tests (DOCX).
           pip install python-docx
 
+      - name: Check the bundled token encodings
+        run: python tools/fetch_token_encodings.py --check
+
       - name: Run tests
         run: python -m unittest discover -s tests -v

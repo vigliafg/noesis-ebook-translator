@@ -292,6 +292,13 @@ class ResumeTest(unittest.TestCase):
         self.assertGreater(done, 0, stderr)
         self.assertLess(done, total, "the child finished before the kill")
 
+        # A real death leaves the marker from which the app discovers the run.
+        runs = book.interrupted_runs(self.src, directory=self.cache_path)
+        self.assertEqual(len(runs), 1, runs)
+        self.assertEqual(runs[0]["engine"], "Fake")
+        self.assertEqual(runs[0]["done"], done)
+        self.assertEqual(runs[0]["total"], total)
+
         self._run("1-3", "resumed")
         self.assertLessEqual(self.calls, total - done)
         self.assertGreater(self.calls, 0)

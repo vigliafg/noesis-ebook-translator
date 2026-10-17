@@ -105,7 +105,7 @@ class TranslationWorker(QThread):
     failed = pyqtSignal(str)
 
     def __init__(self, input_path, output_path, engine, source, target, settings,
-                 chapters=None):
+                 chapters=None, style_prompt=None, genre=""):
         super().__init__()
         self.input_path = input_path
         self.output_path = output_path
@@ -114,6 +114,8 @@ class TranslationWorker(QThread):
         self.target = target
         self.settings = settings
         self.chapters = chapters
+        self.style_prompt = style_prompt or ""
+        self.genre = genre or ""
         self._cancel = threading.Event()
         self._batch = DeltaBatch()
         self._throttle = TransferThrottle(self.FLUSH_INTERVAL)
@@ -161,6 +163,8 @@ class TranslationWorker(QThread):
                 target_lang=self.target,
                 chapters=self.chapters,
                 settings=self.settings,
+                style_prompt=self.style_prompt,
+                genre=self.genre,
                 on_log=self._on_log,
                 on_paragraph=self._on_paragraph,
                 on_plan=self._emit_plan,
@@ -386,6 +390,8 @@ class MainWindow(QMainWindow):
             flags.append(T("label.batch"))
         if cfg.get("sequential", True):
             flags.append(T("label.sequential"))
+        if cfg.get("genre"):
+            flags.append(T("msg.style_applied").format(genre=cfg["genre"]))
         if flags:
             rows.append((T("panel.options"), " · ".join(flags)))
         return rows
@@ -501,6 +507,89 @@ class MainWindow(QMainWindow):
             self._select_category(1)
         except Exception as exc:  # noqa: BLE001 - reader is best effort
             self.log.appendPlainText(f"[reader] {exc}")
+        self._offer_resume(path)
+
+    def _offer_resume(self, path: str) -> None:
+        """Say that an interrupted translation is still waiting, and offer to go on.
+
+        The engine resumes by itself, but only when the same translation is
+        started again: after a power cut nothing in the window told the user that
+        hours of work were sitting in the cache. A run that ended abruptly leaves
+        its marker at ``running`` (see :func:`book.interrupted_runs`), so opening
+        the book is the moment to offer the continuation.
+        """
+        if self.worker is not None:
+            return          # a run is in flight: never offer its own cache
+        try:
+            runs = book.interrupted_runs(path)
+        except Exception:  # noqa: BLE001 - discovery must not break opening
+            return
+        if not runs:
+            return
+        run = runs[0]
+        if len(runs) > 1:
+            self.log.appendPlainText(
+                T("msg.interrupted_other").format(n=len(runs) - 1))
+        when = time.strftime(
+            "%Y-%m-%d %H:%M",
+            time.localtime(run.get("updated_at") or time.time()))
+        answer = QMessageBox.question(
+            self, T("msg.interrupted_title"),
+            T("msg.interrupted_run").format(
+                done=run.get("done", 0), total=run.get("total", 0),
+                engine=run.get("engine") or "—",
+                target=run.get("target_lang") or "—", when=when),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes)
+        if answer == QMessageBox.StandardButton.Yes:
+            self._resume_run(run)
+        else:
+            # Answered "No": stop asking for this run (the work is not lost, and
+            # re-running the translation still picks it up).
+            book.dismiss_interrupted_run(run)
+
+    def _resume_run(self, run: dict) -> None:
+        """Continue an interrupted run with **its own** engine, model, languages
+        and chapter selection -- not with whatever the window shows now."""
+        target = run.get("target_lang") or self.cmb_target.currentText()
+        engine = run.get("engine") or self.cmb_engine.currentText()
+        index = self.cmb_engine.findText(engine)
+        if index < 0:
+            self._status_message(
+                T("msg.resume_engine_missing").format(engine=engine))
+            return
+        preference = appconfig.get_engine_preference(engine) or {}
+        keys = [key for key in (preference.get("api_keys") or []) if key]
+        options = run.get("options") or {}
+        output_path = run.get("output_path") or ""
+        folder = os.path.dirname(output_path) or os.path.dirname(
+            self._input_path or "")
+        self.cmb_source.setCurrentText(
+            run.get("source_lang") or self.cmb_source.currentText())
+        self.cmb_target.setCurrentText(target)
+        self.cmb_engine.setCurrentIndex(index)
+        self.tabs.setCurrentWidget(self._translate_tab)
+        self._start_translation({
+            "source": run.get("source_lang") or "English",
+            "target": target,
+            "engine": engine,
+            "api_key": keys[0] if keys else "",
+            "api_keys": keys,
+            "model": run.get("model") or preference.get("model") or "",
+            "bilingual": options.get("translation_position") == "below",
+            "cache": bool(options.get("cache_enabled", True)),
+            "batching": bool(options.get("online_batching", False)),
+            "sequential": bool(options.get("sequential", True)),
+            "concurrency": int(options.get("concurrency") or 0) or None,
+            "chapters": run.get("chapters") or None,
+            "folder": folder,
+            "name": book.output_base_name(output_path, target),
+            # The analysis lives with the run: resuming must not redo it, and
+            # the style is part of the cache scope, so its work is reused.
+            "style_prompt": run.get("style_prompt") or options.get(
+                "style_prompt") or "",
+            "genre": run.get("genre") or options.get("genre") or "",
+        })
 
     def _status_message(self, text: str, title: str | None = None) -> None:
         QMessageBox.information(self, title or T("app.title"), text)
@@ -1306,20 +1395,27 @@ class MainWindow(QMainWindow):
         self._refresh_choices(cfg if cfg else None)
 
         api_key = cfg.get("api_key", "")
+        # A resume passes the whole list so key rotation survives; the UI passes
+        # one key.
+        api_keys = cfg.get("api_keys")
+        if api_keys is None:
+            api_keys = [api_key] if api_key else []
         # "Sequential" pins concurrency_limit=1 (one segment at a time) so the
         # per-chapter progress is truthful. Passing None *removes* the key, so the
         # engine class default (1 for most, unlimited for GenAI/DeepSeek) applies.
         sequential = bool(cfg.get("sequential", True))
+        concurrency = int(cfg.get("concurrency") or 0)
         appconfig.set_engine_preference(
-            engine, api_keys=[api_key] if api_key else [],
+            engine, api_keys=list(api_keys),
             model=cfg.get("model") or None,
-            concurrency_limit=1 if sequential else None)
+            concurrency_limit=1 if sequential else (concurrency or None))
         settings = {
             "translate_engine": engine,
             "translation_position": "below" if cfg.get("bilingual") else "only",
             "cache_enabled": bool(cfg.get("cache", True)),
             "online_batching": bool(cfg.get("batching", False)),
             "translate_sequential": sequential,
+            "translate_parallel": concurrency if concurrency else 1,
             "ui_source_lang": source,
             "ui_target_lang": target,
         }
@@ -1350,7 +1446,8 @@ class MainWindow(QMainWindow):
 
         self.worker = TranslationWorker(
             self._input_path, self._output_path, engine, source, target, settings,
-            chapters=chapters)
+            chapters=chapters, style_prompt=cfg.get("style_prompt") or "",
+            genre=cfg.get("genre") or "")
         self.worker.plan.connect(self._on_plan)
         self.worker.delta.connect(self._on_delta)
         self.worker.logged.connect(self._on_log)

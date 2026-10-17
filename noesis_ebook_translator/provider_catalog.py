@@ -43,6 +43,9 @@ __all__ = [
     "test_model",
     "TestResult",
     "catalog_path",
+    "models_dev_id",
+    "snapshot_generated_at",
+    "price",
 ]
 
 #: User-Agent sent to provider endpoints (OpenCode Go asks clients to identify
@@ -277,11 +280,49 @@ def catalog_path() -> Path:
     return _DATA_FILE
 
 
+#: Curated provider id -> models.dev provider id (they differ in a few cases).
+MODELS_DEV_IDS: dict[str, str] = {
+    "together": "togetherai",
+    "fireworks": "fireworks-ai",
+    "moonshot": "moonshotai",
+    "novita": "novita-ai",
+}
+
+
+def models_dev_id(provider_id: str) -> str:
+    """models.dev id for a curated provider id (identity when it matches)."""
+    return MODELS_DEV_IDS.get(provider_id, provider_id)
+
+
 def _load_snapshot() -> dict[str, Any]:
     try:
         return json.loads(_DATA_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+
+
+def snapshot_generated_at() -> str:
+    """When the bundled snapshot (models and prices) was generated."""
+    return str(_load_snapshot().get("generated_at") or "")
+
+
+def price(provider_id: str, model: str) -> tuple[float, float] | None:
+    """``(input, output)`` USD per 1M tokens, or ``None`` when unknown.
+
+    ``provider_id`` may be a curated provider id (``"groq"``) or a models.dev id
+    (``"openai"``): builtin engines such as ChatGPT/Claude/Gemini use the latter.
+    A model that is missing from the snapshot (or whose price is free) is
+    reported honestly: ``None`` means "we don't know", ``(0.0, 0.0)`` means free.
+    """
+    if not model:
+        return None
+    costs = (_load_snapshot().get("cost") or {})
+    entry = costs.get(models_dev_id(provider_id)) or {}
+    value = entry.get(model) or {}
+    try:
+        return (float(value["input"]), float(value["output"]))
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def route_for(provider_id: str, model: str) -> str:

@@ -69,7 +69,9 @@ jobs:
             "${ICON[@]}" \
             --collect-all noesis_ebook_translator \
             --collect-submodules calibre \
+            --collect-submodules tiktoken_ext \
             --hidden-import calibre \
+            --hidden-import tiktoken_ext.openai_public \
             --add-data "assets/noesis-ebook-translator.png${SEP}assets" \
             --add-data "assets/icons${SEP}assets/icons" \
             --add-data "reader_web${SEP}reader_web" \
@@ -151,7 +153,9 @@ jobs:
             --paths . \
             --collect-all noesis_ebook_translator \
             --collect-submodules calibre \
+            --collect-submodules tiktoken_ext \
             --hidden-import calibre \
+            --hidden-import tiktoken_ext.openai_public \
             --add-data "assets/noesis-ebook-translator.png:assets" \
             --add-data "assets/icons:assets/icons" \
             --add-data "reader_web:reader_web" \

@@ -20,6 +20,10 @@ lingue, traduci.
 - **Progresso** in tempo reale, log dell'avvenuta traduzione e stato del lavoro.
 - **Cache** su disco: le parti già tradotte non vengono ritradotte (utile in caso
   di errore di rete o interruzione).
+- **Stima di token, costo e durata** nel wizard (tiktoken + prezzi dei provider) e
+  **analisi del testo**: il modello rileva il genere e propone le istruzioni di
+  stile per la traduzione (modificabili), che vengono accodate al system prompt
+  del motore senza toccare l'integrità del testo.
 - **Testo bilingue** opzionale (traduzione sotto l'originale) oltre alla modalità
   *solo traduzione*.
 - L'output è scritto accanto al file di origine con il suffisso della lingua di

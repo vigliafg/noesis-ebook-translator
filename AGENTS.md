@@ -174,6 +174,13 @@ Questi moduli sono **desktop-only** (non inlineati nel repo gemello):
 - `noesis_ebook_translator/segment.py` + `tools/segment_tool.py` — split/merge.
 - `noesis_ebook_translator/quality/` + `tools/quality_harness.py` — valutazione
   qualità (metriche + giudice AI).
+- `noesis_ebook_translator/token_count.py` — conteggio token con **tiktoken**
+  (encoder BPE inclusi in `data/tiktoken`, fallback euristico per script).
+  Rigenera i file con `tools/fetch_token_encodings.py`.
+- `noesis_ebook_translator/estimate.py` — stima token/costo/durata (prezzi da
+  `provider_catalog.price()`, latenza calibrata sulle statistiche dei run).
+- `noesis_ebook_translator/text_analysis.py` — analisi del genere e costruzione
+  del prompt di stile (runner LLM iniettabile).
 - `noesis_ebook_translator/help.py` — URL guida + fallback offline.
 - `noesis_ebook_translator/ui/` — temi, wizard, impostazioni, help, export,
   animazioni, dialog qualità, **barra di workflow** (`workflow_bar.py`) e **icone**
@@ -238,10 +245,70 @@ Il motivo per cui la tabella è necessaria: la cache verbatim indicizza per
 scarta tutto ciò che è fuori selezione. `cache.info` conserva modello, lingua e
 selezione; `on_resume(done, total)` dice alla GUI quanti segmenti arrivano dalla cache.
 
+**Marker di stato (l'app «sa» che il run è interrotto).** Ogni run scrive in
+`cache.info` anche `run_status`:
+
+- `running` all'avvio. Un processo che muore (blackout, SIGKILL, crash) **non**
+  scrive nient'altro: il marker restato `running` è la firma dell'interruzione
+  (vale anche per un errore di rete che ferma un run lungo);
+- `finished` dopo `os.replace` dell'EPUB, `cancelled` sull'annullamento esplicito
+  (nessuno dei due viene più proposto);
+- `dismissed` quando l'utente risponde «No» al prompt: il lavoro resta, ma non
+  viene richiesto di nuovo per quel run.
+
+`book.interrupted_runs(input_path)` scansiona in sola lettura i `*.db` della cache
+e restituisce i run `running` del libro, con titolo, motore, modello, lingue,
+selezione, `input_path`/`output_path`, opzioni e `done/total`. All'apertura di un
+libro `main._offer_resume()` chiede «Traduzione interrotta: N/M — Riprendere?» e,
+se si accetta, `_resume_run()` riparte con **lo stesso** motore/modello/lingua/
+selezione (la chiave API arriva da `engine_preferences`). Non è indispensabile per
+la correttezza (la ripresa è automatica), ma evita che ore di lavoro restino in
+cache senza che l'utente lo sappia. Test: `tests/test_interrupted_run.py`.
+
 La cache (e la tabella di ripresa) vive in `<dati app>/translator-cache/cache`:
 `main.py` imposta `cache_path` **prima** di importare `book`, perché la cache
 verbatim userebbe la directory temporanea di sistema (`/tmp`), che un riavvio può
 svuotare. Al primo avvio le cache di una versione precedente vengono migrate.
+
+### Wizard: analisi del testo, stile e stima di costo
+
+Il wizard di traduzione ha due pagine nuove, **nell'ordine** *Contenuto → Motore
+→ Analisi del testo → Costi e durata → Opzioni → Output*: la stima dipende dallo
+stile, quindi l'analisi viene prima.
+
+**Analisi del testo** (`text_analysis.py` + `ui/analysis_page.py`). Il modello
+scelto legge un campione (~6.000 caratteri distribuiti, estratti dai segmenti
+reali) e risponde in JSON con categoria/genere/registro/tono/pubblico/epoca e
+3-6 istruzioni. Da lì `build_style_prompt()` costruisce un **addendum** che
+`book.translate_epub(style_prompt=…)` **accoda** al prompt del motore (le regole
+base di integrità e i segnaposto restano). Il prompt è modificabile, applicabile o
+saltabile; un errore non blocca mai la traduzione (fallback `generic_style_prompt`).
+Gli esempi sono trattati come dati, non istruzioni; le regole di integrità sono
+sempre in coda. La pagina viene **saltata** per i motori senza `prompt`
+(`appconfig.engine_supports_prompt`), cioè per i traduttori non-LLM.
+
+**Stile nella cache.** Lo stile è parte dell'identità del run: `noesis_resume` ha
+la colonna `style_hash` (migrata automaticamente dalle tabelle v1, che restano
+valide per lo scope senza stile) e `run_style_hash` in `cache.info` fa scattare
+l'azzeramento delle traduzioni posizionali quando lo stile cambia — stesso
+pattern del cambio modello. Cambiare stile ritraduce; tornare allo stile
+precedente riprende il suo lavoro; la ripresa dopo un blackout riusa lo stile
+salvato in `run_options` senza rifare l'analisi.
+
+**Costi e durata** (`estimate.py` + `ui/estimate_page.py`). Conta i token con
+`token_count` (tiktoken: `o200k_base`/`cl100k_base`, encoder BPE inclusi nel
+pacchetto così funziona offline), include il **prompt di sistema per richiesta**
+(è spesso il costo dominante) e le richieste (una per segmento, o `ceil(n/20)` con
+il batching), esclude i segmenti già in cache *per lo stesso scope di stile*, e
+moltiplica per i prezzi dello snapshot (`provider_catalog.price()`, USD/1M token;
+modelli builtin mappati con `estimate.ENGINE_TO_MODELS_DEV`). La durata è un
+intervallo: latenza misurata dai run precedenti (`run_started_at`,
+`run_finished_at`, `run_engine_calls`, `run_concurrency`, `run_batching` in
+`cache.info`), altrimenti un default per motore; concorrenza 1 se sequenziale,
+altrimenti la scelta dell'utente (spinbox 1-8, salvata in `translate_parallel`).
+
+Lo stile viaggia anche nel worker: `TranslationWorker(style_prompt=…, genre=…)` e
+`main._resume_run()` lo recuperano da `run_options`.
 
 ### Nome del file tradotto (e sovrascritture)
 

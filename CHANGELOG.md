@@ -41,8 +41,33 @@ la storia completa è nei commit (`git log`).
   (`*.part` + `os.replace`) e la GUI segnala «Ripresa: N/M segmenti». La cache
   vive sotto la directory dati dell'app (`translator-cache/cache`), non in `/tmp`,
   così sopravvive al riavvio.
+- **L'app sa quando una traduzione è stata interrotta**: ogni run scrive un
+  marker (`running` / `finished` / `cancelled` / `dismissed`) nella cache. Un
+  crash o un blackout lascia `running`, quindi all'apertura del libro compare
+  «Traduzione interrotta: N/M segmenti — Riprendere?» e il Sì riparte con lo
+  **stesso** motore, modello, lingua e selezione di capitoli. «No» non cancella
+  nulla (rilanciare a mano riprende lo stesso) e non richiede più per quel run.
 - `tools/fetch_provider_catalog.py` per rigenerare lo snapshot incluso nel
-  bundle (utile solo per lo sviluppo: l'app si aggiorna dalla UI).
+  bundle (utile solo per lo sviluppo: l'app si aggiorna dalla UI). Ora lo
+  snapshot include anche i **prezzi** (USD per 1M token) e `provider_catalog.price()`.
+- **Stima di token, costo e durata prima di tradurre** (pagina *Costi e
+  durata* del wizard): token contati con **tiktoken** sugli stessi segmenti che
+  il motore invierà (prompt di sistema incluso), prezzo dal catalogo providers,
+  durata come intervallo (calibrata sulle traduzioni precedenti dopo il primo
+  run), dettaglio per capitolo e segmenti già in cache esclusi dal conto. Gli
+  encoder BPE sono inclusi nel pacchetto (`data/tiktoken`) per funzionare
+  offline, con fallback euristico se non disponibili.
+- **Analisi del testo e prompt di stile** (pagina *Analisi del testo* del
+  wizard): il modello legge un campione del libro (~6k caratteri) e propone
+  genere, registro, tono, pubblico ed epoca; da lì nasce un'**aggiunta al system
+  prompt** del motore — modificabile, applicabile o saltabile — che adatta lo
+  stile senza mai perdere le regole di integrità (niente riassunti o omissioni,
+  numeri/nomi/markup/segnaposto intatti). Lo stile entra nell'identità della
+  cache: cambiarlo ritraduce, tornare indietro riprende il lavoro, e la ripresa
+  dopo un blackout riusa lo stile del run senza rifare l'analisi.
+- **Richieste in parallelo (1–8)** nel wizard: quando «sequenziale» è
+  deselezionato, la concorrenza del motore è quella scelta e la stima della
+  durata la riflette.
 
 ### Changed
 

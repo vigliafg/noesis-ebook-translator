@@ -11,7 +11,6 @@ import time
 from typing import Any
 
 from . import provider_catalog
-from .engines import builtin_engines
 from .lib.config import get_config
 
 __all__ = [
@@ -25,6 +24,7 @@ __all__ = [
     "builtin_engine_names",
     "legacy_engine_names",
     "engine_info",
+    "engine_supports_prompt",
     "set_engine_preference",
     "get_engine_preference",
     "provider_choices",
@@ -58,6 +58,9 @@ APP_DEFAULTS: dict[str, Any] = {
     # per-chapter progress view truthful: a single chapter is "in progress".
     # Slower with engines that would otherwise run many requests in parallel.
     "translate_sequential": True,
+    # Requests sent in parallel when "sequential" is off (1-8). Feeds both the
+    # engine's concurrency_limit and the wizard's duration estimate.
+    "translate_parallel": 4,
     "filter_scope": "text",
     "rule_mode": "normal",
     "ebook_metadata": {"metadata_translation": False},
@@ -188,6 +191,24 @@ def provider_id_for_engine(name: str) -> str:
     return _provider_id_by_engine().get(name or "", "")
 
 
+def _builtin_engines() -> tuple:
+    """The engine registry **now**.
+
+    ``register_fake_engine()`` (and any runtime registration) rebinds
+    ``engines.builtin_engines`` to a new tuple; a module-level import of the
+    original tuple would keep the stale one and hide the injected engine from
+    the wizard. Resolved by name at call time; the headless monofile inlines the
+    engines into the same namespace, where the global is already the live one.
+    """
+    try:
+        import importlib
+
+        return importlib.import_module(
+            "noesis_ebook_translator.engines").builtin_engines
+    except Exception:  # noqa: BLE001 - inlined engine: same module namespace
+        return globals()["builtin_engines"]
+
+
 def engine_names() -> list[str]:
     """Engine display names offered to the user.
 
@@ -197,7 +218,7 @@ def engine_names() -> list[str]:
     ribbon short while still offering any provider.
     """
     provider_engines = _provider_engine_names()
-    names = [e.name for e in builtin_engines
+    names = [e.name for e in _builtin_engines()
              if e.name and e.name not in provider_engines]
     for slot in provider_slots():
         if not slot.get("enabled") or not slot.get("provider"):
@@ -211,7 +232,7 @@ def engine_names() -> list[str]:
 def builtin_engine_names() -> list[str]:
     """The verbatim plugin engines only (no curated provider engines)."""
     provider_engines = _provider_engine_names()
-    return [e.name for e in builtin_engines
+    return [e.name for e in _builtin_engines()
             if e.name and e.name not in provider_engines]
 
 
@@ -222,13 +243,23 @@ def legacy_engine_names() -> list[str]:
     so they are excluded here to avoid two pages writing the same preference.
     """
     curated = set(_provider_id_by_engine())
-    return [e.name for e in builtin_engines
+    return [e.name for e in _builtin_engines()
             if e.name and e.name not in curated]
+
+
+def engine_supports_prompt(name: str) -> bool:
+    """True when the engine is an LLM (it has a system prompt to extend).
+
+    Plain machine-translation engines (DeepL, the free Google ones, Baidu…) have
+    no prompt: the genre analysis cannot say anything useful to them.
+    """
+    engine = next((e for e in _builtin_engines() if e.name == name), None)
+    return bool(engine is not None and hasattr(engine, "prompt"))
 
 
 def engine_info(name: str) -> dict[str, Any]:
     """Return UI-relevant metadata for the engine called ``name``."""
-    engine = next((e for e in builtin_engines if e.name == name), None)
+    engine = next((e for e in _builtin_engines() if e.name == name), None)
     if engine is None:
         return {"name": name, "need_api_key": True, "api_key_hint": "API Keys",
                 "models": None, "free": False, "provider": "", "note": ""}
