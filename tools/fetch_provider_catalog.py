@@ -99,11 +99,28 @@ def _routes(provider, entry) -> dict[str, str]:
     return routes
 
 
+def _protocols(entry) -> dict[str, str]:
+    """Models that speak the OpenAI **Responses** API, not chat/completions.
+
+    models.dev marks them with the ``@ai-sdk/openai`` client; the OpenAI-compatible
+    gateways (OpenCode, OpenCode Go) serve them on ``<base>/responses``. Without
+    this, models like ``muse-spark-1.3-contributor`` or ``gpt-5.6-luna`` answer
+    ``ModelProtocolUnsupported`` (HTTP 400).
+    """
+    out: dict[str, str] = {}
+    for model in (entry.get("models") or {}).values():
+        npm = (model.get("provider") or {}).get("npm") or ""
+        if npm == "@ai-sdk/openai":
+            out[str(model.get("id"))] = "responses"
+    return out
+
+
 def build_snapshot() -> dict:
     print(f"fetching {MODELS_DEV} ...")
     catalogue = _get_json(MODELS_DEV)
     models: dict[str, list[str]] = {}
     routes: dict[str, dict[str, str]] = {}
+    protocols: dict[str, dict[str, str]] = {}
     for provider in PROVIDERS:
         if provider.custom:
             continue
@@ -113,6 +130,9 @@ def build_snapshot() -> dict:
         special = _routes(provider, entry) if entry else {}
         if special:
             routes[provider.id] = special
+        responses = _protocols(entry) if entry else {}
+        if responses:
+            protocols[provider.id] = responses
         routable = md_ids - set(special)
         if provider.id in PUBLIC:
             live = _live_models(provider.id)
@@ -142,6 +162,7 @@ def build_snapshot() -> dict:
         "source": "models.dev + public /models endpoints",
         "models": models,
         "routes": routes,
+        "protocols": protocols,
     }
 
 

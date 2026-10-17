@@ -54,6 +54,21 @@ class TestCatalogue(unittest.TestCase):
         self.assertFalse(provider_catalog.models_public("groq"))
         self.assertFalse(provider_catalog.models_public("custom"))
 
+    def test_protocol_for_responses_models(self):
+        # Models served only on the OpenAI Responses API.
+        self.assertEqual(
+            provider_catalog.protocol_for("opencode-go",
+                                          "muse-spark-1.3-contributor"),
+            "responses")
+        self.assertEqual(
+            provider_catalog.protocol_for("opencode-go", "gpt-6-luna"),
+            "responses")
+        # Chat/completions models have no protocol entry.
+        self.assertEqual(
+            provider_catalog.protocol_for("opencode-go", "deepseek-v4.1-flash"),
+            "")
+        self.assertEqual(provider_catalog.protocol_for("groq", "llama"), "")
+
 
 class TestModelRoutes(unittest.TestCase):
     """Models that need another protocol are hidden (OpenCode / OpenCode Go)."""
@@ -198,6 +213,43 @@ class TestGenericEngine(unittest.TestCase):
         self.assertEqual(result, ["uno", "due"])
         self.assertFalse(captured["data"]["stream"])
 
+    def test_responses_model_uses_the_responses_api(self):
+        engine = _engine("OpenCode Go")
+        saved = dict(engine.config or {})
+        engine.set_config({"api_keys": ["k"],
+                           "model": "muse-spark-1.3-contributor"})
+        try:
+            translator = engine()
+            self.assertEqual(translator.protocol, "responses")
+            self.assertFalse(translator.stream)
+            self.assertTrue(
+                translator.endpoint.endswith("/go/openai/v1/responses"))
+            translator.set_source_lang("English")
+            translator.set_target_lang("Italian")
+            body = json.loads(translator.get_body("Hello"))
+            self.assertEqual(body["input"],
+                             [{"role": "user", "content": "Hello"}])
+            self.assertIn("instructions", body)
+            self.assertNotIn("messages", body)
+        finally:
+            engine.set_config(saved)
+
+    def test_responses_result_skips_reasoning_items(self):
+        from noesis_ebook_translator.engines.openai_compatible import (
+            parse_responses)
+
+        payload = {"status": "completed", "output": [
+            {"type": "reasoning", "summary": []},
+            {"type": "message", "role": "assistant", "content": [
+                {"type": "output_text", "text": " Ciao mondo "}]}]}
+        self.assertEqual(parse_responses(payload), "Ciao mondo")
+        self.assertEqual(parse_responses(json.dumps(payload)), "Ciao mondo")
+        with self.assertRaises(RuntimeError):
+            parse_responses({"status": "incomplete", "output": [],
+                             "incomplete_details": {"reason": "max"}})
+        with self.assertRaises(RuntimeError):
+            parse_responses({"error": {"message": "boom"}})
+
     def test_get_models_falls_back_to_snapshot(self):
         translator = self.engine()
         original = oc.fetch_models
@@ -262,6 +314,34 @@ class TestModelProbe(unittest.TestCase):
         self.assertEqual(captured["body"]["model"], "probe-model")
         self.assertFalse(captured["body"].get("stream"))
         self.assertEqual(engine.config, before)
+
+    def test_probe_supports_responses_models(self):
+        from noesis_ebook_translator.engines import base as base_mod
+
+        captured = {}
+
+        def fake_request(url=None, data=None, headers=None, method=None,
+                         **kwargs):
+            captured["url"] = url
+            captured["body"] = json.loads(data)
+            return json.dumps({"status": "completed", "output": [
+                {"type": "reasoning", "summary": []},
+                {"type": "message", "role": "assistant", "content": [
+                    {"type": "output_text", "text": "Ciao"}]}]})
+
+        original = base_mod.request
+        base_mod.request = fake_request
+        try:
+            result = provider_catalog.test_model(
+                "opencode-go", "key", "muse-spark-1.3-contributor")
+        finally:
+            base_mod.request = original
+
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(result.sample, "Ciao")
+        self.assertTrue(captured["url"].endswith("/responses"))
+        self.assertIn("input", captured["body"])
+        self.assertNotIn("messages", captured["body"])
 
     def test_ok(self):
         result = provider_catalog.test_model(

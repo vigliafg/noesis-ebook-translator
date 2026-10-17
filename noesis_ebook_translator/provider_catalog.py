@@ -37,6 +37,7 @@ __all__ = [
     "needs_api_key",
     "models_public",
     "route_for",
+    "protocol_for",
     "default_models",
     "fetch_models",
     "test_model",
@@ -303,6 +304,17 @@ def _routable(provider_id: str, model: str) -> bool:
     if provider is None or not route:
         return True
     return route.rstrip("/") == provider.base_url.rstrip("/")
+
+
+def protocol_for(provider_id: str, model: str) -> str:
+    """Wire protocol for ``model`` (``""`` for chat/completions).
+
+    OpenAI-compatible gateways serve some models only on the *Responses* API
+    (``<base>/responses``), e.g. OpenCode Go's ``muse-spark-1.3-contributor`` and
+    ``gpt-5.6-luna``: with the chat route they answer ``ModelProtocolUnsupported``.
+    """
+    protocols = (_load_snapshot().get("protocols") or {}).get(provider_id) or {}
+    return str(protocols.get(model) or "")
 
 
 def models_public(provider_id: str) -> bool:

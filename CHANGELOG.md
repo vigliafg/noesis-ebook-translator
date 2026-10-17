@@ -29,6 +29,10 @@ la storia completa è nei commit (`git log`).
 - **Test automatico del modello**: una traduzione breve verifica il modello
   scelto e l'esito compare inline (`✓ Modello OK · 1,2s` oppure il motivo);
   l'ultimo esito resta visibile nel ribbon come **badge ✓/✗**.
+- **Supporto alla Responses API** di OpenAI per i modelli dei gateway (OpenCode,
+  OpenCode Go) che rifiutano `chat/completions` — p.es. `muse-spark-1.3-contributor`,
+  `gpt-6-luna`, `grok-4.7`: lo snapshot registra il protocollo di ogni modello e
+  il motore instrada di conseguenza.
 - `tools/fetch_provider_catalog.py` per rigenerare lo snapshot incluso nel
   bundle (utile solo per lo sviluppo: l'app si aggiorna dalla UI).
 
