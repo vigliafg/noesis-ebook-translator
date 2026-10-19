@@ -194,5 +194,20 @@ class GlossaryTest(unittest.TestCase):
                           f"glossary skipped (batching={batching})")
 
 
+class RetryBackoffTest(unittest.TestCase):
+    def test_retry_after_wins(self):
+        from noesis_ebook_translator.lib.translation import _retry_delay
+
+        self.assertEqual(_retry_delay('HTTP 429, Retry-After: 7', 5), 7.0)
+
+    def test_fallback_has_jitter_but_stays_in_range(self):
+        from noesis_ebook_translator.lib.translation import _retry_delay
+
+        for _ in range(20):
+            delay = _retry_delay('502 Bad Gateway', 10)
+            self.assertGreaterEqual(delay, 10)
+            self.assertLessEqual(delay, 13)
+
+
 if __name__ == "__main__":
     unittest.main()

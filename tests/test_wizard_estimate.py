@@ -154,12 +154,14 @@ class WizardPagesTest(unittest.TestCase):
     def test_parallel_spinbox_feeds_the_config(self):
         wizard = self._wizard()
         try:
-            self.assertFalse(wizard.spn_parallel.isEnabled())  # sequential on
+            # Up to the engine's executor ceiling.
+            self.assertEqual(wizard.spn_parallel.maximum(), 32)
             wizard.chk_sequential.setChecked(False)
             self.assertTrue(wizard.spn_parallel.isEnabled())
             wizard.spn_parallel.setValue(6)
             self.assertEqual(wizard.config()["concurrency"], 6)
             wizard.chk_sequential.setChecked(True)
+            self.assertFalse(wizard.spn_parallel.isEnabled())
             self.assertEqual(wizard.config()["concurrency"], 1)
         finally:
             wizard.close()

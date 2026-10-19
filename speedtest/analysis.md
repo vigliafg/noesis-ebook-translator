@@ -22,6 +22,12 @@ Soggetto: **Rosen's Emergency Medicine**, capitolo **87. Stroke**, 671 segmenti 
 | **con verifica dei fix** | | | | | |
 | concorrenza 20, executor corretto | `r11` | **100 s** | 6,72 | $0,0259 | 97,1 |
 | batching 20 con `stream=True` | `r12` | 601 s | 0,06 | $0,0178 | 98,3 |
+| **batching parallelo 8** | `r13` | **222 s** | 0,16 | $0,0178 | 97,5 |
+| **batching parallelo 8 + stream** | `r14` | **176 s** | 0,20 | $0,0176 | 97,9 |
+| **batching parallelo 20** | `r15` | **118 s** | 0,30 | $0,0169 | 97,9 |
+| **per-segmento 20 + stream** | `r16` | **62,7 s** | 10,7 | ~$0,026* | 98,8 |
+| **batching 20 + stream** | `r17` | 121 s | 0,28 | **$0,0168** | 98,8 |
+| **per-segmento 32 + stream** | `r18` | **49,4 s** | 13,6 | ~$0,026* | 97,9 |
 
 ## 1. Parallelismo: si ferma a 8, non a 20
 
@@ -83,6 +89,33 @@ permette (`reasoning: {"enabled": false}` — l'harness lo fa fuori dal motore).
   prende il percorso streaming e fallisce con *«'str' object has no attribute
   'readline'»*. **Fix verificato (`r12`)**: con `stream=True` la run completa le
   671 traduzioni in 34 richieste, qualità 98,3, $0,0178.
+* **i batch erano seriali**. Dopo il fix girano in parallelo: `r13` (8 in volo,
+  non-stream) **222 s**, `r14` (8 in volo, stream) **176 s**, stesso costo
+  ($0,018) e qualità 97,5-97,9. Resta comunque più lento del per-segmento a
+  concorrenza piena (100 s), ma costa il **33% in meno**.
+
+## 4-bis. Lo streaming è più veloce, non solo più reattivo
+
+Lo stesso run a concorrenza 20 passa da **99,8 s** (non-stream, `r11`) a **62,7 s**
+(stream, `r16`), con p50 0,63 s contro 0,97 s: il percorso in streaming è il
+**37% più veloce** a parità di lavoro. Le run non-stream erano state scelte per
+leggere l'`usage` esatto dal corpo JSON; per la velocità, quindi, la
+configurazione migliore è quella che l'app usa già di default (streaming).
+*Il costo di `r16`/`r18` non è nell'`usage` per lo stesso motivo: i token sono
+quelli di `r11` (~110,6k in, ~48,5k out, $0,026) perché il testo inviato è
+identico.
+
+## 4-ter. Le due configurazioni migliori
+
+| obiettivo | configurazione | tempo | costo | giudice |
+| --- | --- | --- | --- | --- |
+| **massima velocità** | per-segmento, 32 in parallelo, streaming | **49,4 s** (17,3× il sequenziale) | ~$0,026 | 97,9 |
+| **minor costo** | batching 20, 20 batch in parallelo, streaming | 121,4 s | **$0,0168** (−35%) | 98,8 |
+
+Il punto di equilibrio: a 20 in parallelo il per-segmento fa **62,7 s**; il
+batching fa **121 s** ma costa un terzo in meno. La scelta dipende da cosa si
+ottimizza — e sono entrambe raggiungibili dal wizard (concorrenza 8 di default,
+batching a un click).
 
 ## 5. Qualità e costo per unità
 
@@ -113,26 +146,40 @@ durata diventa ottimistica. **Corretto**: ora conta le chiamate realmente fatte
 | niente throttle in parallelo (`request_interval=0`) | `main.py` + preferenza motore | test `test_parallel_removes_the_engine_throttle` |
 | reasoning spento di default (`translate_reasoning`) | `engines/openai.py`, `openrouter.py`, `appconfig`, `book` | `r06` vs `r05`; test su body/override |
 | batch non-stream letto come JSON | `engines/openrouter.py` | `r12`: 671/671, 34 richieste |
+| batching parallelo (8 richieste) | `lib/translation.py` | `r13` 222 s, `r14` 176 s |
+| retry dei soli ID mancanti + JSON riparato | `lib/translation.py`, `engines/openrouter.py` | test dedicati |
+| `batch_size` configurabile (wizard + stima) | `appconfig`, `estimate`, wizard | test |
+| glossario in Impostazioni e nei batch | `ui/settings_dialog.py`, `lib/translation.py` | test di run |
+| retry con jitter e `Retry-After` | `lib/translation.py` | — |
+| giudice: streaming + reasoning off | `quality/judge.py` | test |
 | `run_engine_calls` = richieste reali | `book.py` | test `test_batching_records_requests_not_segments` |
 | giudice legge le risposte in streaming | `quality/judge.py` | test `test_engine_judge_reads_a_streamed_reply` |
 
 ## Raccomandazioni
 
-1. **Dimensionare l'executor del loop a `concurrency_limit`** — **fatto** (tetto
-   32). Guadagno misurato a c=20: 1,46× (112 → 77 s col pool a 32; 100 s con il
-   pool dimensionato a 20).
-2. **Non lasciare `request_interval = 20 s` in modalità parallela** — **fatto**:
-   l'app lo azzera quando "sequenziale" è deselezionato (745 → 112 s).
-3. **Spegnere il reasoning** per la traduzione sui motori che lo supportano —
-   **fatto** (`translate_reasoning=False`, solo dove `reasoning_supported`).
-4. **Batching opt-in e irrobustito**: il percorso ora funziona anche con lo
-   streaming; restano da fare il batch adattivo, `max_tokens` più alto,
-   riparazione del JSON e invio dei batch in parallelo (oggi seriale e 5× più
-   lento).
-5. **Correggere `run_engine_calls`** — **fatto**.
-6. **Spegnere il reasoning nel giudice di qualità** quando il motore è in
-   streaming: la lettura del generatore è corretta ora, ma resta un costo inutile
-   se il giudice eredita un motore con reasoning attivo.
+1. **Parallelismo di default** — **fatto**: il wizard parte da 8 richieste in
+   parallelo e "sequenziale" resta un click per i motori rate-limited (856 s
+   contro 63 s sul capitolo di prova).
+2. **Streaming**: è il default dell'app ed è anche il percorso più veloce
+   (62,7 s contro 99,8 s a c=20). Non spegnerlo per "leggere l'usage": il costo
+   si ricava dai token, identici.
+3. **Batching**: con i batch in parallelo a 20 il costo scende a $0,0169 (35% in
+   meno del per-segmento) per ~2× il tempo. È la scelta giusta per un libro
+   intero non presidiato; il per-segmento resta la scelta per la massima velocità.
+4. **Executor e throttle** — **fatti**: executor dimensionato su
+   `concurrency_limit` (tetto 32) e nessun throttle in parallelo.
+5. **Reasoning spento** — **fatto** (`translate_reasoning=False`, dove supportato).
+6. **Retry e rate limit** — **fatto** (jitter + `Retry-After`); una concorrenza
+   adattiva (AIMD) resta un'evoluzione possibile.
+7. **Glossario** — **fatto** (Impostazioni + batching).
+8. **Merge dei segmenti** — **non esposto**: `ElementHandlerMerge` fonde i
+   segmenti ma `add_translations` cerca la traduzione per contenuto del singolo
+   elemento e con i fusi non la trova. Serve distribuire la traduzione per
+   separatore (con misura di qualità dedicata); il batching copre già gran parte
+   del beneficio.
+9. **Auto-correzione dei segmenti scarsi** — non implementata: il giudice misura
+   per segmento, ma ritradurre i sospetti richiede una soglia e una seconda
+   passata con cache separata. Da progettare con una misura.
 
 ## Riproduzione
 

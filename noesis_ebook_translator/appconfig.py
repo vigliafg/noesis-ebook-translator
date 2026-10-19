@@ -59,13 +59,14 @@ APP_DEFAULTS: dict[str, Any] = {
     "batch_size": 20,
     "merge_enabled": False,
     "cache_enabled": True,
-    # Translate one segment at a time (concurrency_limit = 1). Keeps the
-    # per-chapter progress view truthful: a single chapter is "in progress".
-    # Slower with engines that would otherwise run many requests in parallel.
-    "translate_sequential": True,
-    # Requests sent in parallel when "sequential" is off (1-8). Feeds both the
+    # Parallel by default: the speed test measured 856 s sequential vs 63 s at
+    # 20 concurrent requests on one chapter, and the per-chapter progress is
+    # still truthful (several chapters run at once, each with its own bar).
+    # Sequential remains one click away for rate-limited engines.
+    "translate_sequential": False,
+    # Requests sent in parallel when "sequential" is off. Feeds both the
     # engine's concurrency_limit and the wizard's duration estimate.
-    "translate_parallel": 4,
+    "translate_parallel": 8,
     # Sampler temperature override for LLM engines. ``None`` means "leave the
     # engine's own default" (DeepSeek ships 1.3, Gemini 0.9, the generic ones
     # 1.0). The low value that keeps short segments from drifting lives on

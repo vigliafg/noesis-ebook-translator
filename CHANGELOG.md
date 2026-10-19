@@ -11,6 +11,16 @@ la storia completa è nei commit (`git log`).
 
 ### Changed
 
+- **Traduzione in parallelo di default (8 richieste)**: nel test di velocità lo
+  stesso capitolo passa da **856 s** in sequenziale a **63 s** a concorrenza 20
+  (8 è il default prudente). "Sequenziale" resta un click per i motori con rate
+  limit severi.
+- **Batching online più veloce e più robusto**: i batch vengono inviati **in
+  parallelo** (fino a `concurrency_limit`) invece che uno alla volta — nel test di
+  velocità 541 s → **176-222 s** — e la dimensione è configurabile (default 20) dal
+  wizard e dalle Impostazioni. La stima dei costi divide per la dimensione scelta.
+- **La concorrenza nel wizard arriva a 20** (era 1-8): il motore ora la rispetta
+  fino a 32 thread, quindi il valore scelto non è più finto.
 - **La lista dei motori mostra solo ciò che è pronto all'uso**: nelle liste di
   scelta (gruppo *Motore* del ribbon, wizard di traduzione, giudice di qualità) i
   motori **non-LLM** restano sempre presenti, mentre un **LLM** compare **solo se
@@ -26,6 +36,10 @@ la storia completa è nei commit (`git log`).
 
 ### Added
 
+- **Glossario in Impostazioni → Traduzione**: si sceglie un file con i termini
+  (termine e traduzione su righe consecutive, voci separate da una riga vuota) e
+  il motore li sostituisce con segnaposto prima della richiesta, ripristinandoli
+  dopo. Funziona anche col **batching**, che prima lo ignorava del tutto.
 - **Lettore a tutta pagina, con indice a richiesta e schermo intero**: nella
   scheda *Lettura* il viewport di foliate-js occupa tutto lo spazio e il TOC —
   prima un pannello fisso da 200 px — **parte nascosto** e compare a richiesta
@@ -109,6 +123,16 @@ la storia completa è nei commit (`git log`).
 
 ### Fixed
 
+- **Un reply di batch incompleto non ferma più il libro**: se il modello salta
+  degli ID, si ritentano **solo i segmenti mancanti** (non l'intero batch) e un
+  JSON troncato viene riparato scartando la sola coppia tagliata — mai una
+  traduzione a metà. Un segmento che resta mancante viene segnato come errore,
+  non fa fallire l'intera traduzione.
+- **Retry con jitter e `Retry-After`**: il backoff non è più fisso (5, 10, 15 s),
+  rispetta l'attesa chiesta dal provider e non fa ritentare in lockstep N worker.
+- **Il giudice di qualità legge le risposte in streaming**: con `stream=True`
+  riceveva un generatore e lo serializzava, dando 0 a ogni campione. Ora unisce i
+  chunk e, dove il motore lo supporta, spegne il reasoning.
 - **La concorrenza scelta non veniva rispettata oltre ~8**: `Handler` esegue ogni
   chiamata con `run_in_executor(None, …)`, cioè sul *default executor* del loop,
   che CPython dimensiona `min(32, cpu+4)` (8 su una macchina a 4 CPU). I worker in

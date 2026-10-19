@@ -132,8 +132,8 @@ class TranslateWizard(QWizard):
         self.lbl_parallel = QLabel(T("label.parallel"))
         self.spn_parallel = QSpinBox()
         # Up to the engine's executor ceiling (Handler.MAX_WORKERS = 32). The
-        # old 1-8 range hid the whole point of the executor fix.
-        self.spn_parallel.setRange(1, 20)
+        # speed test: 49 s at 32 vs 63 s at 20 (streaming, same chapter).
+        self.spn_parallel.setRange(1, 32)
         self.spn_parallel.setValue(int(settings.get("translate_parallel", 4) or 4))
         self.spn_parallel.setToolTip(T("label.parallel_hint"))
         parallel_row.addWidget(self.lbl_parallel)

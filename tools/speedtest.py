@@ -99,6 +99,16 @@ MATRIX = [
      "batch": True, "interval": 0.0},
     {"id": "r14-batch20-parallel-stream", "concurrency": 8, "reasoning": "off",
      "batch": True, "interval": 0.0, "stream": True},
+    # Push both paths to the executor ceiling: the batch path with 20 requests
+    # in flight, and the per-segment path with the app's streaming default.
+    {"id": "r15-batch20-parallel20", "concurrency": 20, "reasoning": "off",
+     "batch": True, "interval": 0.0},
+    {"id": "r16-conc20-stream", "concurrency": 20, "reasoning": "off",
+     "batch": False, "interval": 0.0, "stream": True},
+    {"id": "r17-batch20-stream20", "concurrency": 20, "reasoning": "off",
+     "batch": True, "interval": 0.0, "stream": True},
+    {"id": "r18-conc32-stream", "concurrency": 32, "reasoning": "off",
+     "batch": False, "interval": 0.0, "stream": True},
 ]
 
 #: Records every HTTP call the engine makes (see ``_install_instrumentation``).
