@@ -1,0 +1,11 @@
+{
+  "source": "corpus1/Rosen's Emergency Medicine 10ed 2023 SLIM.epub",
+  "chapter": "XHTML/B9780323757898000876/CH0087_1224-1242_B9780323757898000876.xhtml#B9780323757898000876",
+  "engine": "OpenRouter",
+  "model": "deepseek/deepseek-v4-flash-0731",
+  "segments_total": 698,
+  "segments_usable": 671,
+  "characters": 140214,
+  "longest_segment": 1907,
+  "collect_seconds": 1.5
+}

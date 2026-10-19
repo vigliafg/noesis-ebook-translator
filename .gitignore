@@ -50,3 +50,10 @@ Thumbs.db
 # Local secrets (never commit API keys)
 /opencode-go.txt
 /openrouter.txt
+
+# Speed-test outputs: large translated EPUBs and per-run logs are analysis
+# material, not sources. The tool (tools/speedtest.py) and the aggregated
+# speedtest/report.md + summary.json are the committed part.
+/speedtest/runs/
+/speedtest/config-prepare/
+/speedtest/matrix.log
