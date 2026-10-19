@@ -224,6 +224,60 @@ class TestStartupGeometry(unittest.TestCase):
         finally:
             window.close()
 
+    @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+    def test_fullscreen_from_reader_hides_the_ribbon(self):
+        import main
+
+        app = QApplication.instance() or QApplication(["noesis-geometry"])
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        try:
+            window.show()
+            window.tabs.setCurrentWidget(window.reader)
+            app.processEvents()
+            self.assertTrue(window.workflow.isVisibleTo(window))
+
+            window.toggle_fullscreen()
+            app.processEvents()
+            self.assertTrue(window.isFullScreen())
+            self.assertFalse(window.workflow.isVisibleTo(window),
+                             "full screen from the reader must hide the ribbon")
+            self.assertTrue(window._escape_shortcut.isEnabled())
+
+            window.toggle_fullscreen()
+            app.processEvents()
+            self.assertFalse(window.isFullScreen())
+            self.assertTrue(window.workflow.isVisibleTo(window))
+            self.assertFalse(window._escape_shortcut.isEnabled())
+        finally:
+            window.close()
+
+    @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+    def test_fullscreen_elsewhere_keeps_the_ribbon(self):
+        import main
+
+        app = QApplication.instance() or QApplication(["noesis-geometry"])
+        main.QMessageBox.information = staticmethod(lambda *a, **k: None)
+        window = main.MainWindow()
+        try:
+            window.show()
+            window.tabs.setCurrentWidget(window.library)
+            app.processEvents()
+
+            window.toggle_fullscreen()
+            app.processEvents()
+            self.assertTrue(window.workflow.isVisibleTo(window))
+            # Switching tab while full screen must not corrupt the saved state:
+            # the ribbon comes back because it was never hidden.
+            window.tabs.setCurrentWidget(window.reader)
+            app.processEvents()
+            window.toggle_fullscreen()
+            app.processEvents()
+            self.assertFalse(window.isFullScreen())
+            self.assertTrue(window.workflow.isVisibleTo(window))
+        finally:
+            window.close()
+
 
 class TestToolPanelLayout(unittest.TestCase):
     """Pure-layout unit test for the optional two-row panels."""

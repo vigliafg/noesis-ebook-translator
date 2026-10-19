@@ -32,6 +32,8 @@ class TestGui(unittest.TestCase):
         from noesis_ebook_translator import appconfig
 
         appconfig.ensure_defaults()
+        # A curated provider is selectable only once it is configured.
+        appconfig.set_engine_preference("OpenRouter", api_keys=["sk-test"])
         import main
 
         window = main.MainWindow()

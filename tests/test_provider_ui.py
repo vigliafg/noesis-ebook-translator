@@ -349,6 +349,9 @@ class TestRibbonBadge(unittest.TestCase):
         from noesis_ebook_translator import appconfig
         appconfig.ensure_defaults()
         appconfig.save_settings({"model_tests": {}, "engine_preferences": {}})
+        # The engine combo only offers configured LLMs: give ChatGPT a key so the
+        # badge tests can select it.
+        appconfig.set_engine_preference("ChatGPT", api_keys=["sk-test"])
 
     def test_ok_badge(self):
         from noesis_ebook_translator import appconfig

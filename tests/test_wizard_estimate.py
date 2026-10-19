@@ -40,6 +40,9 @@ class WizardPagesTest(unittest.TestCase):
         self.estimate = estimate
         self.provider_catalog = provider_catalog
         appconfig.ensure_defaults()
+        # ``Fake`` is an LLM (it has a prompt) and would not be offered by the
+        # wizard until it has credentials in ``engine_preferences``.
+        appconfig.set_engine_preference("Fake", api_keys=["fake-key"])
         self._price = provider_catalog.price
         self._dev_map = dict(estimate.ENGINE_TO_MODELS_DEV)
         self.tmp = tempfile.mkdtemp(prefix="wizard-estimate-")

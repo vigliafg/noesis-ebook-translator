@@ -225,7 +225,7 @@ class SettingsDialog(QDialog):
         self.spn_threshold.setValue(int(self._settings.get("quality_threshold", 60)))
         self.cmb_judge = QComboBox()
         self.cmb_judge.addItem(T("panel.engine") + ": auto", "")
-        self.cmb_judge.addItems(appconfig.engine_names())
+        self.cmb_judge.addItems(appconfig.desktop_engine_names())
         current_judge = self._settings.get("quality_judge_engine", "")
         index = self.cmb_judge.findText(current_judge)
         if index >= 0:

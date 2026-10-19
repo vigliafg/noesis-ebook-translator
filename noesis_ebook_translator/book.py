@@ -24,7 +24,7 @@ from . import EbookTranslator
 from .appconfig import ensure_defaults
 from .chapters import (
     chapter_files, chapters_from_book, isolate_chapters, load_chapters,
-    resolve_selection, toc_anchors)
+    preserve_document_markup, resolve_selection, toc_anchors)
 from .exporter import restrict_book
 from .lib.cache import TranslationCache, get_cache
 from .lib.config import get_config
@@ -185,6 +185,26 @@ def _apply_settings(settings: dict[str, Any] | None) -> None:
     for key, value in settings.items():
         config.set(key, value)
     config.commit()
+
+
+def _apply_translation_defaults(translator) -> None:
+    """Apply the optional app-level sampler override.
+
+    ``translate_temperature`` is ``None`` by default: the engine keeps its own
+    temperature (DeepSeek ships 1.3, Gemini 0.9, the generic ones 1.0). Set it
+    (or the per-engine ``temperature``) to force a value — a low one keeps
+    short, context-free segments like chapter titles from drifting.
+    """
+    temperature = get_config().get("translate_temperature")
+    if temperature is None or not hasattr(translator, "temperature"):
+        return
+    engine_config = getattr(translator, "config", None) or {}
+    if "temperature" in engine_config:
+        return  # an explicit per-engine value wins
+    try:
+        translator.temperature = float(temperature)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -580,6 +600,7 @@ def collect_segments(
     translator.set_source_lang(source_lang)
     translator.set_target_lang(target_lang)
     book = epub.read_epub(input_path)
+    preserve_document_markup(book)
     if chapters:
         selected = resolve_selection(chapters_from_book(book), chapters)
         restrict_book(book, chapter_files(selected))
@@ -636,6 +657,7 @@ def translate_epub(
     translator = get_translator(engine_class)
     translator.set_source_lang(source_lang)
     translator.set_target_lang(target_lang)
+    _apply_translation_defaults(translator)
     style_prompt = (style_prompt or "").strip()
     if style_prompt and hasattr(translator, "prompt"):
         # *Append* the genre/style addendum: the engine's own prompt already
@@ -656,6 +678,7 @@ def translate_epub(
             f"{type(exc).__name__}: {exc}\n"
             "Il file sembra incompleto o malformato (il suo package document "
             "elenca risorse che non sono nell'archivio).") from exc
+    preserve_document_markup(book)
     if chapters:
         all_chapters = chapters_from_book(book)
         selected = resolve_selection(all_chapters, chapters)
@@ -881,8 +904,10 @@ def preview_translation(
     translator = get_translator(get_engine_class(engine))
     translator.set_source_lang(source_lang)
     translator.set_target_lang(target_lang)
+    _apply_translation_defaults(translator)
 
     book = epub.read_epub(input_path)
+    preserve_document_markup(book)
     if chapters:
         selected = resolve_selection(chapters_from_book(book), chapters)
         restrict_book(book, chapter_files(selected))

@@ -18,7 +18,9 @@ from pathlib import Path
 
 from ebooklib import epub
 
-from .chapters import Chapter, chapter_files, flatten, isolate_chapters, load_chapters
+from .chapters import (
+    Chapter, chapter_files, flatten, isolate_chapters, load_chapters,
+    preserve_document_markup)
 from .exporter import restrict_book, _ensure_toc_uids
 
 __all__ = ["split_epub", "merge_epubs", "sanitize_name", "part_filename"]
@@ -70,6 +72,7 @@ def split_epub(input_path: str, out_dir: str,
         if not files:
             continue
         book = epub.read_epub(input_path)
+        preserve_document_markup(book)
         restrict_book(book, files)
         isolate_chapters(book, [chapter])
         _ensure_toc_uids(book.toc)
@@ -136,6 +139,7 @@ def merge_epubs(paths: list[str], output_path: str,
 
     merged = epub.EpubBook()
     first = epub.read_epub(paths[0])
+    preserve_document_markup(first)
 
     def _meta(key, default=""):
         values = first.get_metadata("DC", key)
@@ -153,6 +157,7 @@ def merge_epubs(paths: list[str], output_path: str,
     toc: list = []
     for part, path in enumerate(paths, 1):
         book = epub.read_epub(path)
+        preserve_document_markup(book)
         prefix = f"part{part}/"
         for item in book.get_items():
             if _is_nav_or_ncx(item):
@@ -177,6 +182,7 @@ def merge_epubs(paths: list[str], output_path: str,
     merged.toc = tuple(toc)
     merged.spine = ["nav"] + spine
     _ensure_toc_uids(merged.toc)
+    preserve_document_markup(merged)
     epub.write_epub(output_path, merged)
     return output_path
 

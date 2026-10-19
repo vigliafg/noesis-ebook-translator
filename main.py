@@ -224,6 +224,7 @@ class MainWindow(QMainWindow):
         self._assets_edition = "original"
         self._initializing = False
         self._ribbon_index = 0
+        self._ribbon_visible_before_fullscreen: bool | None = None
         self._pending_split = None
         self._split_worker = None
         self._split_ok = False
@@ -271,12 +272,27 @@ class MainWindow(QMainWindow):
             self.show()
 
     def toggle_fullscreen(self) -> None:
-        """F11: real full screen (no window frame), toggling back to normal."""
+        """F11 / reader toolbar button: real full screen (no window frame).
+
+        In the Reader tab the ribbon goes away too: the point of full screen is
+        reading, and the reader toolbar carries the controls used while reading.
+        The ribbon state is *saved* on entry and restored on exit — inferring it
+        from the tab selected at exit would leave the ribbon hidden after the
+        user switched tab while reading.
+        """
         if self.isFullScreen():
             self.showNormal()
             self.showMaximized()
+            if self._ribbon_visible_before_fullscreen is not None:
+                self.workflow.setVisible(self._ribbon_visible_before_fullscreen)
+                self._ribbon_visible_before_fullscreen = None
+            self._escape_shortcut.setEnabled(False)
         else:
+            self._ribbon_visible_before_fullscreen = self.workflow.isVisibleTo(self)
+            if self.tabs.currentWidget() is self.reader:
+                self.workflow.setVisible(False)
             self.showFullScreen()
+            self._escape_shortcut.setEnabled(True)
 
     def _build_body(self) -> None:
         from noesis_ebook_translator.ui.translate_view import TranslateView
@@ -301,6 +317,8 @@ class MainWindow(QMainWindow):
             lambda flow: appconfig.save_settings({"reader_flow": flow}))
         self.reader.spreadChanged.connect(
             lambda on: appconfig.save_settings({"reader_spread": bool(on)}))
+        self.reader.tocVisibilityChanged.connect(self._on_toc_visibility_changed)
+        self.reader.fullscreenRequested.connect(self.toggle_fullscreen)
         self.library = LibraryWidget(self.reader.session)
         self.library.changed.connect(self._sync_library_buttons)
         self.chapters = ChaptersWidget()
@@ -335,6 +353,11 @@ class MainWindow(QMainWindow):
         # F11 toggles real full screen (no frame); the app starts maximised.
         self._fullscreen_shortcut = QShortcut(QKeySequence("F11"), self)
         self._fullscreen_shortcut.activated.connect(self.toggle_fullscreen)
+        # Esc leaves full screen. Disabled outside it, so it never swallows the
+        # Escape key of a dialog.
+        self._escape_shortcut = QShortcut(QKeySequence("Escape"), self)
+        self._escape_shortcut.setEnabled(False)
+        self._escape_shortcut.activated.connect(self.toggle_fullscreen)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
         """Tear the reader down before the WebEngine profile is released."""
@@ -346,14 +369,14 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------- helpers
     def _engine_names(self) -> list[str]:
-        return appconfig.engine_names()
+        return appconfig.desktop_engine_names()
 
     def _reload_engines(self) -> None:
         """Rebuild the engine combo (providers enabled in Settings appear here)."""
         current = self.cmb_engine.currentText()
         self.cmb_engine.blockSignals(True)
         self.cmb_engine.clear()
-        self.cmb_engine.addItems(appconfig.engine_names())
+        self.cmb_engine.addItems(appconfig.desktop_engine_names())
         index = self.cmb_engine.findText(current)
         if index >= 0:
             self.cmb_engine.setCurrentIndex(index)
@@ -869,8 +892,24 @@ class MainWindow(QMainWindow):
             self.cmb_target.setCurrentText(source)
         self.cmb_source.setCurrentText(target)
 
-    def on_toggle_toc(self) -> None:
-        self.reader.toc.setVisible(not self.reader.toc.isVisible())
+    def on_toggle_toc(self, checked: bool | None = None) -> None:
+        """Show/hide the reader TOC (ribbon toggle **and** reader toolbar).
+
+        ``checked`` is what the ribbon toggle passes; the toolbar and the plain
+        ``on_toggle_toc()`` call flip the current state instead.
+        """
+        if checked is None:
+            self.reader.toggle_toc()
+        else:
+            self.reader.set_toc_visible(bool(checked))
+
+    def _on_toc_visibility_changed(self, visible: bool) -> None:
+        """Keep the ribbon toggle in step with the one in the reader toolbar."""
+        if not hasattr(self, "btn_toc"):
+            return
+        self.btn_toc.blockSignals(True)
+        self.btn_toc.setChecked(bool(visible))
+        self.btn_toc.blockSignals(False)
 
     def on_find(self) -> None:
         self.edt_find.setFocus()

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import posixpath
+import types
 import zipfile
 from dataclasses import dataclass, field
 from xml.etree import ElementTree
@@ -21,8 +22,29 @@ XHTML = "{http://www.w3.org/1999/xhtml}"
 __all__ = [
     "Chapter", "load_chapters", "flatten", "resolve_selection",
     "chapter_files", "book_meta", "isolate_chapters", "toc_anchors",
-    "ChapterError",
+    "ChapterError", "preserve_document_markup",
 ]
+
+
+def preserve_document_markup(book) -> None:
+    """Keep each document's original ``<head>`` across an ebooklib round-trip.
+
+    :meth:`ebooklib.epub.EpubHtml.get_content` does not return the file it read:
+    it rebuilds it from ebooklib's own template and re-emits only the ``<head>``
+    entries registered on the item (``links``, ``metas``, ``title``).
+    :func:`ebooklib.epub.read_epub` registers none of them, so parsing or writing
+    a document silently drops every ``<link rel="stylesheet">``, its ``<meta>``
+    and its ``<title>`` -- the exported/translated book keeps the CSS *files* but
+    nothing links them, and the formatting is gone.
+
+    Call this right after ``read_epub``: it points the regular documents at the
+    bytes they were read from. The navigation document keeps ebooklib's
+    generator, since the TOC rewriting happens there.
+    """
+    for item in book.get_items():
+        if isinstance(item, epub.EpubHtml) and \
+                not isinstance(item, epub.EpubNav):
+            item.get_content = types.MethodType(epub.EpubItem.get_content, item)
 
 
 def _fragment_of(href: str | None) -> str | None:
@@ -309,10 +331,32 @@ def _trim_item_to_anchors(item, wanted: set[str], all_anchors: set[str]) -> None
                 break
         return current
 
+    def in_range(element) -> bool:
+        segment = segment_of(element)
+        return segment is not None and segment in wanted
+
+    # Keep every element inside a selected range *and its ancestors*: the TOC
+    # anchor often sits on a descendant (Elsevier chapters are a single
+    # ``<section><h1 id="...">`` wrapper), so deciding on the top-level child's
+    # own position alone deleted the whole wrapper -- and the chapter with it.
+    keep = set()
+    for element in body.iter():
+        if not isinstance(element.tag, str) or not in_range(element):
+            continue
+        keep.add(element)
+        ancestor = element.getparent()
+        while ancestor is not None and ancestor is not body:
+            keep.add(ancestor)
+            ancestor = ancestor.getparent()
+
     removed = False
+    for parent in reversed(list(body.iterdescendants())):
+        for child in list(parent):
+            if child not in keep:
+                parent.remove(child)
+                removed = True
     for child in list(body):
-        segment = segment_of(child)
-        if segment is None or segment not in wanted:
+        if child not in keep:
             body.remove(child)
             removed = True
     if removed:

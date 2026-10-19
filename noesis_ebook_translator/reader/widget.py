@@ -40,6 +40,8 @@ class ReaderWidget(QWidget):
     parallelChanged = pyqtSignal(bool)
     flowChanged = pyqtSignal(str)
     spreadChanged = pyqtSignal(bool)
+    tocVisibilityChanged = pyqtSignal(bool)
+    fullscreenRequested = pyqtSignal()
 
     def __init__(self, session: Session | None = None, backend_mode: str = "auto",
                  parent=None) -> None:
@@ -51,6 +53,7 @@ class ReaderWidget(QWidget):
         self._toc_mode = "read"
         self._toc_items: list = []
         self._current_toc_item = None
+        self._toc_visible = False
         self._parallel = False
 
         from . import create_backend
@@ -83,10 +86,15 @@ class ReaderWidget(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
 
-        # Mini toolbar with the *quick* controls (per-session, frequent):
-        # previous/next, page vs scrolling, single vs two pages. The per-book
-        # settings (font, line height, size) live in the Reader ribbon panel.
+        # Reader toolbar: the controls used *while reading*, and therefore the
+        # only ones available in full screen (where the ribbon is hidden).
+        # Theme, font, line height and search stay in the Reader ribbon panel:
+        # two controls for the same setting would mean two states to sync.
         bar = QHBoxLayout()
+        self.btn_toc = QPushButton(T("action.toc"))
+        self.btn_toc.setCheckable(True)
+        self.btn_toc.setToolTip(T("tip.toc"))
+        self.btn_toc.toggled.connect(self.set_toc_visible)
         self.btn_prev = QPushButton("◀ " + T("action.prev"))
         self.btn_next = QPushButton(T("action.next") + " ▶")
         self.btn_prev.clicked.connect(lambda: self.backend.prev_chapter())
@@ -99,12 +107,26 @@ class ReaderWidget(QWidget):
         self.btn_spread = QPushButton(T("label.spread"))
         self.btn_spread.setCheckable(True)
         self.btn_spread.toggled.connect(self.set_spread)
+        self.btn_zoom_out = QPushButton("−")
+        self.btn_zoom_out.setToolTip(T("assets.zoom_out"))
+        self.btn_zoom_out.clicked.connect(lambda: self.set_zoom(-1))
+        self.btn_zoom_in = QPushButton("+")
+        self.btn_zoom_in.setToolTip(T("assets.zoom_in"))
+        self.btn_zoom_in.clicked.connect(lambda: self.set_zoom(1))
+        self.btn_fullscreen = QPushButton(T("action.fullscreen"))
+        self.btn_fullscreen.setToolTip(T("tip.fullscreen"))
+        self.btn_fullscreen.clicked.connect(self.fullscreenRequested.emit)
+        bar.addWidget(self.btn_toc)
         bar.addWidget(self.btn_prev)
         bar.addWidget(self.btn_next)
         bar.addSpacing(12)
         bar.addWidget(self.cmb_flow)
         bar.addWidget(self.btn_spread)
+        bar.addSpacing(12)
+        bar.addWidget(self.btn_zoom_out)
+        bar.addWidget(self.btn_zoom_in)
         bar.addStretch(1)
+        bar.addWidget(self.btn_fullscreen)
         root.addLayout(bar)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -113,6 +135,8 @@ class ReaderWidget(QWidget):
         self.toc.setMinimumWidth(200)
         self.toc.itemClicked.connect(self._on_toc_click)
         self.toc.itemActivated.connect(self._on_toc_click)
+        # Reader-first: the TOC takes the whole pane away only on demand.
+        self.toc.setVisible(self._toc_visible)
         splitter.addWidget(self.toc)
 
         views = QSplitter(Qt.Orientation.Horizontal)
@@ -239,6 +263,21 @@ class ReaderWidget(QWidget):
                     pass
         self.spreadChanged.emit(bool(on))
 
+    def set_zoom(self, delta: int) -> None:
+        """Zoom **both** viewports.
+
+        The ribbon used to call ``backend.set_zoom`` directly, so the parallel
+        (translated) view kept its own zoom and drifted apart from the primary
+        one. Everything that zooms now goes through here.
+        """
+        for backend in (self.backend, self.second):
+            zoom = getattr(backend, "set_zoom", None)
+            if callable(zoom):
+                try:
+                    zoom(int(delta))
+                except Exception:  # noqa: BLE001
+                    pass
+
     def apply_reading_settings(self, *, theme=None, font=None, line=None,
                                justify=None, hyphenate=None, flow=None,
                                spread=None) -> None:
@@ -295,6 +334,30 @@ class ReaderWidget(QWidget):
 
     def toc_mode(self) -> str:
         return self._toc_mode
+
+    # ------------------------------------------------------ TOC visibility
+    def set_toc_visible(self, visible: bool) -> None:
+        """Show or hide the TOC pane.
+
+        The pane keeps working while hidden (navigation, checkboxes and
+        ``selected_files()`` only need the tree, not a visible widget).
+        """
+        visible = bool(visible)
+        if visible == self._toc_visible:
+            return
+        self._toc_visible = visible
+        self.toc.setVisible(visible)
+        if self.btn_toc.isChecked() != visible:
+            self.btn_toc.blockSignals(True)
+            self.btn_toc.setChecked(visible)
+            self.btn_toc.blockSignals(False)
+        self.tocVisibilityChanged.emit(visible)
+
+    def toc_visible(self) -> bool:
+        return self._toc_visible
+
+    def toggle_toc(self) -> None:
+        self.set_toc_visible(not self._toc_visible)
 
     def _apply_toc_mode(self) -> None:
         selectable = self._toc_mode == "select"

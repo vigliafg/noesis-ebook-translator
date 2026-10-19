@@ -45,18 +45,64 @@ class TestProviderSlots(unittest.TestCase):
         pref = appconfig.get_engine_preference("Custom endpoint")
         self.assertEqual(pref.get("endpoint"), "http://localhost:11434/v1")
 
-    def test_engine_names_only_show_enabled_providers(self):
+    def test_selection_list_shows_non_llm_always_and_llm_only_once_configured(self):
+        # Out of the box: the machine-translation engines and no LLM at all.
+        names = appconfig.desktop_engine_names()
+        for expected in ("Google(Free)New", "DeepL", "MicrosoftEdge(Free)",
+                         "Youdao", "Baidu"):
+            self.assertIn(expected, names, expected)
+        for unexpected in ("ChatGPT", "Gemini", "Claude", "DeepSeek",
+                           "OpenRouter", "Groq", "Mistral"):
+            self.assertNotIn(unexpected, names, unexpected)
+
+        # An enabled provider slot makes its engine selectable ...
         appconfig.set_provider_slots([
             {"enabled": True, "provider": "groq", "api_key": "k",
-             "model": "llama"},
-        ])
-        names = appconfig.engine_names()
+             "model": "llama-3.3-70b-versatile"}])
+        names = appconfig.desktop_engine_names()
         self.assertIn("Groq", names)
-        self.assertIn("Google(Free)New", names)
-        self.assertNotIn("Mistral", names)  # not configured
+        self.assertNotIn("Mistral", names)          # still not configured
 
+        # ... and disabling it takes the engine away again.
         appconfig.set_provider_slots([])
-        self.assertNotIn("Groq", appconfig.engine_names())
+        self.assertNotIn("Groq", appconfig.desktop_engine_names())
+
+    def test_dropped_slot_clears_its_stale_mirror(self):
+        appconfig.set_provider_slots([
+            {"enabled": True, "provider": "groq", "api_key": "k",
+             "model": "llama-3.3-70b-versatile"}])
+        self.assertIn("Groq", appconfig.desktop_engine_names())
+
+        # A slot that disappears from the list is never submitted, so its mirror
+        # has to be cleared explicitly: otherwise the engine stays selectable.
+        appconfig.set_provider_slots([])
+        self.assertFalse(appconfig.get_engine_preference("Groq").get("api_keys"))
+        self.assertNotIn("Groq", appconfig.desktop_engine_names())
+
+    def test_verbatim_llm_appears_once_it_has_a_key(self):
+        self.assertNotIn("ChatGPT", appconfig.desktop_engine_names())
+        appconfig.set_engine_preference("ChatGPT", api_keys=["sk-test"])
+        self.assertIn("ChatGPT", appconfig.desktop_engine_names())
+
+    def test_enabled_slot_is_the_users_choice_even_without_a_key(self):
+        # An enabled slot is a deliberate choice: a key can come from the
+        # environment, a custom endpoint needs no key at all.
+        appconfig.set_provider_slots([
+            {"enabled": True, "provider": "groq", "model": "llama"}])
+        self.assertIn("Groq", appconfig.desktop_engine_names())
+
+        appconfig.set_provider_slots([
+            {"enabled": True, "provider": "custom", "model": "qwen",
+             "endpoint": "http://127.0.0.1:11434/v1"}])
+        self.assertIn("Custom endpoint", appconfig.desktop_engine_names())
+
+    def test_engine_names_keeps_the_full_roster_for_the_cli(self):
+        # The shared list is the CLI contract: its TUI picks the engine *before*
+        # typing the key, so it must keep offering every engine.
+        names = appconfig.engine_names()
+        for expected in ("ChatGPT", "Gemini", "Claude", "DeepSeek",
+                         "OpenRouter", "Google(Free)New", "DeepL"):
+            self.assertIn(expected, names, expected)
 
     def test_engine_info_for_provider(self):
         info = appconfig.engine_info("Groq")

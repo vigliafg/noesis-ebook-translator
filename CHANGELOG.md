@@ -9,8 +9,37 @@ la storia completa è nei commit (`git log`).
 
 ## [Unreleased]
 
+### Changed
+
+- **La lista dei motori mostra solo ciò che è pronto all'uso**: nelle liste di
+  scelta (gruppo *Motore* del ribbon, wizard di traduzione, giudice di qualità) i
+  motori **non-LLM** restano sempre presenti, mentre un **LLM** compare **solo se
+  configurato** — i motori del plugin (Gemini, ChatGPT, Claude, ChatGPT Azure,
+  DeepSeek, OpenRouter) quando *Impostazioni → Traduzione* ha la loro chiave, i
+  provider curati quando il loro slot è abilitato in *Impostazioni → Provider*.
+  Prima i sei LLM del plugin erano sempre elencati e senza chiave davano errore
+  solo al momento della traduzione; le pagine di configurazione mostrano comunque
+  l'elenco completo, e la lista completa resta disponibile per l'edizione CLI
+  (`engine_names()`). Corretto anche un difetto collegato: un provider tolto dalla
+  lista degli slot lasciava la sua chiave dietro di sé, e restava quindi
+  selezionabile.
+
 ### Added
 
+- **Lettore a tutta pagina, con indice a richiesta e schermo intero**: nella
+  scheda *Lettura* il viewport di foliate-js occupa tutto lo spazio e il TOC —
+  prima un pannello fisso da 200 px — **parte nascosto** e compare a richiesta
+  (pulsante nella toolbar del lettore o nel nastro, sempre sincronizzati; nascosto
+  continua a funzionare per navigazione e selezione capitoli). La **toolbar del
+  lettore** raccoglie i comandi d'uso mentre si legge — indice, precedente/
+  successivo, pagina/scorrimento, singola/doppia, **zoom −/+**, **schermo
+  intero** — mentre tema/fonte/interlinea/ricerca restano nel nastro, così ogni
+  impostazione ha un solo controllo da tenere sincronizzato. **F11** e il pulsante
+  *Schermo intero* passano a tutto schermo e, dalla scheda *Lettura*, nascondono
+  anche la barra a nastro; si esce con **F11** o **Esc**, ripristinando la barra
+  com'era (anche se nel frattempo si è cambiata scheda). Lo zoom ora muove
+  **entrambi** i viewport: prima il pulsante agiva solo sulla vista principale e
+  il confronto si disallineava.
 - **Provider multipli (fino a 4)**: si possono tenere configurati
   contemporaneamente fino a 4 provider OpenAI-compatibili, ognuno con la
   **propria chiave API e il proprio modello**, e scegliere quale usare a ogni
@@ -85,3 +114,33 @@ la storia completa è nei commit (`git log`).
   a metà traduzione.
 - Il wizard di primo avvio non supportava l'**endpoint personalizzato**: ora ha
   il campo URL base e la sonda lo usa.
+- **Estrazione e traduzione non perdono più il CSS del libro**: ebooklib
+  ricostruiva ogni documento dal proprio template e non ricopiava l'`<head>`
+  letto, quindi l'EPUB risultante conservava i file `.css` ma **nessun**
+  `<link rel="stylesheet">` (formattazione persa). L'intestazione originale
+  (link, meta, titolo) viene ora scritta com'è.
+- **Un capitolo con l'ancora dentro un contenitore non viene più cancellato**:
+  in libri come Rosen l'indice punta all'`<h1>` dentro una `<section>` e
+  l'isolamento per ancore eliminava il contenitore (e il capitolo). Ora restano
+  gli antenati dell'ancora selezionata.
+- **Le liste conservano la struttura**: un `<ul>`/`<ol>` con soli `<li>` era
+  considerato inline-only e tradotto come un unico segmento, collassando ogni
+  voce (con `class`/`id`) nel genitore; ora l'estrazione scende negli `<li>`.
+- Aggiunto `tools/format_fidelity.py` (e `tests/test_format_fidelity.py`):
+  confronta CSS, link ai fogli di stile, asset (font/immagini) e struttura
+  stilata di due EPUB, per verificare la fedeltà di estrazione e traduzione.
+- **L'analisi del testo funziona anche con i motori del plugin** (OpenRouter,
+  ChatGPT, DeepSeek, Claude, Gemini…): `make_runner` scriveva `endpoint` vuoto
+  nella configurazione della sonda, sovrascrivendo l'endpoint di default del
+  motore; la chiamata falliva con `unknown url type` e la pagina ripiegava sul
+  prompt generico. Ora l'endpoint di default resta, uno personalizzato vince.
+- **OpenRouter non ha più il prompt «traduttore letterario»** hardcoded: su un
+  trattato di medicina faceva uscire «colpo» per *stroke* nei segmenti brevi
+  (titoli). Eredita il prompt neutro; la specializzazione arriva dall'analisi
+  del testo.
+- **Temperatura bassa dove serve, non ovunque**: `OpenRouterTranslate` usa
+  `temperature = 0.2` (è un gateway generico senza valore tarato; a 1.0 i
+  segmenti brevi erano un tiro di dado: lo stesso titolo usciva «Ictus» o
+  «Colpo»). Gli altri motori tengono i propri valori (DeepSeek 1.3, Gemini
+  0.9). `translate_temperature` resta un override globale **opt-in** (`None`
+  di default) e un valore per-motore ha la precedenza.

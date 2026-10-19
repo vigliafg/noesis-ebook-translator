@@ -9,7 +9,7 @@ try:
 except Exception:  # noqa: BLE001
     _HAS_GUI = False
 
-from tests.fixtures import build_rich_epub
+from tests.fixtures import build_no_toc_epub, build_rich_epub
 from tests.harness import run_feature_harness
 
 
@@ -467,6 +467,144 @@ class TestWidgets(unittest.TestCase):
             self.assertEqual(window.chapters.selected_chapters(), [])
             item.setCheckState(Qt.CheckState.Checked)
             self.assertEqual(len(window.chapters.selected_chapters()), 1)
+        finally:
+            window.close()
+
+
+@unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+class TestReaderLayout(unittest.TestCase):
+    """Reader-first layout: TOC on demand, reader toolbar, both-viewport zoom."""
+
+    @staticmethod
+    def _window(book: str):
+        from PyQt6.QtWidgets import QApplication
+
+        from noesis_ebook_translator import appconfig
+        import main
+
+        # The app must exist *before* the first QWidget (MainWindow) is built,
+        # so these tests also run on their own, not just after another GUI test.
+        app = QApplication.instance() or QApplication(["noesis-reader-layout"])
+        appconfig.ensure_defaults()
+        window = main.MainWindow()
+        window._apply_source(book)
+        window.tabs.setCurrentWidget(window.reader)
+        return window
+
+    def test_toc_is_hidden_until_requested(self):
+        from PyQt6.QtCore import Qt
+
+        tmp = tempfile.mkdtemp(prefix="noesis-reader-toc-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = self._window(book)
+        app = QApplication.instance() or QApplication(["noesis-reader-toc"])
+        try:
+            reader = window.reader
+            # Reader-first: the viewport owns the pane, the TOC comes on demand.
+            self.assertFalse(reader.toc_visible())
+            self.assertFalse(reader.toc.isVisibleTo(reader))
+            self.assertFalse(window.btn_toc.isChecked())
+
+            window.on_toggle_toc(True)
+            app.processEvents()
+            self.assertTrue(reader.toc_visible())
+            self.assertTrue(reader.toc.isVisibleTo(reader))
+            self.assertTrue(window.btn_toc.isChecked())
+            # The pane gets its space back when it is shown again.
+            self.assertGreaterEqual(reader.toc.width(), 200)
+
+            # The reader toolbar button drives the same single state.
+            reader.btn_toc.setChecked(False)
+            app.processEvents()
+            self.assertFalse(reader.toc_visible())
+            self.assertFalse(window.btn_toc.isChecked())
+
+            # No-argument call (F-style toggle) flips the current state.
+            window.on_toggle_toc()
+            self.assertTrue(reader.toc_visible())
+
+            # Hide → navigate → show: navigation must not need a visible tree.
+            window.on_toggle_toc(False)
+            item = None
+            for i in range(reader.toc.topLevelItemCount()):
+                if reader.toc.topLevelItem(i).data(0, Qt.ItemDataRole.UserRole):
+                    item = reader.toc.topLevelItem(i)
+                    break
+            self.assertIsNotNone(item)
+            reader._on_toc_click(item, 0)
+            self.assertIsNotNone(reader._current_toc_item)
+            window.on_toggle_toc(True)
+            app.processEvents()
+            self.assertTrue(reader.toc.isVisibleTo(reader))
+        finally:
+            window.close()
+
+    def test_hidden_toc_is_still_selectable(self):
+        from PyQt6.QtCore import Qt
+
+        tmp = tempfile.mkdtemp(prefix="noesis-reader-select-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = self._window(book)
+        try:
+            reader = window.reader
+            window.on_toggle_toc(False)
+            reader.set_toc_mode("select")
+
+            def walk(item):
+                yield item
+                for i in range(item.childCount()):
+                    yield from walk(item.child(i))
+
+            for i in range(reader.toc.topLevelItemCount()):
+                for it in walk(reader.toc.topLevelItem(i)):
+                    if it.data(0, Qt.ItemDataRole.UserRole) == "c3.xhtml":
+                        it.setCheckState(0, Qt.CheckState.Checked)
+            self.assertFalse(reader.toc_visible())
+            self.assertEqual(reader.selected_files(), ["c3.xhtml"])
+        finally:
+            window.close()
+
+    def test_reader_toolbar_zooms_both_views(self):
+        tmp = tempfile.mkdtemp(prefix="noesis-reader-toolbar-")
+        book = build_rich_epub(os.path.join(tmp, "rich.epub"))
+        window = self._window(book)
+        try:
+            reader = window.reader
+            for name in ("btn_toc", "btn_prev", "btn_next", "cmb_flow",
+                         "btn_spread", "btn_zoom_in", "btn_zoom_out",
+                         "btn_fullscreen"):
+                self.assertTrue(hasattr(reader, name), name)
+
+            # The suite runs the lite backend (tests/__init__.py), which keeps
+            # its zoom in ``_zoom``; what matters is that *both* views move.
+            reader.btn_zoom_in.click()
+            self.assertEqual(reader.backend._zoom, 1)
+            self.assertEqual(reader.second._zoom, 1)
+            reader.btn_zoom_out.click()
+            reader.btn_zoom_out.click()
+            self.assertEqual(reader.backend._zoom, -1)
+            self.assertEqual(reader.second._zoom, -1)
+
+            emitted = []
+            reader.fullscreenRequested.connect(lambda: emitted.append(True))
+            reader.btn_fullscreen.click()
+            self.assertEqual(emitted, [True])
+        finally:
+            window.close()
+
+    def test_book_without_toc_still_toggles(self):
+        tmp = tempfile.mkdtemp(prefix="noesis-reader-notoc-")
+        book = build_no_toc_epub(os.path.join(tmp, "notoc.epub"))
+        window = self._window(book)
+        app = QApplication.instance() or QApplication(["noesis-reader-notoc"])
+        try:
+            reader = window.reader
+            self.assertEqual(reader.toc.topLevelItemCount(), 0)
+            window.on_toggle_toc(True)
+            app.processEvents()
+            self.assertTrue(reader.toc_visible())
+            window.on_toggle_toc(False)
+            self.assertFalse(reader.toc_visible())
         finally:
             window.close()
 

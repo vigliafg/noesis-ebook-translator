@@ -18,7 +18,8 @@ from pathlib import Path
 from ebooklib import epub
 from lxml import etree
 
-from .chapters import Chapter, chapter_files, isolate_chapters
+from .chapters import (
+    Chapter, chapter_files, isolate_chapters, preserve_document_markup)
 from .extract import Figure, Table, extract_figures, extract_tables, extract_text
 
 __all__ = [
@@ -107,7 +108,9 @@ def restrict_book(book, files: set[str]) -> None:
 
 
 def _read(path: str):
-    return epub.read_epub(path)
+    book = epub.read_epub(path)
+    preserve_document_markup(book)
+    return book
 
 
 def _ensure_toc_uids(toc) -> None:

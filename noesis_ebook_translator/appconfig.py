@@ -21,6 +21,7 @@ __all__ = [
     "load_settings",
     "save_settings",
     "engine_names",
+    "desktop_engine_names",
     "builtin_engine_names",
     "legacy_engine_names",
     "engine_info",
@@ -61,6 +62,12 @@ APP_DEFAULTS: dict[str, Any] = {
     # Requests sent in parallel when "sequential" is off (1-8). Feeds both the
     # engine's concurrency_limit and the wizard's duration estimate.
     "translate_parallel": 4,
+    # Sampler temperature override for LLM engines. ``None`` means "leave the
+    # engine's own default" (DeepSeek ships 1.3, Gemini 0.9, the generic ones
+    # 1.0). The low value that keeps short segments from drifting lives on
+    # OpenRouter's engine class; set this (or the per-engine "temperature") to
+    # force a value for every engine.
+    "translate_temperature": None,
     "filter_scope": "text",
     "rule_mode": "normal",
     "ebook_metadata": {"metadata_translation": False},
@@ -110,7 +117,7 @@ APP_DEFAULTS: dict[str, Any] = {
 #: Preference keys surfaced by the GUI for the selected engine.
 _ENGINE_PREFERENCE_KEYS = (
     "api_keys", "model", "prompt", "target_lang", "concurrency_limit",
-    "endpoint", "models_url")
+    "endpoint", "models_url", "temperature")
 
 
 def ensure_defaults() -> None:
@@ -118,9 +125,21 @@ def ensure_defaults() -> None:
     config = get_config()
     changed = False
     for key, value in APP_DEFAULTS.items():
+        # ``None`` means "no default": leave the engine's own value alone
+        # instead of writing a null into the config.
+        if value is None:
+            continue
         if config.preferences.get(key) is None:
             config.set(key, value)
             changed = True
+    # One-time migration: the first cut of the low-temperature default wrote
+    # ``translate_temperature = 0.2`` for every engine; the value now lives on
+    # the OpenRouter engine class, so drop the global override it left behind.
+    if not config.preferences.get("temperature_default_v2"):
+        if config.get("translate_temperature") == 0.2:
+            config.delete("translate_temperature")
+        config.set("temperature_default_v2", True)
+        changed = True
     # One-time migration: the reader backend default became "auto" (full when
     # WebEngine is available, otherwise lite). Bump legacy "lite" users.
     if not config.preferences.get("reader_backend_default_v2"):
@@ -229,6 +248,53 @@ def engine_names() -> list[str]:
     return names
 
 
+def _engine_is_configured(name: str) -> bool:
+    """True when the engine has been chosen and can run.
+
+    Two families, two answers:
+
+    * a curated provider is chosen through its **slot** — the switch the Provider
+      page owns, and the authoritative one: a provider whose slot is gone must
+      disappear even if something left credentials behind in
+      ``engine_preferences`` (a mirror left over by a removed slot is not a sign
+      that the user still wants that engine);
+    * a verbatim engine (ChatGPT, Gemini, …) has no slot: it counts as configured
+      once the Settings *Translation* page — or the translation wizard — stored a
+      key or a custom endpoint for it.
+    """
+    provider_id = provider_id_for_engine(name)
+    if provider_id and any(slot.get("provider") == provider_id
+                           and slot.get("enabled")
+                           for slot in provider_slots()):
+        return True
+    pref = get_engine_preference(name)
+    return bool(pref.get("api_keys")) or bool(pref.get("endpoint"))
+
+
+def desktop_engine_names() -> list[str]:
+    """The *selection* list of the desktop: non-LLM always, LLM once configured.
+
+    The plain machine-translation engines are what the app can do out of the box,
+    so they are always offered; an LLM appears only after the user has configured
+    it (a provider slot with credentials, or a key stored for one of the verbatim
+    engines such as ChatGPT). The configuration surfaces keep the full roster:
+    :func:`legacy_engine_names` for the plugin engines, :func:`provider_choices`
+    for the curated providers.
+
+    Desktop-only: the CLI uses :func:`engine_names`, which stays complete because
+    its TUI picks the engine *before* typing the API key.
+    """
+    names: list[str] = []
+    for engine in _builtin_engines():
+        if not engine.name:
+            continue
+        if engine_supports_prompt(engine.name) and not _engine_is_configured(
+                engine.name):
+            continue
+        names.append(engine.name)
+    return names
+
+
 def builtin_engine_names() -> list[str]:
     """The verbatim plugin engines only (no curated provider engines)."""
     provider_engines = _provider_engine_names()
@@ -308,6 +374,12 @@ def set_provider_slots(slots: list[dict[str, Any]]) -> None:
     translation path untouched.
     """
     config = get_config()
+    # Providers that were enabled *before* this call: a slot dropped from the
+    # list is never submitted, so its mirror would otherwise survive and keep the
+    # engine in the selection list.
+    previous_enabled = {
+        slot.get("provider") for slot in (config.get("provider_slots") or [])
+        if isinstance(slot, dict) and slot.get("enabled") and slot.get("provider")}
     normalized: list[dict[str, Any]] = []
     for item in (slots or [])[:MAX_PROVIDER_SLOTS]:
         slot = _blank_slot()
@@ -336,6 +408,13 @@ def set_provider_slots(slots: list[dict[str, Any]]) -> None:
             # mirrored engine config so a disabled provider is really inactive.
             set_engine_preference(
                 name, api_keys=[], model=None, endpoint=None)
+    # Same for a provider whose slot disappeared from the list entirely: without
+    # this, its stale mirror would keep the engine selectable.
+    for provider_id in previous_enabled - {
+            slot["provider"] for slot in normalized if slot["enabled"]}:
+        set_engine_preference(
+            provider_catalog.engine_name(provider_id),
+            api_keys=[], model=None, endpoint=None)
 
 
 def _slots_from_engine_preferences() -> list[dict[str, Any]]:

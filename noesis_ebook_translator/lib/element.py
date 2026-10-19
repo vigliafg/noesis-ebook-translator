@@ -501,7 +501,8 @@ class Extraction:
         'address', 'blockquote', 'dialog', 'div', 'figure', 'figcaption',
         'footer', 'header', 'legend', 'main', 'p', 'pre', 'search', 'article',
         'aside', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hgroup', 'nav',
-        'section', 'dd', 'dl', 'dt', 'menu', 'ol', 'ul', 'table', 'caption',
+        'section', 'dd', 'dl', 'dt', 'menu', 'ol', 'ul', 'li', 'table',
+        'caption',
         'colgroup', 'col', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th')
 
     def __init__(

@@ -521,7 +521,8 @@ def build_workflow(window) -> WorkflowBar:
     # -- Reader --------------------------------------------------------
     p = bar.add_section("reader", T("tab.reader"))
     p.panel("panel.navigation")
-    window.btn_toc = p.button("action.toc", "chapters", window.on_toggle_toc)
+    window.btn_toc = p.button("action.toc", "chapters", tooltip=T("tip.toc"),
+                              checkable=True, on_toggle=window.on_toggle_toc)
     p.button("action.expand_all", "add", window.on_expand_all)
     p.button("action.collapse_all", "remove", window.on_collapse_all)
     # The "Appearance" group is the widest: two sub-rows keep the ribbon narrow.
@@ -547,8 +548,8 @@ def build_workflow(window) -> WorkflowBar:
     window.chk_hyphenate.setChecked(True)
     window.chk_hyphenate.toggled.connect(window.on_hyphenate_toggled)
     p.panel("label.zoom")
-    p.button("assets.zoom_in", "zoom_in", lambda: window.reader.backend.set_zoom(1))
-    p.button("assets.zoom_out", "zoom_out", lambda: window.reader.backend.set_zoom(-1))
+    p.button("assets.zoom_in", "zoom_in", lambda: window.reader.set_zoom(1))
+    p.button("assets.zoom_out", "zoom_out", lambda: window.reader.set_zoom(-1))
     p.panel("panel.search")
     window.edt_find = p.line(T("label.search"), width=160)
     window.edt_find.returnPressed.connect(window.on_find_run)
@@ -594,7 +595,7 @@ def build_workflow(window) -> WorkflowBar:
     window.btn_cancel = p.button("action.cancel", "cancel", window.on_cancel)
     window.btn_cancel.setEnabled(False)
     p.panel("panel.engine", launcher=launcher(2))
-    window.cmb_engine = p.labelled_combo("panel.engine", appconfig.engine_names(),
+    window.cmb_engine = p.labelled_combo("panel.engine", appconfig.desktop_engine_names(),
                                          tooltip=T("panel.engine"), max_width=190)
     window.cmb_engine.currentTextChanged.connect(window._on_engine_changed)
     window.edt_api_key = p.labelled_line("label.api_key", width=140)

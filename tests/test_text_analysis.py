@@ -127,6 +127,48 @@ class RunnerTest(unittest.TestCase):
         self.assertNotEqual(self.engine.prompt, text_analysis.ANALYSIS_INSTRUCTIONS)
 
 
+class RunnerEndpointTest(unittest.TestCase):
+    """``make_runner`` must not shadow an engine's own default endpoint."""
+
+    @classmethod
+    def setUpClass(cls):
+        from noesis_ebook_translator.engines.base import Base
+        import noesis_ebook_translator.engines as engines
+        from noesis_ebook_translator.lib import translation as translation_mod
+
+        class EndpointProbe(Base):
+            name = "_EndpointProbe"
+            endpoint = "https://default.invalid/v1/chat/completions"
+            need_api_key = False
+
+            def __init__(self):
+                super().__init__()
+                # Same reading as ChatgptTranslate (the builtin engines).
+                self.endpoint = self.config.get("endpoint", self.endpoint)
+
+            def translate(self, text):
+                return self.endpoint or "EMPTY"
+
+        cls.engine = EndpointProbe
+        if not any(getattr(engine, "name", None) == EndpointProbe.name
+                   for engine in engines.builtin_engines):
+            extended = tuple(engines.builtin_engines) + (EndpointProbe,)
+            engines.builtin_engines = extended
+            translation_mod.builtin_engines = extended
+
+    def test_default_endpoint_is_kept(self):
+        runner = text_analysis.make_runner("_EndpointProbe", "model-x", "")
+        self.assertEqual(runner("x"),
+                         "https://default.invalid/v1/chat/completions")
+
+    def test_configured_endpoint_wins(self):
+        runner = text_analysis.make_runner(
+            "_EndpointProbe", "model-x", "",
+            endpoint="https://custom.invalid/v1/chat/completions")
+        self.assertEqual(runner("x"),
+                         "https://custom.invalid/v1/chat/completions")
+
+
 class CostTest(unittest.TestCase):
     def setUp(self):
         self._price = provider_catalog.price

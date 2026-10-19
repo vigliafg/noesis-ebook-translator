@@ -290,10 +290,17 @@ def make_runner(engine: str | None, model: str, api_key: str, *,
         "request_timeout": request_timeout,
         "temperature": 0.2,
         # Keep the provider/protocol routing of the real run.
-        "endpoint": endpoint or config.get("endpoint", ""),
         "provider": getattr(engine_class, "provider_id", "") or config.get(
             "provider", ""),
     })
+    # Only shadow the endpoint when one is really configured: an empty value
+    # would override the engine's own default (ChatGPT/DeepSeek/OpenRouter/…)
+    # and make ``request()`` fail with "unknown url type".
+    custom_endpoint = (endpoint or config.get("endpoint") or "").strip()
+    if custom_endpoint:
+        config["endpoint"] = custom_endpoint
+    else:
+        config.pop("endpoint", None)
     probe_class = type(
         f"Analysis{engine_class.__name__}", (engine_class,),
         {"config": config, "model": model})

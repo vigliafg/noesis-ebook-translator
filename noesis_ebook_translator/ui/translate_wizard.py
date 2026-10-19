@@ -77,7 +77,7 @@ class TranslateWizard(QWizard):
         engine_page.setTitle(T("panel.engine"))
         engine_form = QFormLayout(engine_page)
         self.cmb_engine = QComboBox()
-        self.cmb_engine.addItems(appconfig.engine_names())
+        self.cmb_engine.addItems(appconfig.desktop_engine_names())
         if engine:
             idx = self.cmb_engine.findText(engine)
             if idx >= 0:

@@ -45,6 +45,48 @@ def build_sample_epub(path: str) -> str:
     return path
 
 
+def build_styled_epub(path: str) -> str:
+    """One document, two chapters anchored inside wrapper sections, one CSS file.
+
+    The anchors sit on the ``<h1>`` *inside* a ``<section>`` wrapper (the
+    Elsevier shape): trimming by the wrapper's own position would delete the
+    chapter, and ebooklib's round-trip would drop the stylesheet link.
+    """
+    book = epub.EpubBook()
+    book.set_identifier("noesis-styled-1")
+    book.set_title("The Styled Test")
+    book.set_language("en")
+
+    css = epub.EpubItem(uid="style", file_name="style/book.css",
+                        media_type="text/css",
+                        content=b"body { color: #123456; }\n"
+                                b".chapter { font-weight: bold; }\n")
+    book.add_item(css)
+
+    doc = epub.EpubHtml(uid="doc", file_name="book.xhtml", lang="en",
+                        title="The Styled Test")
+    doc.content = (
+        "<html xmlns='http://www.w3.org/1999/xhtml'><head></head><body>"
+        "<section class='chapter' id='wrap1'>"
+        "<h1 class='chaptitle' id='c1'>Chapter One</h1>"
+        "<p class='para'>UNIQUE1 content of chapter one.</p>"
+        "<ul class='items'><li class='item' id='i1'>First bullet.</li>"
+        "<li class='item' id='i2'>Second bullet.</li></ul></section>"
+        "<section class='chapter' id='wrap2'>"
+        "<h1 class='chaptitle' id='c2'>Chapter Two</h1>"
+        "<p class='para'>UNIQUE2 content of chapter two.</p></section>"
+        "</body></html>")
+    doc.add_link(href="style/book.css", rel="stylesheet", type="text/css")
+    book.add_item(doc)
+    book.toc = (epub.Link("book.xhtml#c1", "Chapter 1", "c1"),
+                epub.Link("book.xhtml#c2", "Chapter 2", "c2"))
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.spine = ["nav", doc]
+    epub.write_epub(path, book)
+    return path
+
+
 def build_rich_epub(path: str) -> str:
     """A 3-chapter EPUB with a nested TOC, a captioned figure and a table."""
     book = epub.EpubBook()
@@ -203,6 +245,24 @@ def build_nav_only_epub(path: str) -> str:
                 (epub.Section("Part"), (epub.Link("c2.xhtml", "Body", "c2"),)))
     book.add_item(epub.EpubNav())      # no EpubNcx: EPUB 3 only
     book.spine = ["nav", c1, c2]
+    epub.write_epub(path, book)
+    return path
+
+
+def build_no_toc_epub(path: str) -> str:
+    """An EPUB with readable content but an **empty** table of contents."""
+    book = epub.EpubBook()
+    book.set_identifier("noesis-notoc-1")
+    book.set_title("No TOC")
+    book.set_language("en")
+
+    c1 = epub.EpubHtml(title="One", file_name="c1.xhtml", lang="en")
+    c1.content = ("<html xmlns='http://www.w3.org/1999/xhtml'><head/><body>"
+                  "<h1>One</h1><p>Text one.</p></body></html>")
+    book.add_item(c1)
+    book.toc = ()
+    book.add_item(epub.EpubNcx())
+    book.spine = [c1]
     epub.write_epub(path, book)
     return path
 

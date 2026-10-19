@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 from ebooklib import epub
 from lxml import etree
 
-from .chapters import Chapter, chapter_files, isolate_chapters
+from .chapters import (
+    Chapter, chapter_files, isolate_chapters, preserve_document_markup)
 
 __all__ = [
     "Figure", "Table", "TextBlock",
@@ -34,6 +35,13 @@ def _parse(item):
     return etree.fromstring(
         item.get_content(),
         parser=etree.XMLParser(recover=True, resolve_entities=False))
+
+
+def _read(path: str):
+    """Read an EPUB with its documents' original ``<head>`` kept intact."""
+    book = epub.read_epub(path)
+    preserve_document_markup(book)
+    return book
 
 
 def _ordered_documents(book, files: set[str] | None):
@@ -144,7 +152,7 @@ class Table:
 
 def extract_figures(epub_path: str, chapters: list[Chapter] | None = None,
                     selected: list[Chapter] | None = None) -> list[Figure]:
-    book = epub.read_epub(epub_path)
+    book = _read(epub_path)
     files = chapter_files(selected) if selected else None
     if selected:
         isolate_chapters(book, selected)
@@ -170,7 +178,7 @@ def extract_figures(epub_path: str, chapters: list[Chapter] | None = None,
 
 def extract_tables(epub_path: str, chapters: list[Chapter] | None = None,
                    selected: list[Chapter] | None = None) -> list[Table]:
-    book = epub.read_epub(epub_path)
+    book = _read(epub_path)
     files = chapter_files(selected) if selected else None
     if selected:
         isolate_chapters(book, selected)
@@ -210,7 +218,7 @@ def extract_tables(epub_path: str, chapters: list[Chapter] | None = None,
 def extract_text(epub_path: str, chapters: list[Chapter] | None = None,
                  selected: list[Chapter] | None = None) -> list[tuple[int, str, str]]:
     """Return ``[(chapter_index, chapter_name, segment_text), ...]``."""
-    book = epub.read_epub(epub_path)
+    book = _read(epub_path)
     files = chapter_files(selected) if selected else None
     if selected:
         isolate_chapters(book, selected)
@@ -245,7 +253,7 @@ class TextBlock:
 def extract_text_blocks(epub_path: str,
                         selected: list[Chapter] | None = None) -> list[TextBlock]:
     """Return every text block with a stable ``(file, order)`` locator."""
-    book = epub.read_epub(epub_path)
+    book = _read(epub_path)
     files = chapter_files(selected) if selected else None
     blocks: list[TextBlock] = []
     for doc in _ordered_documents(book, files):
@@ -274,7 +282,7 @@ def apply_text_edits(epub_path: str, output_path: str, edits) -> str:
     for file_name, order, text in edits:
         by_file.setdefault(file_name, {})[int(order)] = str(text)
 
-    book = epub.read_epub(epub_path)
+    book = _read(epub_path)
     for item in book.get_items():
         if item.get_type() != 9 or item.file_name not in by_file:
             continue
@@ -310,7 +318,7 @@ def apply_table_edits(epub_path: str, output_path: str, edits) -> str:
     for file_name, order, rows in edits:
         by_file.setdefault(file_name, {})[int(order)] = rows
 
-    book = epub.read_epub(epub_path)
+    book = _read(epub_path)
     for item in book.get_items():
         if item.get_type() != 9 or item.file_name not in by_file:
             continue
@@ -352,7 +360,7 @@ def _write_table(table, rows: list[list[str]]) -> None:
 def replace_image(epub_path: str, output_path: str, image_name: str,
                   data: bytes) -> str:
     """Replace the bytes of one image item; return the written EPUB path."""
-    book = epub.read_epub(epub_path)
+    book = _read(epub_path)
     replaced = False
     for item in book.get_items():
         if item.file_name == image_name and \

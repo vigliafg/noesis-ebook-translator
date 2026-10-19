@@ -70,12 +70,17 @@ importabile, altrimenti ripiega sul **lite**. Puoi forzare la scelta dalle
 *Impostazioni* (o nel wizard) oppure con la variabile
 `NOESIS_READER_BACKEND=full|lite|auto`.
 
-I comandi di lettura sono nella sezione **Reader** della barra (fonte, interlinea,
-zoom, ricerca, confronto, note, stampa) e nella mini-toolbar sopra il viewport
-(precedente/successivo, pagina/scorrimento, singola/doppia). Il **TOC è quello Qt**
-(evidenzia la posizione corrente; con le caselle in sezione *Translate* per
-selezionare i capitoli). Nel **full**, tema/dimensione/interlinea sono applicati al
-contenuto delle sezioni (via `foliate-js setStyles`).
+I comandi di lettura sono nella sezione **Reader** della barra (tema, fonte,
+interlinea, ricerca, confronto, note, stampa) e nella **toolbar del lettore** sopra
+il viewport (indice, precedente/successivo, pagina/scorrimento, singola/doppia,
+zoom −/+, **schermo intero**). Il **TOC è quello Qt** (evidenzia la posizione
+corrente; con le caselle in sezione *Translate* per selezionare i capitoli): per
+leggere senza distrazioni **parte nascosto** e compare a richiesta, dal pulsante
+della toolbar o dal nastro. Con **F11** (o il pulsante *Schermo intero*) la
+finestra passa a tutto schermo e, dalla scheda *Lettura*, nasconde anche la barra
+a nastro; si esce con **F11** o **Esc**, ripristinando la barra com'era. Nel
+**full**, tema/dimensione/interlinea sono applicati al contenuto delle sezioni
+(via `foliate-js setStyles`).
 
 ## Capitoli, figure, tabelle, export
 
@@ -87,7 +92,7 @@ contenuto delle sezioni (via `foliate-js setStyles`).
 
 ## Motori supportati
 
-L'app espone tutti i motori ripristinati in `engines/__init__.py`:
+L'app conosce tutti i motori ripristinati in `engines/__init__.py`:
 
 | Categoria | Motori |
 | --- | --- |
@@ -96,6 +101,15 @@ L'app espone tutti i motori ripristinati in `engines/__init__.py`:
 | LLM | `Gemini`, `ChatGPT`, `ChatGPT(Azure)`, `Claude`, `DeepSeek`, `OpenRouter` |
 | DeepL | `DeepL`, `DeepL(Pro)`, `DeepL(Free)` |
 | Altri | `MicrosoftEdge(Free)`, `Youdao`, `Baidu` |
+
+Nelle liste di **scelta** (il gruppo *Motore* del ribbon, il wizard di traduzione e
+il motore del giudice di qualità) i motori **non-LLM** compaiono sempre, mentre un
+**LLM** compare **solo dopo che l'hai configurato**: i motori del plugin (Gemini,
+ChatGPT, Claude, ChatGPT Azure, DeepSeek, OpenRouter) dalla pagina *Impostazioni →
+Traduzione*, i provider curati abilitando uno slot in *Impostazioni → Provider*
+(vedi sotto). Un motore configurato e poi lasciato senza credenziali esce dalla
+lista finché non ne riceve di nuove: le pagine di configurazione continuano a
+mostrare l'elenco completo.
 
 I motori LLM e le API a pagamento richiedono una **chiave API** (e a volte un
 **modello**, es. `gpt-4o-mini`): i campi credenziali compaiono nel gruppo
