@@ -53,7 +53,13 @@ def _count(cache_path: str, sql: str) -> int:
         return 0
     con = sqlite3.connect(path)
     try:
-        return int(con.execute(sql).fetchone()[0])
+        # A polling test can catch the database between ``connect`` and the
+        # engine's ``CREATE TABLE`` (the cache file exists, the schema does not).
+        # That is "nothing translated yet", not a failure.
+        try:
+            return int(con.execute(sql).fetchone()[0])
+        except sqlite3.OperationalError:
+            return 0
     finally:
         con.close()
 

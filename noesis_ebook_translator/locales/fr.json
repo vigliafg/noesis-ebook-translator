@@ -61,6 +61,8 @@
   "label.model": "Modèle",
   "label.prompt": "Prompt",
   "label.batch": "Traitement par lots en ligne",
+  "label.batch_size": "Segments par requête",
+  "label.batch_hint": "Regroupe plusieurs segments par requête (moins cher, mais les réponses JSON sont plus fragiles). Avec un modèle à raisonnement, celui-ci est désactivé pour les lots.",
   "label.cache": "Utiliser le cache",
   "label.bilingual": "Texte bilingue (original + traduction)",
   "label.bilingual_short": "Bilingue",

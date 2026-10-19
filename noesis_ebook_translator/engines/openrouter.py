@@ -4,6 +4,48 @@ from calibre.utils.localization import _
 from .openai import ChatgptTranslate
 from ..lib.utils import log, request
 
+
+def _parse_json_object(text):
+    """Best-effort JSON object from a model reply.
+
+    Models wrap the object in prose or code fences, and a truncated reply loses
+    its closing brace. Strip the fences, cut to the outer braces, then repair a
+    missing tail (``{"0": "a", "1": "b"``) by closing the open string/brace so
+    the segments that *did* arrive are usable instead of losing the whole batch.
+    """
+    if not isinstance(text, str):
+        return None
+    clean = text.strip()
+    if "```json" in clean:
+        clean = clean.split("```json", 1)[1].split("```", 1)[0].strip()
+    elif "```" in clean:
+        clean = clean.split("```", 1)[1].split("```", 1)[0].strip()
+    start = clean.find('{')
+    if start == -1:
+        return None
+    end = clean.rfind('}')
+    candidate = clean[start:end + 1] if end != -1 else clean[start:]
+    try:
+        return json.loads(candidate)
+    except ValueError:
+        pass
+    # Truncated reply: only the closing brace is missing -> just close it.
+    try:
+        return json.loads(candidate.rstrip().rstrip(',') + '}')
+    except ValueError:
+        pass
+    # Otherwise the last pair was cut mid-string: drop pairs from the end until
+    # what is left parses. A half-translated string must never be accepted.
+    cut = candidate.rstrip().rstrip('}')
+    comma = cut.rfind(',')
+    while comma != -1:
+        try:
+            return json.loads(cut[:comma] + '}')
+        except ValueError:
+            comma = cut.rfind(',', 0, comma)
+    return None
+
+
 class OpenRouterTranslate(ChatgptTranslate):
     name = 'OpenRouter'
     alias = 'OpenRouter'
@@ -76,8 +118,16 @@ class OpenRouterTranslate(ChatgptTranslate):
         data = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": 8192,
         }
+        # A batch needs room for every segment *and* the JSON syntax: the old
+        # fixed 8192 came back truncated (finish_reason "length") as soon as the
+        # model also reasoned, and then the whole JSON was unparseable.
+        self.batch = True
+        try:
+            self.apply_max_tokens(
+                data, json.dumps(to_translate, ensure_ascii=False))
+        finally:
+            self.batch = False
         self.apply_reasoning(data)
 
         # reasoning_effort for batch too
@@ -111,20 +161,10 @@ class OpenRouterTranslate(ChatgptTranslate):
                 
             # Parse the JSON from the model
             try:
-                # Robust extraction of JSON from model output
-                clean_json = result_text
-                if "```json" in clean_json:
-                    clean_json = clean_json.split("```json")[1].split("```")[0].strip()
-                elif "```" in clean_json:
-                    clean_json = clean_json.split("```")[1].split("```")[0].strip()
-                else:
-                    start_idx = clean_json.find('{')
-                    end_idx = clean_json.rfind('}')
-                    if start_idx != -1 and end_idx != -1:
-                        clean_json = clean_json[start_idx:end_idx+1]
-                
-                translated_data = json.loads(clean_json)
-                
+                translated_data = _parse_json_object(result_text)
+                if not isinstance(translated_data, dict):
+                    raise ValueError('reply is not a JSON object')
+
                 results = []
                 for i in range(len(segments)):
                     idx_str = str(i)
@@ -132,7 +172,7 @@ class OpenRouterTranslate(ChatgptTranslate):
                         results.append(str(translated_data[idx_str]).strip())
                     else:
                         # Fallback for missing ID in JSON
-                        results.append("") 
+                        results.append("")
                 
                 return results
             except Exception as e:

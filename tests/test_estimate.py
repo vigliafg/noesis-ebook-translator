@@ -147,15 +147,28 @@ class EstimateTest(unittest.TestCase):
         self.assertIsNone(est.cost_usd)
 
     def test_duration_sequential_parallel_and_batching(self):
+        from tests.fixtures import register_fake_engine
+
+        fake = register_fake_engine()
         with cache_at(self.cache_store):
             sequential = estimate.estimate_book(self.src, engine="Fake",
                                                 sequential=True)
             parallel = estimate.estimate_book(self.src, engine="Fake",
                                               sequential=False, concurrency=4)
+            # The estimate only needs the engine to expose translate_batch.
+            fake.translate_batch = lambda self, texts: list(texts)
+            try:
+                batched = estimate.estimate_book(self.src, engine="Fake",
+                                                 batching=True, batch_size=10)
+            finally:
+                del fake.translate_batch
         self.assertGreater(sequential.seconds, 0)
         self.assertLess(parallel.seconds, sequential.seconds)
         self.assertEqual(parallel.concurrency, 4)
         self.assertEqual(parallel.seconds_low, parallel.seconds * 0.6)
+        # Batching divides the requests by the configured batch size.
+        self.assertEqual(batched.batch_size, 10)
+        self.assertEqual(batched.requests, (batched.segments + 9) // 10)
 
     def test_cached_segments_are_excluded(self):
         self._pin_price((10.0, 10.0))

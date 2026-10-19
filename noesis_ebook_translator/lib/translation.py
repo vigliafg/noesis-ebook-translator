@@ -1,6 +1,7 @@
 import re
 import time
 import json
+from concurrent.futures import ThreadPoolExecutor
 from types import GeneratorType
 
 from calibre.utils.localization import _  # type: ignore
@@ -208,73 +209,157 @@ class Translation:
                 message = _('Translation (Cached): {}')
             self.log(message.format(paragraph.translation.strip()))
             
+    def _request_batch(self, texts):
+        """Translate one batch, retrying only the segments that came back empty.
+
+        ``translate_batch`` returns one entry per input, with ``''`` where the
+        model dropped an id (a truncated or malformed JSON). Re-sending the whole
+        batch would pay again for the segments that already arrived, so each
+        retry carries only the missing ones. Returns a list aligned with
+        ``texts``; empty entries mean "still missing" and the caller reports
+        them per segment instead of failing the whole run.
+
+        The model's reasoning is switched off for the request: it is billed as
+        output, and inside a batch it eats the completion budget until the JSON
+        is truncated (measured: 4 of 6 replies with ``finish_reason=length``).
+        The engine restores its own setting afterwards.
+        """
+        results = [''] * len(texts)
+        pending = list(range(len(texts)))
+        attempts = max(1, int(self.translator.request_attempt))
+        attempt = 0
+        interval = 5
+        while pending and attempt < attempts:
+            if self.cancel_request():
+                raise TranslationCanceled(_('Translation canceled.'))
+            payload = [texts[index] for index in pending]
+            try:
+                reply = self.translator.translate_batch(payload)
+            except Exception as e:  # noqa: BLE001 - retried below
+                attempt += 1
+                self.log(_('Batch failed ({}): {}').format(attempt, str(e)), True)
+                if attempt >= attempts:
+                    raise TranslationFailed(
+                        _('Batch translation failed after {} attempts')
+                        .format(attempt))
+                time.sleep(interval)
+                interval += 5
+                continue
+            if not reply:
+                attempt += 1
+                if attempt >= attempts:
+                    break
+                time.sleep(interval)
+                interval += 5
+                continue
+            for slot, value in zip(pending, reply):
+                if value and str(value).strip():
+                    results[slot] = str(value).strip()
+            missing = [index for index in pending if not results[index]]
+            if missing:
+                attempt += 1
+                if attempt < attempts:
+                    self.log(_('Batch returned {} of {} segments, retrying the rest')
+                             .format(len(pending) - len(missing), len(pending)), True)
+                pending = missing
+            else:
+                pending = []
+        return results
+
     def handle_batch(self, paragraphs=[]):
         start_time = time.time()
         char_count = sum(len(p.original) for p in paragraphs)
-        
+
         self.log(sep())
         self.log(_('Start to translate ebook content (Online Batching)'))
         self.log(sep('┈'))
         self.log(_('Item count: {}').format(len(paragraphs)))
         self.log(_('Character count: {}').format(char_count))
-        
+
         if len(paragraphs) < 1:
             raise Exception(_('There is no content need to translate.'))
-            
+
         self.progress_bar.load(len(paragraphs))
-        
-        # Determine batch size (default 20 for OpenRouter)
-        batch_size = 20
-        
-        for i in range(0, len(paragraphs), batch_size):
-            if self.cancel_request():
-                raise TranslationCanceled(_('Translation canceled.'))
-                
-            batch = paragraphs[i:i + batch_size]
-            # Only translate untranslated paragraphs unless fresh is True
-            to_translate = [p for p in batch if not p.translation or self.fresh]
-            
-            if to_translate:
-                self.log(sep())
-                self.log(_('Translating batch starting at row {} ({} items)...').format(batch[0].row if batch[0].row >= 0 else i, len(to_translate)))
-                
-                # Perform batch translation with retries
-                results = None
-                retry = 0
-                interval = 5
-                while retry < self.translator.request_attempt:
-                    if self.cancel_request():
-                        raise TranslationCanceled(_('Translation canceled.'))
-                    
-                    try:
-                        results = self.translator.translate_batch([p.original for p in to_translate])
-                        if results and len(results) == len(to_translate):
-                            break
-                        else:
-                            raise Exception("Incomplete batch result")
-                    except Exception as e:
-                        retry += 1
-                        self.log(_('Batch failed ({}): {}').format(retry, str(e)), True)
-                        if retry >= self.translator.request_attempt:
-                            raise TranslationFailed(_('Batch translation failed after {} attempts').format(retry))
-                        time.sleep(interval)
-                        interval += 5
-                
-                # Apply results
-                if results:
-                    for p, trans in zip(to_translate, results):
-                        p.translation = trans
-                        p.is_cache = False
-                        p.engine_name = self.translator.name
-                        p.target_lang = self.translator.get_target_lang()
-                        if self.translator.merge_enabled:
-                            p.do_aligment(self.translator.separator)
-            
-            # Process results for UI
-            for p in batch:
-                self.process_translation(p)
+
+        config = get_config()
+        batch_size = max(1, int(config.get('batch_size') or 20))
+        # Batches are independent requests: run several at once. The batching
+        # path used to ignore concurrency_limit entirely and issued one request
+        # at a time (5x slower than the per-segment path in the speed test).
+        workers = max(1, int(self.translator.concurrency_limit or 1))
+
+        # Reasoning and batching do not mix: the model spends the batch's
+        # completion budget thinking and the JSON comes back truncated
+        # (measured: 4 of 6 replies with finish_reason=length). One switch for
+        # the whole phase, not per request, so a concurrent batch never races
+        # with the restore.
+        reasoning = getattr(self.translator, 'reasoning', None)
+        if getattr(self.translator, 'reasoning_supported', False):
+            self.translator.reasoning = {'enabled': False}
+
+        batches = [paragraphs[index:index + batch_size]
+                   for index in range(0, len(paragraphs), batch_size)]
+
+        try:
+            for start in range(0, len(batches), workers):
                 if self.cancel_request():
                     raise TranslationCanceled(_('Translation canceled.'))
+                window = batches[start:start + workers]
+                pending = []   # [(batch, to_translate)] in submission order
+                for batch in window:
+                    to_translate = [p for p in batch
+                                    if not p.translation or self.fresh]
+                    if to_translate:
+                        self.log(sep())
+                        self.log(_('Translating batch starting at row {} ({} items)...')
+                                 .format(batch[0].row if batch[0].row >= 0 else 0,
+                                         len(to_translate)))
+                        pending.append((batch, to_translate))
+
+                if pending:
+                    with ThreadPoolExecutor(
+                            max_workers=min(workers, len(pending))) as pool:
+                        futures = [
+                            pool.submit(
+                                self._request_batch,
+                                [self.glossary.replace(p.original)
+                                 for p in to_translate])
+                            for _, to_translate in pending]
+                        results = [future.result() for future in futures]
+
+                    for (batch, to_translate), translations in zip(pending,
+                                                                   results):
+                        for paragraph, translation in zip(to_translate,
+                                                          translations):
+                            if not translation:
+                                # Keep the source text and surface the segment
+                                # as an error, like a failed per-segment call.
+                                paragraph.error = _(
+                                    'Batch translation incomplete.')
+                                continue
+                            paragraph.translation = self.glossary.restore(
+                                translation)
+                            paragraph.is_cache = False
+                            paragraph.engine_name = self.translator.name
+                            paragraph.target_lang = \
+                                self.translator.get_target_lang()
+                            if self.translator.merge_enabled:
+                                paragraph.do_aligment(
+                                    self.translator.separator)
+
+                # Process results for UI, in reading order, on this thread: the
+                # persistence callback writes to the shared SQLite cache.
+                for batch in window:
+                    for paragraph in batch:
+                        self.process_translation(paragraph)
+                        if self.cancel_request():
+                            raise TranslationCanceled(
+                                _('Translation canceled.'))
+                if self.translator.request_interval:
+                    time.sleep(self.translator.request_interval)
+        finally:
+            if getattr(self.translator, 'reasoning_supported', False):
+                self.translator.reasoning = reasoning
 
         self.log(sep())
         consuming = round((time.time() - start_time) / 60, 2)

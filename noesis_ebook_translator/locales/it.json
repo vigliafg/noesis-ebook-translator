@@ -61,6 +61,8 @@
   "label.model": "Modello",
   "label.prompt": "Prompt",
   "label.batch": "Batching online",
+  "label.batch_size": "Segmenti per richiesta",
+  "label.batch_hint": "Unisce più segmenti per richiesta (meno costo, risposte JSON più fragili). Con un modello che ragiona il ragionamento viene spento per i batch.",
   "label.cache": "Usa cache",
   "label.bilingual": "Testo bilingue (originale + traduzione)",
   "label.bilingual_short": "Bilingue",

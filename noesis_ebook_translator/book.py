@@ -223,6 +223,32 @@ def _apply_translation_defaults(translator) -> None:
                             if isinstance(reasoning, bool) else reasoning)
 
 
+def _configure_translator(translator) -> None:
+    """Apply the run-level settings that live outside the engine preferences.
+
+    Two rules that the per-engine config cannot express, because they depend on
+    the *mode* of the run:
+
+    * parallel means "no artificial throttle": the OpenAI family defaults to
+      20 s between requests, which made the concurrency knob pointless (745 s
+      vs 112 s on a chapter). Sequential keeps the engine's own interval, which
+      is what protects the free/rate-limited services;
+    * batching needs a request budget that fits a whole batch (see
+      ``apply_max_tokens``); without it a reasoning model truncates the JSON.
+    """
+    config = get_config()
+    try:
+        concurrency = int(getattr(translator, "concurrency_limit", 0) or 0)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        concurrency = 0
+    engine_config = getattr(translator, "config", None) or {}
+    if concurrency > 1 and "request_interval" not in engine_config:
+        translator.request_interval = 0
+    if hasattr(translator, "batch_max_tokens"):
+        translator.batch = bool(config.get("online_batching")) and hasattr(
+            translator, "translate_batch")
+
+
 # ---------------------------------------------------------------------------
 #  Crash-safe resume
 # ---------------------------------------------------------------------------
@@ -674,6 +700,7 @@ def translate_epub(
     translator.set_source_lang(source_lang)
     translator.set_target_lang(target_lang)
     _apply_translation_defaults(translator)
+    _configure_translator(translator)
     style_prompt = (style_prompt or "").strip()
     if style_prompt and hasattr(translator, "prompt"):
         # *Append* the genre/style addendum: the engine's own prompt already
@@ -953,6 +980,7 @@ def preview_translation(
     translator.set_source_lang(source_lang)
     translator.set_target_lang(target_lang)
     _apply_translation_defaults(translator)
+    _configure_translator(translator)
 
     book = epub.read_epub(input_path)
     preserve_document_markup(book)

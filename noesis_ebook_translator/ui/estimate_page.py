@@ -100,6 +100,7 @@ class EstimatePage(QWizardPage):
             bool(wizard.chk_sequential.isChecked()),
             int(wizard.spn_parallel.value()),
             bool(wizard.chk_batch.isChecked()),
+            int(wizard.spn_batch.value()),
             bool(wizard.chk_cache.isChecked()),
             wizard.analysis_page.style_prompt(),
         )
@@ -120,8 +121,8 @@ class EstimatePage(QWizardPage):
         model = key[3]
         source, target = key[4], key[5]
         sequential, parallel = key[6], key[7]
-        batching, cache_enabled = key[8], key[9]
-        style_prompt = key[10]
+        batching, cache_enabled = key[8], key[10]
+        style_prompt = key[11]
 
         def work() -> estimate_mod.BookEstimate:
             segments = wizard.segments()
@@ -129,7 +130,9 @@ class EstimatePage(QWizardPage):
                 wizard.input_path, chapters_spec=wizard.selected_chapters() or None,
                 engine=engine, model=model, source_lang=source,
                 target_lang=target, sequential=sequential, concurrency=parallel,
-                batching=batching, cache_enabled=cache_enabled,
+                batching=batching,
+                batch_size=int(wizard.spn_batch.value()),
+                cache_enabled=cache_enabled,
                 style_prompt=style_prompt, segments=segments)
 
         if self._synchronous:

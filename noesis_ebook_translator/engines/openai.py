@@ -107,6 +107,29 @@ class ChatgptTranslate(GenAI):
                 else {'enabled': bool(self.reasoning)})
         return body
 
+    #: True while a batch request is being built (see ``apply_max_tokens``).
+    batch = False
+
+    #: Room for a JSON batch answer. The default chat budget is fine for one
+    #: segment, but a batch of 20 plus reasoning tokens hits it and the JSON
+    #: comes back truncated (``finish_reason == "length"``).
+    batch_max_tokens = 16384
+
+    def apply_max_tokens(self, body: dict, text: str) -> dict:
+        """Size the completion budget of a **batch** request.
+
+        A truncated reply is unrecoverable: the batch JSON loses its closing
+        brace and the whole request is retried. The budget follows the input
+        (translated text is roughly as long as the source, plus JSON syntax),
+        within ``batch_max_tokens``.
+        """
+        if not self.batch:
+            return body
+        budget = min(self.batch_max_tokens,
+                     max(4096, int(len(text) * 2.5) + 512))
+        body['max_tokens'] = max(int(body.get('max_tokens') or 0), budget)
+        return body
+
     def get_body(self, text):
         body: dict[str, Any] = {
             'model': self.model,
@@ -120,6 +143,7 @@ class ChatgptTranslate(GenAI):
         sampling_value = getattr(self, self.sampling)
         body.update({self.sampling: sampling_value})
         self.apply_reasoning(body)
+        self.apply_max_tokens(body, text)
         return json.dumps(body)
 
     def get_result(self, response):

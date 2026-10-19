@@ -25,6 +25,7 @@ from glob import glob
 from typing import Any
 
 from . import appconfig, book, chapters, provider_catalog, token_count
+from .lib.config import get_config
 from .lib.translation import get_engine_class, get_translator
 from .lib.utils import uid
 
@@ -70,7 +71,7 @@ TARGET_RATIOS: dict[str, float] = {
 }
 DEFAULT_RATIO = 1.1
 
-#: The engine's online-batching path sends 20 segments per request.
+#: Default segments per online-batching request (``batch_size`` overrides it).
 BATCH_SIZE = 20
 #: Chat framing overhead per request (roles, separators).
 FRAMING_TOKENS = 8
@@ -79,7 +80,9 @@ FRAMING_TOKENS = 8
 DEFAULT_LATENCY_LLM = 3.0
 DEFAULT_LATENCY_MT = 0.6
 DEFAULT_LATENCY_BATCH = 8.0
-MAX_CONCURRENCY = 8
+#: The engine's executor ceiling (``Handler.MAX_WORKERS``): asking for more
+#: workers than this does not add parallel calls.
+MAX_CONCURRENCY = 32
 
 #: Samples for the text analysis: a few excerpts, never the whole book.
 SAMPLE_COUNT = 24
@@ -155,6 +158,7 @@ class BookEstimate:
     seconds_high: float = 0.0
     concurrency: int = 1
     batching: bool = False
+    batch_size: int = BATCH_SIZE
     observed_latency: bool = False
     backend: str = "heuristic"
     encoding: str = ""
@@ -171,12 +175,12 @@ class BookEstimate:
         if not self.cached_segments:
             return 0
         if self.batching:
-            return math.ceil(self.cached_segments / BATCH_SIZE)
+            return math.ceil(self.cached_segments / max(1, self.batch_size))
         return self.cached_segments
 
 
-def _ratio_requests(segments: int, batching: bool) -> int:
-    return math.ceil(segments / BATCH_SIZE) if batching else segments
+def _ratio_requests(segments: int, batching: bool, batch_size: int = BATCH_SIZE) -> int:
+    return math.ceil(segments / max(1, batch_size)) if batching else segments
 
 
 def _read_info(db_path: str) -> dict[str, str]:
@@ -344,6 +348,7 @@ def estimate_book(
     sequential: bool = True,
     concurrency: int | None = None,
     batching: bool = False,
+    batch_size: int | None = None,
     cache_enabled: bool = True,
     style_prompt: str = "",
     segments: list[dict[str, Any]] | None = None,
@@ -368,7 +373,11 @@ def estimate_book(
     characters = sum(len(text) for text in texts)
 
     supports_batching = bool(batching) and hasattr(translator, "translate_batch")
-    requests = _ratio_requests(len(usable), supports_batching)
+    batch_size = max(1, int(
+        batch_size
+        or (get_config().get("batch_size") if get_config() else None)
+        or BATCH_SIZE))
+    requests = _ratio_requests(len(usable), supports_batching, batch_size)
     # The system prompt is re-sent with every request: count it (and the style
     # addendum) exactly. A non-LLM engine has no prompt to extend.
     base_prompt = getattr(translator, "prompt", "") or ""
@@ -385,7 +394,6 @@ def estimate_book(
     cached_segments = 0
     if cache_enabled:
         try:
-            from .lib.config import get_config
             from .lib.element import get_element_handler
 
             handler = get_element_handler(
@@ -402,7 +410,8 @@ def estimate_book(
         except Exception:  # noqa: BLE001 - the estimate must not fail on cache
             known = set()
             cached_segments = 0
-    cached_requests = _ratio_requests(cached_segments, supports_batching)
+    cached_requests = _ratio_requests(cached_segments, supports_batching,
+                                      batch_size)
     cached_text_tokens = 0
     if known and cached_segments:
         cached_text_tokens = sum(
@@ -502,6 +511,7 @@ def estimate_book(
         seconds_high=seconds * 1.6,
         concurrency=effective_concurrency,
         batching=supports_batching,
+        batch_size=batch_size,
         observed_latency=measured is not None,
         backend=token_count.backend(model_name),
         encoding=token_count.encoding_name_for(model_name),

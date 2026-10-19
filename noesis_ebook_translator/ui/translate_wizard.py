@@ -108,6 +108,21 @@ class TranslateWizard(QWizard):
         self.chk_cache.setChecked(bool(settings.get("cache_enabled", True)))
         self.chk_batch = QCheckBox(T("label.batch"))
         self.chk_batch.setChecked(bool(settings.get("online_batching", False)))
+        # A reasoning model spends the batch's token budget on reasoning and
+        # truncates the JSON (measured: 4 of 6 replies), so the two options are
+        # mutually exclusive instead of failing at the end of the book.
+        self.chk_batch.setToolTip(T("label.batch_hint"))
+        batch_row = QHBoxLayout()
+        self.lbl_batch_size = QLabel(T("label.batch_size"))
+        self.spn_batch = QSpinBox()
+        self.spn_batch.setRange(1, 50)
+        self.spn_batch.setValue(int(settings.get("batch_size", 20) or 20))
+        self.spn_batch.setToolTip(T("label.batch_hint"))
+        batch_row.addWidget(self.lbl_batch_size)
+        batch_row.addWidget(self.spn_batch)
+        batch_row.addStretch(1)
+        self.chk_batch.toggled.connect(self.spn_batch.setEnabled)
+        self.spn_batch.setEnabled(self.chk_batch.isChecked())
         self.chk_sequential = QCheckBox(T("label.sequential"))
         self.chk_sequential.setChecked(
             bool(settings.get("translate_sequential", True)))
@@ -116,7 +131,9 @@ class TranslateWizard(QWizard):
         parallel_row = QHBoxLayout()
         self.lbl_parallel = QLabel(T("label.parallel"))
         self.spn_parallel = QSpinBox()
-        self.spn_parallel.setRange(1, 8)
+        # Up to the engine's executor ceiling (Handler.MAX_WORKERS = 32). The
+        # old 1-8 range hid the whole point of the executor fix.
+        self.spn_parallel.setRange(1, 20)
         self.spn_parallel.setValue(int(settings.get("translate_parallel", 4) or 4))
         self.spn_parallel.setToolTip(T("label.parallel_hint"))
         parallel_row.addWidget(self.lbl_parallel)
@@ -125,6 +142,7 @@ class TranslateWizard(QWizard):
         for widget in (self.chk_bilingual, self.chk_cache, self.chk_batch,
                        self.chk_sequential, self.lbl_sequential_hint):
             options_layout.addWidget(widget)
+        options_layout.addLayout(batch_row)
         options_layout.addLayout(parallel_row)
         self.chk_sequential.toggled.connect(self._update_parallel)
         self._update_parallel(self.chk_sequential.isChecked())
@@ -364,6 +382,7 @@ class TranslateWizard(QWizard):
             "bilingual": self.chk_bilingual.isChecked(),
             "cache": self.chk_cache.isChecked(),
             "batching": self.chk_batch.isChecked(),
+            "batch_size": int(self.spn_batch.value()),
             "sequential": self.chk_sequential.isChecked(),
             "chapters": self.selected_chapters(),
             "grouping": "single" if self.radio_single.isChecked() else "grouped",

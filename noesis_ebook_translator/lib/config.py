@@ -46,6 +46,7 @@ defaults: dict[str, Any] = {
     'merge_length': 1800,
     'ebook_metadata': {},
     'online_batching': False,
+    'batch_size': 20,
     'search_paths': [],
 }
 

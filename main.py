@@ -1457,6 +1457,7 @@ class MainWindow(QMainWindow):
             "translation_position": "below" if cfg.get("bilingual") else "only",
             "cache_enabled": bool(cfg.get("cache", True)),
             "online_batching": bool(cfg.get("batching", False)),
+            "batch_size": int(cfg.get("batch_size") or 20),
             "translate_sequential": sequential,
             "translate_parallel": concurrency if concurrency else 1,
             "ui_source_lang": source,

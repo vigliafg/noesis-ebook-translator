@@ -26,6 +26,7 @@ __all__ = [
     "legacy_engine_names",
     "engine_info",
     "engine_supports_prompt",
+    "engine_supports_reasoning",
     "set_engine_preference",
     "get_engine_preference",
     "provider_choices",
@@ -53,6 +54,9 @@ MODEL_CACHE_TTL = 24 * 3600
 APP_DEFAULTS: dict[str, Any] = {
     "translation_position": "only",   # translated text replaces the original
     "online_batching": False,
+    # Segments per online-batching request. 20 is the engine's long-standing
+    # value; fewer batches are cheaper but one truncated reply costs more.
+    "batch_size": 20,
     "merge_enabled": False,
     "cache_enabled": True,
     # Translate one segment at a time (concurrency_limit = 1). Keeps the
@@ -327,6 +331,16 @@ def engine_supports_prompt(name: str) -> bool:
     """
     engine = next((e for e in _builtin_engines() if e.name == name), None)
     return bool(engine is not None and hasattr(engine, "prompt"))
+
+
+def engine_supports_reasoning(name: str) -> bool:
+    """True when the engine accepts the provider's ``reasoning`` field.
+
+    Only those can be asked to skip the model's internal reasoning, and only
+    those can therefore hit the batch/reasoning conflict.
+    """
+    engine = next((e for e in _builtin_engines() if e.name == name), None)
+    return bool(getattr(engine, "reasoning_supported", False))
 
 
 def engine_info(name: str) -> dict[str, Any]:
