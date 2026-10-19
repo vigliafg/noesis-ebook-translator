@@ -1,6 +1,7 @@
+import json
+import random
 import re
 import time
-import json
 from concurrent.futures import ThreadPoolExecutor
 from types import GeneratorType
 
@@ -72,6 +73,22 @@ class ProgressBar:
         return self._count
 
 
+def _retry_delay(message, base):
+    """Backoff for a failed request.
+
+    ``Retry-After`` wins when the provider sends it; otherwise exponential
+    backoff plus jitter, so N parallel workers do not retry in lockstep.
+    """
+    match = re.search(r"retry[-_ ]after[\"':= ]+(\d+(?:\.\d+)?)", message,
+                      re.IGNORECASE)
+    if match:
+        try:
+            return max(0.0, float(match.group(1)))
+        except ValueError:
+            pass
+    return base + random.uniform(0, base * 0.3)
+
+
 class Translation:
     def __init__(self, translator, glossary):
         self.translator = translator
@@ -137,7 +154,7 @@ class Translation:
             if retry >= self.translator.request_attempt:
                 raise TranslationFailed('{}\n{}'.format(message, str(e)))
             retry += 1
-            interval += 5
+            interval = _retry_delay(str(e), interval + 5)
             # Logging any errors that occur during translation.
             logged_text = text[:200] + '...' if len(text) > 200 else text
             error_messages = [
@@ -243,14 +260,14 @@ class Translation:
                         _('Batch translation failed after {} attempts')
                         .format(attempt))
                 time.sleep(interval)
-                interval += 5
+                interval = _retry_delay(str(e), interval + 5)
                 continue
             if not reply:
                 attempt += 1
                 if attempt >= attempts:
                     break
                 time.sleep(interval)
-                interval += 5
+                interval = _retry_delay('', interval + 5)
                 continue
             for slot, value in zip(pending, reply):
                 if value and str(value).strip():

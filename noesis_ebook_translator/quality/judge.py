@@ -43,6 +43,10 @@ def make_engine_judge(engine: str | None = None,
     translator = get_translator(get_engine_class(engine))
     translator.set_source_lang(source_lang)
     translator.set_target_lang(target_lang)
+    # Scoring is a single number: reasoning adds tokens and latency without
+    # improving the verdict, and the judge runs once per sampled segment.
+    if getattr(translator, "reasoning_supported", False):
+        translator.reasoning = {"enabled": False}
 
     def judge(source: str, translation: str) -> float:
         prompt = _PROMPT.format(source=source, translation=translation)
