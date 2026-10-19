@@ -9,6 +9,7 @@ network.
 from __future__ import annotations
 
 import re
+from types import GeneratorType
 from typing import Callable
 
 __all__ = ["Judge", "make_engine_judge", "sample_pairs"]
@@ -46,10 +47,15 @@ def make_engine_judge(engine: str | None = None,
     def judge(source: str, translation: str) -> float:
         prompt = _PROMPT.format(source=source, translation=translation)
         try:
-            reply = str(translator.translate(prompt))
+            reply = translator.translate(prompt)
+            # Streaming engines (the OpenAI family defaults to ``stream=True``)
+            # return a generator: ``str(generator)`` would be
+            # ``<generator object …>`` and every score would come out 0.
+            if isinstance(reply, GeneratorType):
+                reply = "".join(str(chunk) for chunk in reply)
+            score = _parse_score(str(reply or ""))
         except Exception:  # noqa: BLE001 - judge must never crash the report
             return 0.0
-        score = _parse_score(reply)
         return score if score is not None else 0.0
 
     return judge

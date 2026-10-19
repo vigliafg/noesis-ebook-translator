@@ -1442,12 +1442,16 @@ class MainWindow(QMainWindow):
         # "Sequential" pins concurrency_limit=1 (one segment at a time) so the
         # per-chapter progress is truthful. Passing None *removes* the key, so the
         # engine class default (1 for most, unlimited for GenAI/DeepSeek) applies.
+        # In parallel the engine's own throttle is removed too: the OpenAI-family
+        # default of 20 s between requests made concurrency pointless (745 s vs
+        # 112 s on a whole chapter in the speed test).
         sequential = bool(cfg.get("sequential", True))
         concurrency = int(cfg.get("concurrency") or 0)
         appconfig.set_engine_preference(
             engine, api_keys=list(api_keys),
             model=cfg.get("model") or None,
-            concurrency_limit=1 if sequential else (concurrency or None))
+            concurrency_limit=1 if sequential else (concurrency or None),
+            request_interval=None if sequential else 0)
         settings = {
             "translate_engine": engine,
             "translation_position": "below" if cfg.get("bilingual") else "only",

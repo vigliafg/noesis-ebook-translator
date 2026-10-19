@@ -15,6 +15,11 @@ class OpenRouterTranslate(ChatgptTranslate):
     # the style. Per-engine/user settings can still override it.
     temperature = 0.2
 
+    #: OpenRouter accepts the ``reasoning`` object, so the caller may switch the
+    #: model's internal reasoning off. Opt-in on purpose: a vendor that does not
+    #: know the field answers 400, so no engine gets it unless it says so.
+    reasoning_supported = True
+
     # No persona of its own: the neutral prompt of ``ChatgptTranslate`` is the
     # right default for any genre. The per-book specialisation comes from the
     # app's genre analysis (style addendum appended by ``book.translate_epub``).
@@ -73,7 +78,8 @@ class OpenRouterTranslate(ChatgptTranslate):
             "messages": messages,
             "max_tokens": 8192,
         }
-        
+        self.apply_reasoning(data)
+
         # reasoning_effort for batch too
         if self.model and ("gpt-oss" in self.model or "o1" in self.model or "deepseek-reasoner" in self.model):
             data["reasoning_effort"] = "low"
@@ -88,8 +94,18 @@ class OpenRouterTranslate(ChatgptTranslate):
             }
             response = request(**params)
             
-            # Using ChatgptTranslate.get_result to extract content from OpenRouter's OpenAI-compatible response
-            result_text = self.get_result(response)
+            # Using ChatgptTranslate.get_result to extract content from OpenRouter's OpenAI-compatible response.
+            # The batch body is never streamed (``data`` has no ``stream`` key),
+            # so it must be parsed as a plain JSON response: ``get_result`` would
+            # take the streaming path whenever the engine default is
+            # ``stream=True`` (which it is) and fail with "'str' object has no
+            # attribute 'readline'".
+            streamed = self.stream
+            self.stream = False
+            try:
+                result_text = self.get_result(response)
+            finally:
+                self.stream = streamed
             if not result_text:
                 return None
                 

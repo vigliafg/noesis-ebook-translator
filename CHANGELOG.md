@@ -109,6 +109,24 @@ la storia completa è nei commit (`git log`).
 
 ### Fixed
 
+- **La concorrenza scelta non veniva rispettata oltre ~8**: `Handler` esegue ogni
+  chiamata con `run_in_executor(None, …)`, cioè sul *default executor* del loop,
+  che CPython dimensiona `min(32, cpu+4)` (8 su una macchina a 4 CPU). I worker in
+  più restavano in coda: nel test di velocità il parallelismo massimo osservato era
+  **8** anche a concorrenza 20. Ora l'executor è dimensionato su
+  `concurrency_limit` (tetto 32): 112 s → **77 s** sullo stesso capitolo.
+- **`request_interval` annullava il parallelismo**: il default della famiglia
+  OpenAI (20 s fra due richieste) non veniva toccato, quindi la modalità parallela
+  impiegava 745 s contro i 112 s possibili. In parallelo l'app lo azzera; in
+  sequenziale resta il valore del motore.
+- **Il batching online non ha mai funzionato con lo streaming attivo**:
+  `translate_batch` invia un corpo non-stream ma leggeva la risposta con
+  `get_result`, che con `stream=True` (il default) prende il percorso streaming e
+  fallisce con *«'str' object has no attribute 'readline'»*. Ora la risposta del
+  batch viene letta come JSON normale.
+- **La stima di durata era ottimistica dopo un run con batching**: `cache.info`
+  registrava come `run_engine_calls` i **segmenti** (671) invece delle **richieste**
+  (34). Ora conta le chiamate realmente fatte, quindi anche i tentativi ripetuti.
 - I modelli che richiedono un protocollo diverso dall'endpoint OpenAI (p.es.
   Claude e Gemini su OpenCode/OpenCode Go) vengono **nascosti** invece di fallire
   a metà traduzione.
@@ -144,3 +162,10 @@ la storia completa è nei commit (`git log`).
   «Colpo»). Gli altri motori tengono i propri valori (DeepSeek 1.3, Gemini
   0.9). `translate_temperature` resta un override globale **opt-in** (`None`
   di default) e un valore per-motore ha la precedenza.
+- **Reasoning spento per la traduzione**: `translate_reasoning` (default `False`)
+  chiede ai motori che accettano il campo (`reasoning_supported`, oggi OpenRouter)
+  di saltare il ragionamento interno del modello (`{"reasoning": {"enabled":
+  false}}`). Nel test di velocità costava **2,5× tempo** e **3,5× costo** per
+  qualità uguale o peggiore; un valore per-motore (`reasoning`) ha la precedenza e
+  i motori che rifiuterebbero il campo restano intatti. Anche la sonda
+  dell'analisi del testo lo spegne.

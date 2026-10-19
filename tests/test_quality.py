@@ -74,6 +74,25 @@ class TestEngineJudge(unittest.TestCase):
         judge = make_engine_judge("FakeScore")
         self.assertEqual(judge("a", "b"), 85.0)
 
+    def test_engine_judge_reads_a_streamed_reply(self):
+        """A streaming engine returns a generator: ``str(generator)`` is not the
+        reply, so every score used to come out 0."""
+        from noesis_ebook_translator.lib.translation import get_engine_class
+        from noesis_ebook_translator.quality import judge as judge_mod
+
+        engine_class = get_engine_class("FakeScore")
+        original = engine_class.translate
+
+        def streaming(self, content):
+            return (chunk for chunk in ("8", "7"))
+
+        engine_class.translate = streaming
+        try:
+            score = judge_mod.make_engine_judge("FakeScore")("a", "b")
+        finally:
+            engine_class.translate = original
+        self.assertEqual(score, 87.0)
+
 
 if __name__ == "__main__":
     unittest.main()

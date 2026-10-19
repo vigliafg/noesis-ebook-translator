@@ -57,3 +57,4 @@ Thumbs.db
 /speedtest/runs/
 /speedtest/config-prepare/
 /speedtest/matrix.log
+/speedtest/matrix-fixes.log

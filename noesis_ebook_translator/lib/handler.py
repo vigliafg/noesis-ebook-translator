@@ -7,6 +7,10 @@ from .exception import TranslationCanceled
 
 
 class Handler:
+    #: Ceiling for the loop's default executor. ``concurrency_limit == 0`` means
+    #: "one worker per segment", which must not become one *thread* per segment.
+    MAX_WORKERS = 32
+
     def __init__(self, paragraphs, concurrency_limit, translate_paragraph,
                  process_translation, request_interval):
         self.queue = asyncio.Queue()
@@ -15,6 +19,7 @@ class Handler:
         for paragraph in paragraphs:
             self.queue.put_nowait(paragraph)
 
+        self.requested_concurrency = concurrency_limit
         self.concurrency_limit = concurrency_limit or self.queue.qsize()
         self.translate_paragraph = translate_paragraph
         self.process_translation = process_translation
@@ -84,4 +89,12 @@ class Handler:
         except Exception:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+        # ``run_in_executor(None, ...)`` runs on the loop's *default* executor,
+        # and CPython sizes that one ``min(32, cpu+4)``: on a 4-core machine 8,
+        # so any concurrency above it was silently ignored and the extra workers
+        # just queued. Size the pool to the workers we are about to create.
+        if self.requested_concurrency:
+            workers = max(1, min(int(self.concurrency_limit), self.MAX_WORKERS))
+            loop.set_default_executor(
+                concurrent.futures.ThreadPoolExecutor(max_workers=workers))
         loop.run_until_complete(self.process_tasks())

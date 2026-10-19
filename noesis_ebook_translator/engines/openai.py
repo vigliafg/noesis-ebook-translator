@@ -49,6 +49,14 @@ class ChatgptTranslate(GenAI):
     top_p = 1.0
     stream = True
 
+    #: Provider-side reasoning control: ``None`` leaves the provider default,
+    #: ``False`` asks to skip it, a dict is passed through verbatim (OpenRouter
+    #: accepts ``{"enabled": false}`` / ``{"effort": "low"}`` …). Reasoning
+    #: tokens are billed as output and made short translations 2-3x slower in
+    #: the app's speed test, so the app turns it off by default; a value here or
+    #: in the engine config wins.
+    reasoning = None
+
     models: list[str] = []
     # TODO: Handle the default model more appropriately.
     model: str | None = 'gpt-4o'
@@ -61,6 +69,7 @@ class ChatgptTranslate(GenAI):
         self.temperature = self.config.get('temperature', self.temperature)
         self.top_p = self.config.get('top_p', self.top_p)
         self.stream = self.config.get('stream', self.stream)
+        self.reasoning = self.config.get('reasoning', self.reasoning)
         self.model = self.config.get('model', self.model)
 
     def get_models(self):
@@ -90,6 +99,14 @@ class ChatgptTranslate(GenAI):
             'User-Agent': 'Ebook-Translator/%s' % EbookTranslator.__version__
         }
 
+    def apply_reasoning(self, body: dict) -> dict:
+        """Add the provider's reasoning switch to a request body, if configured."""
+        if self.reasoning is not None:
+            body['reasoning'] = (
+                self.reasoning if isinstance(self.reasoning, dict)
+                else {'enabled': bool(self.reasoning)})
+        return body
+
     def get_body(self, text):
         body: dict[str, Any] = {
             'model': self.model,
@@ -102,6 +119,7 @@ class ChatgptTranslate(GenAI):
             body.update(stream=True)
         sampling_value = getattr(self, self.sampling)
         body.update({self.sampling: sampling_value})
+        self.apply_reasoning(body)
         return json.dumps(body)
 
     def get_result(self, response):

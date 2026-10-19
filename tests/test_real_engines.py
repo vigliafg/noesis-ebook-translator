@@ -47,6 +47,11 @@ class TestRealEngineBehaviours(unittest.TestCase):
         REALISTIC.update({"delay": 0.0, "fail_on": None, "stream": False})
         (self.engine.concurrency_limit, self.engine.request_interval,
          self.engine.request_attempt) = self._saved
+        # ``_start`` writes these as engine preferences: clear them so no other
+        # test inherits this run's concurrency/throttle.
+        from noesis_ebook_translator import appconfig
+        appconfig.set_engine_preference("Realistic", concurrency_limit=None,
+                                        request_interval=None)
 
     # -- harness ----------------------------------------------------------
     def _start(self, *, chapters=None, sequential=False, cache=True,
@@ -101,6 +106,79 @@ class TestRealEngineBehaviours(unittest.TestCase):
                 self.assertEqual(model.unit_state(unit), STATE_DONE)
         finally:
             window.close()
+
+    def test_parallelism_goes_past_the_loop_default_executor(self):
+        """>8 concurrent calls must really run: the executor is sized to the limit.
+
+        ``run_in_executor(None, …)`` runs on the loop's *default* executor,
+        which CPython sizes ``min(32, cpu+4)`` (= 8 here): workers above that
+        just queued, so ``translate_parallel`` was a no-op past ~8.
+        """
+        from noesis_ebook_translator import appconfig
+        from noesis_ebook_translator.lib.handler import Handler
+
+        target = min(12, Handler.MAX_WORKERS)
+        REALISTIC.update({"delay": 0.15, "in_flight": 0, "max_in_flight": 0})
+        window, _ = self._start(sequential=False, concurrency=target)
+        try:
+            self._wait(window)
+            self.assertEqual(window.translate_view.model().overall_percent(),
+                             100.0)
+            self.assertGreaterEqual(
+                REALISTIC["max_in_flight"], 9,
+                "the loop's default executor capped the concurrency at 8")
+            # Parallel really means "no engine throttle": the 20 s default
+            # between requests made the knob pointless.
+            self.assertEqual(
+                appconfig.get_engine_preference("Realistic")
+                .get("request_interval"), 0)
+        finally:
+            window.close()
+
+    def test_parallel_removes_the_engine_throttle(self):
+        """Sequential keeps the engine default; parallel removes the throttle."""
+        from noesis_ebook_translator import appconfig
+
+        window, _ = self._start(sequential=True, name="seq.epub")
+        self._wait(window)
+        window.close()
+        self.assertIsNone(
+            appconfig.get_engine_preference("Realistic")
+            .get("request_interval"))
+
+        window, _ = self._start(sequential=False, concurrency=4,
+                                name="parallel.epub")
+        try:
+            self._wait(window)
+            preference = appconfig.get_engine_preference("Realistic")
+            self.assertEqual(preference.get("request_interval"), 0)
+            self.assertEqual(preference.get("concurrency_limit"), 4)
+        finally:
+            window.close()
+
+    def test_batching_records_requests_not_segments(self):
+        """``run_engine_calls`` feeds the estimate's latency calibration: with
+        batching it must count the requests (ceil(n/20)), not the segments."""
+        from tests.test_resume import _count, cache_at
+
+        with cache_at(os.path.join(self.tmp,
+                                   f"calls-{time.time_ns()}")) as cache_dir:
+            window, _ = self._start(sequential=True, cache=True,
+                                    batching=True, name="calls.epub")
+            try:
+                self._wait(window)
+                self.assertEqual(
+                    window.translate_view.model().overall_percent(), 100.0)
+            finally:
+                window.close()
+            segments = _count(cache_dir,
+                              "SELECT COUNT(*) FROM cache WHERE NOT ignored")
+            calls = _count(cache_dir,
+                           "SELECT value FROM info WHERE key='run_engine_calls'")
+        self.assertGreater(segments, 10)
+        self.assertGreater(calls, 0)
+        self.assertLess(calls, segments, "batching must divide by the batch size")
+        self.assertLessEqual(calls, (segments + 19) // 20)
 
     def test_a_refused_segment_is_reported_and_the_rest_finish(self):
         """A per-segment failure must paint that chapter as failed, not the run."""

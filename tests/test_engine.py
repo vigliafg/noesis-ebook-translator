@@ -99,6 +99,130 @@ class TestAppDefaults(unittest.TestCase):
         self.assertEqual(pref.get("api_keys"), ["k123"])
         self.assertEqual(pref.get("model"), "deepseek/deepseek-chat")
 
+    def test_request_interval_is_a_storable_preference(self):
+        """The parallel/sequential toggle writes it (see main._start_translation)."""
+        try:
+            appconfig.set_engine_preference("OpenRouter", request_interval=0)
+            self.assertEqual(
+                appconfig.get_engine_preference("OpenRouter")
+                .get("request_interval"), 0)
+            # ``None`` removes the key, so the engine class default returns.
+            appconfig.set_engine_preference("OpenRouter", request_interval=None)
+            self.assertIsNone(
+                appconfig.get_engine_preference("OpenRouter")
+                .get("request_interval"))
+        finally:
+            appconfig.set_engine_preference("OpenRouter", api_keys=None,
+                                            model=None)
+
+
+class TestReasoningDefaults(unittest.TestCase):
+    """The app asks engines to skip the model's reasoning when translating."""
+
+    def test_reasoning_is_off_by_default_and_per_engine_wins(self):
+        appconfig.ensure_defaults()
+        self.assertIs(appconfig.load_settings().get("translate_reasoning"),
+                      False)
+
+        class Supported:
+            reasoning = None
+            reasoning_supported = True
+            config: dict = {}
+
+        supported = Supported()
+        book._apply_translation_defaults(supported)
+        self.assertEqual(supported.reasoning, {"enabled": False})
+
+        class Configured(Supported):
+            config = {"reasoning": {"effort": "low"}}
+
+        configured = Configured()
+        book._apply_translation_defaults(configured)
+        self.assertIsNone(configured.reasoning, "per-engine value must win")
+
+        class Unsupported(Supported):
+            reasoning_supported = False
+
+        unsupported = Unsupported()
+        book._apply_translation_defaults(unsupported)
+        self.assertIsNone(unsupported.reasoning,
+                          "engines that reject the field must be untouched")
+
+    def test_opt_out_leaves_the_provider_default(self):
+        config = get_config()
+        config.set("translate_reasoning", None)
+        config.commit()
+
+        class Supported:
+            reasoning = None
+            reasoning_supported = True
+            config: dict = {}
+
+        try:
+            engine = Supported()
+            book._apply_translation_defaults(engine)
+            self.assertIsNone(engine.reasoning)
+        finally:
+            config.set("translate_reasoning", False)
+            config.commit()
+
+    def test_chatgpt_body_carries_the_reasoning_switch(self):
+        import json
+
+        from noesis_ebook_translator.engines.openai import ChatgptTranslate
+
+        saved = dict(ChatgptTranslate.config)
+        try:
+            ChatgptTranslate.set_config(
+                {"api_keys": ["k"], "model": "m",
+                 "reasoning": {"enabled": False}})
+            translator = ChatgptTranslate()
+            translator.set_source_lang("English")
+            translator.set_target_lang("Italian")
+            body = json.loads(translator.get_body("hello"))
+            self.assertEqual(body["reasoning"], {"enabled": False})
+
+            # Without the setting the field is not sent at all.
+            ChatgptTranslate.set_config({"api_keys": ["k"], "model": "m"})
+            translator = ChatgptTranslate()
+            translator.set_source_lang("English")
+            translator.set_target_lang("Italian")
+            body = json.loads(translator.get_body("hello"))
+            self.assertNotIn("reasoning", body)
+        finally:
+            ChatgptTranslate.set_config(saved)
+
+    def test_openrouter_batch_parses_with_the_streaming_default(self):
+        """The batch body is never streamed: it must not take the stream path.
+
+        With the engine default ``stream=True`` every batch used to fail with
+        "'str' object has no attribute 'readline'", so online batching never
+        worked in the app.
+        """
+        import json
+
+        from noesis_ebook_translator.engines import openrouter as openrouter_mod
+        from noesis_ebook_translator.engines.openrouter import (
+            OpenRouterTranslate)
+
+        saved_config = dict(OpenRouterTranslate.config)
+        saved_request = openrouter_mod.request
+        payload = json.dumps({"choices": [{"message": {
+            "content": json.dumps({"0": "uno", "1": "due"})}}]})
+        openrouter_mod.request = lambda **kwargs: payload
+        try:
+            OpenRouterTranslate.set_config({"api_keys": ["k"], "model": "m"})
+            translator = OpenRouterTranslate()
+            translator.set_source_lang("English")
+            translator.set_target_lang("Italian")
+            self.assertTrue(translator.stream)  # the app default that broke it
+            self.assertEqual(translator.translate_batch(["one", "two"]),
+                             ["uno", "due"])
+            self.assertTrue(translator.stream, "the stream flag must be restored")
+        finally:
+            openrouter_mod.request = saved_request
+            OpenRouterTranslate.set_config(saved_config)
+
 
 if __name__ == "__main__":
     unittest.main()

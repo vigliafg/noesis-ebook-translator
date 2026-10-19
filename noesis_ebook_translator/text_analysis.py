@@ -301,6 +301,10 @@ def make_runner(engine: str | None, model: str, api_key: str, *,
         config["endpoint"] = custom_endpoint
     else:
         config.pop("endpoint", None)
+    # The analysis is a single JSON reply: reasoning only adds latency and
+    # output tokens (see the speed test). Only for engines that accept the field.
+    if getattr(engine_class, "reasoning_supported", False):
+        config["reasoning"] = {"enabled": False}
     probe_class = type(
         f"Analysis{engine_class.__name__}", (engine_class,),
         {"config": config, "model": model})

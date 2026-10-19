@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
 from glob import glob
 from typing import Any, Callable, Iterable
@@ -188,23 +189,38 @@ def _apply_settings(settings: dict[str, Any] | None) -> None:
 
 
 def _apply_translation_defaults(translator) -> None:
-    """Apply the optional app-level sampler override.
+    """Apply the app-level sampler and reasoning overrides.
 
     ``translate_temperature`` is ``None`` by default: the engine keeps its own
     temperature (DeepSeek ships 1.3, Gemini 0.9, the generic ones 1.0). Set it
     (or the per-engine ``temperature``) to force a value — a low one keeps
     short, context-free segments like chapter titles from drifting.
+
+    ``translate_reasoning`` is ``False`` by default: the engines that accept it
+    (``reasoning_supported``, currently OpenRouter) are asked to skip the
+    model's internal reasoning. It cost 2.5x the wall time and 3.5x the money
+    for no quality gain in the speed test. A per-engine ``reasoning`` wins.
     """
-    temperature = get_config().get("translate_temperature")
-    if temperature is None or not hasattr(translator, "temperature"):
-        return
+    config = get_config()
     engine_config = getattr(translator, "config", None) or {}
-    if "temperature" in engine_config:
+
+    temperature = config.get("translate_temperature")
+    if (temperature is not None and hasattr(translator, "temperature")
+            and "temperature" not in engine_config):
+        try:
+            translator.temperature = float(temperature)
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            pass
+
+    if "reasoning" in engine_config:
         return  # an explicit per-engine value wins
-    try:
-        translator.temperature = float(temperature)
-    except (TypeError, ValueError):  # pragma: no cover - defensive
-        pass
+    if not getattr(translator, "reasoning_supported", False):
+        return
+    reasoning = config.get("translate_reasoning")
+    if reasoning is None:
+        return
+    translator.reasoning = ({"enabled": bool(reasoning)}
+                            if isinstance(reasoning, bool) else reasoning)
 
 
 # ---------------------------------------------------------------------------
@@ -758,7 +774,10 @@ def translate_epub(
     paragraphs = cache.all_paragraphs()
     # How many calls this run will really make (used by the estimate's latency
     # calibration): everything already translated is served from the cache.
+    # ``engine_calls`` is only the *plan*; after the run the real count (which
+    # batching divides by 20 and retries raise) replaces it.
     engine_calls = sum(1 for paragraph in paragraphs if not paragraph.translation)
+    call_counter = _count_engine_calls(translator)
     if on_resume is not None:
         on_resume(*_cache_progress(cache))
 
@@ -826,12 +845,41 @@ def translate_epub(
     # Only now is the run really over: until this marker changes, opening the
     # book offers to continue it.
     _mark_finished(
-        cache, engine_calls=engine_calls, segments=len(paragraphs),
+        cache, engine_calls=call_counter["n"] or engine_calls,
+        segments=len(paragraphs),
         concurrency=int(getattr(translator, "concurrency_limit", 0) or 0),
         batching=bool(config.get("online_batching"))
         and hasattr(translator, "translate_batch"))
     cache.done()
     return output_path
+
+
+def _count_engine_calls(translator) -> dict[str, int]:
+    """Wrap the engine's entry points so the run can report real requests.
+
+    ``_mark_finished`` stores ``run_engine_calls`` and ``estimate`` uses it to
+    calibrate the seconds-per-call of the next duration estimate. With online
+    batching one request carries 20 segments, so counting *segments* there (the
+    old behaviour) made the calibration ~20x optimistic. Counting the calls the
+    engine actually makes is also the honest number for retries.
+    """
+    counter = {"n": 0}
+    lock = threading.Lock()
+    for name in ("translate", "translate_batch"):
+        original = getattr(translator, name, None)
+        if not callable(original):
+            continue
+
+        def wrapper(*args, _original=original, **kwargs):
+            with lock:
+                counter["n"] += 1
+            return _original(*args, **kwargs)
+
+        try:
+            setattr(translator, name, wrapper)
+        except (AttributeError, TypeError):  # pragma: no cover - defensive
+            continue
+    return counter
 
 
 def _persist_paragraph(cache, paragraph, on_paragraph,

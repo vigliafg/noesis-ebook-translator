@@ -1,8 +1,8 @@
 {
   "fork_repo": "git@github.com:vigliafg/Ebook-Translator-Calibre-Plugin.git",
-  "fork_commit": "d7ac569eaa70121db391904e4dc7e21823c4b873",
+  "fork_commit": "f1ee29e451fe5d80d53f451f5f4e14ddc53eff15",
   "fork_version": "2.4.2",
-  "synced_at": "2026-10-18T09:29:51Z",
+  "synced_at": "2026-10-19T07:49:04Z",
   "verbatim": [
     "lib/__init__.py",
     "lib/element.py",
