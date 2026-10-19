@@ -148,5 +148,51 @@ class JsonRepairTest(unittest.TestCase):
             openrouter_mod.OpenRouterTranslate.set_config(saved_config)
 
 
+class GlossaryTest(unittest.TestCase):
+    """The term base must reach both the per-segment and the batch path."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="noesis-glossary-")
+        self.src = build_rich_epub(os.path.join(self.tmp, "glossary.epub"))
+        self.glossary_path = os.path.join(self.tmp, "terms.txt")
+        with open(self.glossary_path, "w", encoding="utf-8") as handle:
+            handle.write("Body of chapter three\nCORPO DEL CAPITOLO TRE\n")
+        self._config = config_mod.get_config()
+        self._saved = {key: self._config.get(key) for key in
+                       ("glossary_enabled", "glossary_path", "online_batching")}
+        self._config.set("glossary_enabled", True)
+        self._config.set("glossary_path", self.glossary_path)
+        self._config.commit()
+
+    def tearDown(self):
+        for key, value in self._saved.items():
+            self._config.set(key, value)
+        self._config.commit()
+
+    def _translate(self, *, batching: bool) -> str:
+        from tests.fixtures import register_fake_engine
+
+        register_fake_engine()
+        self._config.set("online_batching", batching)
+        self._config.commit()
+        out = os.path.join(self.tmp, f"out-{batching}.epub")
+        book.translate_epub(self.src, out, engine="Fake",
+                            source_lang="English", target_lang="Italian")
+        return out
+
+    def test_glossary_is_applied_per_segment_and_in_batches(self):
+        import zipfile
+
+        for batching in (False, True):
+            out = self._translate(batching=batching)
+            with zipfile.ZipFile(out) as archive:
+                text = "".join(
+                    archive.read(name).decode("utf-8", "replace")
+                    for name in archive.namelist()
+                    if name.endswith((".xhtml", ".html")))
+            self.assertIn("CORPO DEL CAPITOLO TRE", text,
+                          f"glossary skipped (batching={batching})")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -94,6 +94,11 @@ MATRIX = [
      "batch": False, "interval": 0.0},
     {"id": "r12-batch20-stream", "concurrency": 1, "reasoning": "off",
      "batch": True, "interval": 0.0, "stream": True},
+    # Batching after the fixes: batches run in parallel and the JSON is repaired.
+    {"id": "r13-batch20-parallel", "concurrency": 8, "reasoning": "off",
+     "batch": True, "interval": 0.0},
+    {"id": "r14-batch20-parallel-stream", "concurrency": 8, "reasoning": "off",
+     "batch": True, "interval": 0.0, "stream": True},
 ]
 
 #: Records every HTTP call the engine makes (see ``_install_instrumentation``).

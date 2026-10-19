@@ -164,6 +164,22 @@ class SettingsDialog(QDialog):
         self.chk_cache.setChecked(bool(self._settings.get("cache_enabled", True)))
         self.chk_batch = QCheckBox(T("label.batch"))
         self.chk_batch.setChecked(bool(self._settings.get("online_batching", False)))
+        # Glossary: a term base applied to every segment before the request and
+        # restored afterwards. It lands in the prompt as placeholders, so the
+        # model cannot translate the terms away.
+        self.chk_glossary = QCheckBox(T("label.glossary"))
+        self.chk_glossary.setChecked(
+            bool(self._settings.get("glossary_enabled", False)))
+        self.chk_glossary.toggled.connect(
+            lambda on: self.edt_glossary.setEnabled(on))
+        self.edt_glossary = QLineEdit(self._settings.get("glossary_path", "") or "")
+        self.edt_glossary.setPlaceholderText(T("label.glossary_hint"))
+        self.edt_glossary.setEnabled(self.chk_glossary.isChecked())
+        glossary_browse = QPushButton(T("action.browse"))
+        glossary_browse.clicked.connect(self._browse_glossary)
+        glossary_row = QHBoxLayout()
+        glossary_row.addWidget(self.edt_glossary, 1)
+        glossary_row.addWidget(glossary_browse)
         self.edt_reserve = QLineEdit(
             ", ".join(self._settings.get("reserve_rules") or []))
         form.addRow(T("panel.engine"), self.cmb_engine)
@@ -175,6 +191,8 @@ class SettingsDialog(QDialog):
         form.addRow(T("label.position"), self.cmb_position)
         form.addRow("", self.chk_cache)
         form.addRow("", self.chk_batch)
+        form.addRow("", self.chk_glossary)
+        form.addRow(T("label.glossary_file"), glossary_row)
         form.addRow(T("panel.rules"), self.edt_reserve)
         self.cmb_engine.currentTextChanged.connect(self._on_engine_changed)
         self._on_engine_changed(self.cmb_engine.currentText())
@@ -270,6 +288,12 @@ class SettingsDialog(QDialog):
         actions.addWidget(clear)
         form.addRow("", actions)
 
+    def _browse_glossary(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(
+            self, T("label.glossary"), "", "Text (*.txt *.csv);;All files (*)")
+        if path:
+            self.edt_glossary.setText(path)
+
     def _build_about(self) -> None:
         from noesis_ebook_translator import EbookTranslator, __version__
         _page, form = self._page("about")
@@ -350,6 +374,8 @@ class SettingsDialog(QDialog):
             "translation_position": self.cmb_position.currentData() or "only",
             "cache_enabled": self.chk_cache.isChecked(),
             "online_batching": self.chk_batch.isChecked(),
+            "glossary_enabled": self.chk_glossary.isChecked(),
+            "glossary_path": self.edt_glossary.text().strip(),
             "reserve_rules": [p.strip() for p in self.edt_reserve.text().split(",")
                               if p.strip()],
             "quality_samples": self.spn_samples.value(),
