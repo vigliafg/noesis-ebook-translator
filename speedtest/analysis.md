@@ -28,6 +28,8 @@ Soggetto: **Rosen's Emergency Medicine**, capitolo **87. Stroke**, 671 segmenti 
 | **per-segmento 20 + stream** | `r16` | **62,7 s** | 10,7 | ~$0,026* | 98,8 |
 | **batching 20 + stream** | `r17` | 121 s | 0,28 | **$0,0168** | 98,8 |
 | **per-segmento 32 + stream** | `r18` | **49,4 s** | 13,6 | ~$0,026* | 97,9 |
+| per-segmento 8 + stream (default app) | `r19`/`r21` | 135-170 s | 4-5 | ~$0,026* | 97,1-98,3 |
+| per-segmento 20 + stream (2ª misura) | `r20` | 73,3 s | 9,2 | ~$0,026* | 97,1 |
 
 ## 1. Parallelismo: si ferma a 8, non a 20
 
@@ -96,11 +98,12 @@ permette (`reasoning: {"enabled": false}` — l'harness lo fa fuori dal motore).
 
 ## 4-bis. Lo streaming è più veloce, non solo più reattivo
 
-Lo stesso run a concorrenza 20 passa da **99,8 s** (non-stream, `r11`) a **62,7 s**
-(stream, `r16`), con p50 0,63 s contro 0,97 s: il percorso in streaming è il
-**37% più veloce** a parità di lavoro. Le run non-stream erano state scelte per
-leggere l'`usage` esatto dal corpo JSON; per la velocità, quindi, la
-configurazione migliore è quella che l'app usa già di default (streaming).
+A concorrenza 20 lo stesso run passa da **99,8 s** (non-stream, `r11`) a
+**62,7-73,3 s** (stream, `r16`/`r20`): lo streaming sembra più veloce del
+25-35%. **Attenzione alla varianza**: il provider oscilla (la stessa
+configurazione a c=8 ha dato 170 s e 135 s in due run; il per-request effettivo
+varia fra ~1,2 e ~3,0 s). Le differenze sotto il 20% non sono affidabili; la
+scalabilità con la concorrenza invece è netta (8 → 20 → 32).
 *Il costo di `r16`/`r18` non è nell'`usage` per lo stesso motivo: i token sono
 quelli di `r11` (~110,6k in, ~48,5k out, $0,026) perché il testo inviato è
 identico.
@@ -110,7 +113,9 @@ identico.
 | obiettivo | configurazione | tempo | costo | giudice |
 | --- | --- | --- | --- | --- |
 | **massima velocità** | per-segmento, 32 in parallelo, streaming | **49,4 s** (17,3× il sequenziale) | ~$0,026 | 97,9 |
-| **minor costo** | batching 20, 20 batch in parallelo, streaming | 121,4 s | **$0,0168** (−35%) | 98,8 |
+| **equilibrata** | per-segmento, 20 in parallelo, streaming | 63-73 s | ~$0,026 | ~98 |
+| **minor costo** | batching 20, 20 batch in parallelo, streaming | ~121 s | **$0,0168** (−35%) | 98,8 |
+| default prudente | per-segmento, 8 in parallelo, streaming | 135-170 s | ~$0,026 | ~98 |
 
 Il punto di equilibrio: a 20 in parallelo il per-segmento fa **62,7 s**; il
 batching fa **121 s** ma costa un terzo in meno. La scelta dipende da cosa si
