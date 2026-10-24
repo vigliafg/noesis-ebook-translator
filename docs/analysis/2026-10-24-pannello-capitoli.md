@@ -208,7 +208,8 @@ gemello.
   pulsante **Segui** per l'auto-scroll.
 
 **Verifica**: 405 test desktop OK (1 skip), scenario harness 11/11, console-clean
-7/7, gemello 23 OK. Commit desktop `a2e3f1e`, gemello `46f1daa`.
+7/7, gemello 23 OK. Commit desktop `85dd6a0` (8 passi in `a2e3f1e`), gemello
+`70f6876`.
 
 **Limiti dichiarati**:
 
