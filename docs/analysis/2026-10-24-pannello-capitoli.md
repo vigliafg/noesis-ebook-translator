@@ -172,6 +172,36 @@ Nessun rilievo è stato scartato come non riproducibile. Due sono stati **ridime
 - **Parallelo**: due documenti in volo, controllo dell'header e dell'auto-scroll.
 - **Selezione mista** file+ancora sullo stesso documento.
 
+## Implementazione (2026-10-24)
+
+Gli 8 passi sono stati implementati nel desktop e sincronizzati nel repository
+gemello.
+
+| passo | esito | file principali |
+| --- | --- | --- |
+| 1. sorgente di verità per capitolo | fatto: `book.chapter_cache_status` + piano in `cache.info` + seed in `_show_toc` | `book.py`, `main.py`, `progress_model.py` |
+| 2. processati vs tradotti | fatto: gli errori non entrano in `done`; `overall` < 100 con un rosso; niente 100% forzato | `progress_model.py`, `main.py` |
+| 3. lifecycle | fatto: `running_units()` vuoto a run chiuso; timer/header si fermano; righe parziali restano | `progress_model.py`, `chapter_track.py` |
+| 4. completamento onesto | fatto: niente promozione `done>0 → total`; mismatch in `incomplete` e nel log | `progress_model.py`, `main.py` |
+| 5. selezione vuota | fatto: conferma «tutto il libro»; `chapter_mode`/`whole_book` fino a `_start_translation` | `translate_wizard.py`, `main.py`, locales |
+| 6. filtri e heading | fatto: stop a qualsiasi sibling; test dedicato | `chapter_track.py`, `test_chapter_audit.py` |
+| 7. prestazioni | fatto: vista filtrata cache per `(filter, revision)`, mappe file→riga; test strutturale | `chapter_track.py`, `test_translate_view.py` |
+| 8. debito e documentazione | fatto: `set_units` completo, `state()` selection-aware, extra TOC etichettati, estimate documentato, AGENTS aggiornato | `progress_model.py`, `estimate.py`, `AGENTS.md` |
+
+**Verifica**: 403 test desktop OK (1 skip), scenario harness 11/11, console-clean
+7/7, gemello 23 OK. Commit desktop `a2e3f1e`, gemello `46f1daa`.
+
+**Limiti dichiarati**:
+
+- lo stato all'apertura è quello dell'**ultimo run** per la lingua sorgente/
+  destinazione corrente; il cambio modello/stile è coperto dal join su
+  `noesis_resume`, ma senza un nuovo run il pannello non sa quale modello è
+  attivo nel selettore;
+- il benchmark 7.500/20.000 voci non è stato eseguito: la cache del filtro è
+  verificata strutturalmente, non con una misura di latenza;
+- la selezione mista file+ancora resta documentata, non reinterpretata: i
+  totali sono per documento, come da contratto.
+
 ## Verdetti dei critici (verbatim)
 
 - **Luna**: `APPROVE_WITH_CHANGES` — «buona base per l'ordine TOC e la selezione con ancora, ma cache, stato di run fermo, semantica del 100% e costi dei filtri meritano verifica e correzioni mirate.»
