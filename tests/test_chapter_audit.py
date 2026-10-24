@@ -131,6 +131,29 @@ class TestSectionsAndAnchors(unittest.TestCase):
         self.assertEqual(len(model.tracked()), 1)
 
     @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+    def test_heading_is_not_kept_by_a_sibling_document(self):
+        """A document at the heading's depth is a sibling, not a child."""
+        from noesis_ebook_translator.progress_model import (
+            STATE_ERROR, STATE_PENDING, STATE_RUNNING, ChapterUnit, ProgressModel)
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        units = [
+            ChapterUnit(None, "Part One", 0, None, "section", 0),
+            ChapterUnit("a.xhtml", "Chapter 1", 1, None, "document", 1),
+            ChapterUnit("b.xhtml", "Chapter 2", 0, None, "document", 2),
+        ]
+        model = ProgressModel(units)
+        model.set_selection(["b.xhtml"])       # A excluded, B pending
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 2})
+        keep = (STATE_PENDING, STATE_RUNNING, STATE_ERROR)
+        self.assertFalse(
+            ChapterTrackWidget._section_has_visible_child(units, 0, model, keep))
+        # The same heading with a real child is still kept.
+        units[2].depth = 1
+        self.assertTrue(
+            ChapterTrackWidget._section_has_visible_child(units, 0, model, keep))
+
+    @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
     def test_nested_headings_do_not_swallow_a_sibling_subtree(self):
         """The subtree scan must walk nested headings and stop at a sibling."""
         from noesis_ebook_translator.progress_model import (

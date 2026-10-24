@@ -37,6 +37,9 @@ class TranslateWizard(QWizard):
         self.mode = "chapters" if mode == "chapters" else "book"
         self.input_path = input_path
         self._shown = False
+        #: In chapters mode an empty selection is ambiguous: confirm once that
+        #: the user really means the whole book instead of treating it as such.
+        self._whole_book = False
         self._segments_cache: tuple[tuple, list[dict]] | None = None
         self._segments_lock = threading.Lock()
         self.setWindowTitle(T("wizard.translate_title"))
@@ -335,11 +338,19 @@ class TranslateWizard(QWizard):
         self.lbl_output_file.setToolTip(path)
 
     def accept(self) -> None:
-        """Confirm an existing target *before* closing.
+        """Confirm ambiguous choices *before* closing.
 
-        Declining must keep the wizard open with every field intact, which is why
-        the question lives here and not after ``exec()``.
+        Declining must keep the wizard open with every field intact, which is
+        why the questions live here and not after ``exec()``.
         """
+        if self.mode == "chapters" and not self.selected_chapters():
+            answer = QMessageBox.question(
+                self, T("app.title"), T("msg.no_chapters_selected"),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            self._whole_book = True
         if not self._confirm_overwrite():
             return
         self._output_confirmed = True
@@ -385,6 +396,8 @@ class TranslateWizard(QWizard):
             "batch_size": int(self.spn_batch.value()),
             "sequential": self.chk_sequential.isChecked(),
             "chapters": self.selected_chapters(),
+            "chapter_mode": self.mode == "chapters",
+            "whole_book": self._whole_book,
             "grouping": "single" if self.radio_single.isChecked() else "grouped",
             "folder": folder,
             "name": name,

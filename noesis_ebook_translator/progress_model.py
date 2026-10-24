@@ -66,6 +66,9 @@ class ChapterUnit:
     kind: str = "document"          # "document" | "section"
     #: 1-based position in the TOC (from :func:`chapters.flatten`).
     index: int = 0
+    #: A document the engine translated but the TOC does not mention (cover,
+    #: nav, front matter). Appended after the TOC; the view labels it.
+    extra: bool = False
 
     def label(self) -> str:
         return self.name or self.file or self.href or ""
@@ -89,6 +92,9 @@ def build_units(input_path: str | None, selected=None) -> list[ChapterUnit]:
     rows (the engine reports their progress together).
 
     ``selected`` optionally keeps only the entries whose href/file matches.
+    This is a *convenience* for callers that want a subset; the Translate panel
+    does **not** use it, because it keeps every entry visible and marks the
+    others ``excluded`` with :meth:`ProgressModel.set_selection`.
     """
     if not input_path:
         return []
@@ -162,22 +168,30 @@ class DeltaBatch:
         ``ignored`` segments are skipped: the plan reported by the engine
         (``on_plan``) excludes them, so counting them here would push a chapter
         past its own total.
+
+        ``counts`` means **translated successfully**; a failed segment goes to
+        ``errors`` only. Keeping the two apart is what stops a run with a failed
+        segment from reaching 100%: the progress bar and ``overall()`` count
+        translations, not attempts.
         """
         if paragraph is None or getattr(paragraph, "ignored", False):
             return
         page = getattr(paragraph, "page", None)
+        failed = bool(getattr(paragraph, "error", None))
         if page and page != TOC_PAGE:
-            self.counts[page] = self.counts.get(page, 0) + 1
-            if getattr(paragraph, "error", None):
+            if failed:
                 self.errors[page] = self.errors.get(page, 0) + 1
-        if getattr(paragraph, "is_cache", False):
+            else:
+                self.counts[page] = self.counts.get(page, 0) + 1
+        if (not failed and getattr(paragraph, "is_cache", False)
+                and page and page != TOC_PAGE):
+            # Per-document too: a chapter served entirely from the cache was
+            # already translated in an earlier run. TOC titles are not part of a
+            # chapter and must not inflate the global "cached" count.
             self.cached += 1
-            if page and page != TOC_PAGE:
-                # Per-document too: a chapter served entirely from the cache was
-                # already translated in an earlier run.
-                self.cached_pages[page] = self.cached_pages.get(page, 0) + 1
+            self.cached_pages[page] = self.cached_pages.get(page, 0) + 1
         text = (getattr(paragraph, "translation", None) or "").strip()
-        if text and page and page != TOC_PAGE:
+        if text and not failed and page and page != TOC_PAGE:
             self.last = (page, text)
 
     def add_log(self, text: str) -> None:
@@ -219,6 +233,11 @@ class ProgressModel:
         self.last: tuple[str, str] | None = None
         self.finished = False
         self.exported = False
+        #: ``"finished"`` / ``"stopped"`` after :meth:`finish`; empty while live.
+        self.stop_reason = ""
+        #: Documents of the selection that ended a successful run with
+        #: ``0 < done < total``: the run did not prove they were complete.
+        self.incomplete: dict[str, tuple[int, int]] = {}
         self.selection: set[str] | None = None
         self._known: set[str] = {unit.file for unit in self.units if unit.file}
         #: Bumped on every change worth repainting. A big book (thousands of TOC
@@ -257,17 +276,22 @@ class ProgressModel:
         for file_name in sorted(extra, key=sorted_mixed_keys):
             self._known.add(file_name)
             self.units.append(ChapterUnit(file=file_name, name=file_name,
-                                          kind="document"))
+                                          kind="document", extra=True))
         self.revision += 1
 
     def set_units(self, units: list[ChapterUnit]) -> None:
         self.units = list(units)
         self._known = {unit.file for unit in self.units if unit.file}
+        self.plan = {}
         self.done.clear()
         self.errors.clear()
         self.cached = 0
+        self.cached_pages.clear()
         self.last = None
         self.finished = False
+        self.stop_reason = ""
+        self.incomplete = {}
+        self.selection = None
         self.exported = False
         self.revision += 1
 
@@ -300,11 +324,18 @@ class ProgressModel:
         return self.file_state(unit.file)
 
     def state(self, file_name: str) -> str:
-        """State of a document by name (the band header and older callers)."""
-        if self.selection is not None:
-            units = [u for u in self.units if u.file == file_name]
-            if units and not any(self.is_selected(u) for u in units):
-                return STATE_EXCLUDED
+        """State of a document by name.
+
+        Legacy helper kept for callers that think in documents. It now goes
+        through :meth:`unit_state` for the first unit of the file, so a shared
+        document with one selected entry and one excluded entry reports the
+        selected row's state instead of silently ignoring the selection.
+        """
+        units = [unit for unit in self.units if unit.file == file_name]
+        if units:
+            unit = next((unit for unit in units if self.is_selected(unit)),
+                        units[0])
+            return self.unit_state(unit)
         return self.file_state(file_name)
 
     def progress(self, file_name: str | None) -> tuple[int, int]:
@@ -340,8 +371,17 @@ class ProgressModel:
         return (done / total * 100.0) if total else 0.0
 
     def running_units(self) -> list[str]:
+        """Documents actually in progress, not merely partially translated.
+
+        ``running`` is derived from ``0 < done < total``, so a document stopped
+        by a cancel stays ``running`` in the row. This method is the *activity*
+        signal used by the pulse timer and the header: once the run is closed it
+        returns nothing, and error rows are not activity either.
+        """
+        if self.finished:
+            return []
         return [u.file for u in self.tracked()
-                if self.file_state(u.file) in (STATE_RUNNING, STATE_ERROR)]
+                if self.file_state(u.file) == STATE_RUNNING]
 
     def done_chapters(self) -> int:
         """Documents of the selection that are fully translated."""
@@ -363,7 +403,9 @@ class ProgressModel:
         return {"done": self.done_chapters(),
                 "total": self.selection_size(),
                 "cached": self.cached_chapters(),
-                "segments": self.cached}
+                "segments": self.cached,
+                "incomplete": len(self.incomplete),
+                "errors": self.error_count()}
 
     def error_count(self) -> int:
         return sum(self.errors.values())
@@ -396,24 +438,26 @@ class ProgressModel:
         return changed
 
     def finish(self, ok: bool = True) -> None:
-        """Close the run: anything started and error-free counts as done.
+        """Close the run without inventing progress.
 
-        On failure the states are left alone (units stay ``running``/``pending``),
-        so the view does not pretend the interrupted work completed.
+        A successful run does **not** promote ``done > 0`` to ``total`` any more:
+        the engine's callbacks are the only evidence that a segment was
+        translated, and a mismatch between plan and callbacks must stay visible
+        instead of becoming a fake 100%. Documents that end with
+        ``done < total`` and no errors are recorded in :attr:`incomplete` so the
+        caller can log them.
         """
         self.finished = True
+        self.stop_reason = "finished" if ok else "stopped"
         self.revision += 1
         if not ok:
             return
-        for unit in self.units:
-            if unit.kind != "document" or not unit.file:
-                continue
-            if not self.is_selected(unit):
-                continue
-            if self.plan and not self.total(unit.file):
-                continue
-            if self.done.get(unit.file, 0) > 0 and not self.errors.get(unit.file):
-                self.done[unit.file] = self.total(unit.file)
+        self.incomplete = {
+            unit.file: (self.done.get(unit.file, 0), self.total(unit.file))
+            for unit in self.tracked()
+            if not self.errors.get(unit.file)
+            and self.done.get(unit.file, 0) < self.total(unit.file)
+        }
 
     def mark_exported(self) -> None:
         self.exported = True

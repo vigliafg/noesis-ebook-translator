@@ -50,10 +50,13 @@ class TestDeltaBatch(unittest.TestCase):
         batch.add_paragraph(_FakeParagraph("a.xhtml", ignored=True))
 
         payload = batch.payload()
-        self.assertEqual(payload["counts"], {"a.xhtml": 3, "b.xhtml": 1})
+        # The failed paragraph is an error, not a translation: a.xhtml has two
+        # successful segments, not three.
+        self.assertEqual(payload["counts"], {"a.xhtml": 2, "b.xhtml": 1})
         self.assertEqual(payload["errors"], {"a.xhtml": 1})
         self.assertEqual(payload["cached"], 1)
-        self.assertEqual(payload["last"][0], "a.xhtml")
+        # A failed paragraph does not replace the "last translated" preview.
+        self.assertEqual(payload["last"][0], "b.xhtml")
         self.assertEqual(batch.payload()["counts"], payload["counts"])
         batch.reset()
         self.assertIsNone(batch.payload())
@@ -187,7 +190,8 @@ class TestProgressModel(unittest.TestCase):
         self.assertEqual(model.overall_percent(), 0.0)
 
     def test_finish_never_completes_an_excluded_row(self):
-        from noesis_ebook_translator.progress_model import STATE_EXCLUDED
+        from noesis_ebook_translator.progress_model import (
+            STATE_EXCLUDED, STATE_RUNNING)
 
         model = self._model()
         model.set_selection(["a.xhtml"])
@@ -195,20 +199,25 @@ class TestProgressModel(unittest.TestCase):
         model.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0,
                      "last": None})
         model.finish(ok=True)
-        self.assertEqual(model.done.get("a.xhtml"), 2)      # started -> done
+        # Only the callbacks are evidence: a successful process does not
+        # promote a partly reported chapter to 100%.
+        self.assertEqual(model.done.get("a.xhtml"), 1)
+        self.assertEqual(model.state("a.xhtml"), STATE_RUNNING)
+        self.assertIn("a.xhtml", model.incomplete)
         self.assertIsNone(model.done.get("b.xhtml"))        # excluded: untouched
         self.assertEqual(model.state("b.xhtml"), STATE_EXCLUDED)
 
     def test_finish_leaves_a_contentless_document_alone(self):
         from noesis_ebook_translator.progress_model import (
-            ChapterUnit, ProgressModel)
+            ChapterUnit, STATE_RUNNING, ProgressModel)
 
         model = ProgressModel([ChapterUnit("a.xhtml"), ChapterUnit("empty.xhtml")])
         model.set_plan({"a.xhtml": 2, "empty.xhtml": 0})
         model.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0,
                      "last": None})
         model.finish(ok=True)
-        self.assertEqual(model.done.get("a.xhtml"), 2)
+        self.assertEqual(model.done.get("a.xhtml"), 1)
+        self.assertEqual(model.state("a.xhtml"), STATE_RUNNING)
         self.assertIsNone(model.done.get("empty.xhtml"))
 
     def test_cached_chapters_and_summary(self):
@@ -225,13 +234,15 @@ class TestProgressModel(unittest.TestCase):
         self.assertEqual(model.done_chapters(), 2)
         self.assertEqual(model.selection_size(), 3)
         self.assertEqual(model.summary(), {"done": 2, "total": 3, "cached": 2,
-                                          "segments": 6})
+                                          "segments": 6, "incomplete": 0,
+                                          "errors": 0})
         # Not finished yet: it is not "done", so it is not "cached" either.
         self.assertEqual(model.state("c.xhtml"), "running")
         model.apply({"counts": {"c.xhtml": 2}, "errors": {}, "cached": 0,
                      "cached_pages": {}, "last": None})
         self.assertEqual(model.summary(),
-                         {"done": 3, "total": 3, "cached": 2, "segments": 6})
+                         {"done": 3, "total": 3, "cached": 2, "segments": 6,
+                          "incomplete": 0, "errors": 0})
 
     def test_error_state_and_finish(self):
         from noesis_ebook_translator.progress_model import (
@@ -244,6 +255,9 @@ class TestProgressModel(unittest.TestCase):
         self.assertEqual(model.state("a.xhtml"), STATE_DONE)
         self.assertEqual(model.state("b.xhtml"), STATE_ERROR)
         self.assertEqual(model.error_count(), 1)
+        # The failed segment is not a translation: 3 of 4, not 4 of 4.
+        self.assertEqual(model.overall(), (3, 4))
+        self.assertAlmostEqual(model.overall_percent(), 75.0)
         self.assertTrue(model.apply({"counts": {"b.xhtml": 1}, "errors": {},
                                      "cached": 0, "last": None}))
         self.assertFalse(model.apply(None))
@@ -254,12 +268,62 @@ class TestProgressModel(unittest.TestCase):
         model2.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0, "last": None})
         model2.finish(ok=False)
         self.assertEqual(model2.state("a.xhtml"), STATE_RUNNING)
+        self.assertEqual(model2.running_units(), [])
         self.assertEqual(model2.overall(), (1, 4))
-        # A closing (successful) finish completes the units that were started.
+        # A successful finish no longer promotes a partial chapter: only the
+        # callbacks decide. The mismatch is recorded, not hidden.
         model2.finish(ok=True)
-        self.assertEqual(model2.state("a.xhtml"), STATE_DONE)
+        self.assertEqual(model2.state("a.xhtml"), STATE_RUNNING)
         self.assertEqual(model2.state("b.xhtml"), STATE_PENDING)
-        self.assertEqual(model2.overall(), (2, 4))
+        self.assertEqual(model2.overall(), (1, 4))
+        self.assertIn("a.xhtml", model2.incomplete)
+
+        # A chapter that really reported all its segments is done.
+        model3 = self._model()
+        model3.set_plan({"a.xhtml": 2, "b.xhtml": 2})
+        model3.apply({"counts": {"a.xhtml": 2}, "errors": {}, "cached": 0,
+                      "last": None})
+        model3.finish(ok=True)
+        self.assertEqual(model3.state("a.xhtml"), STATE_DONE)
+        self.assertNotIn("a.xhtml", model3.incomplete)
+
+    def test_delta_batch_counts_errors_separately(self):
+        """A failed segment is an error, never a translation."""
+        from types import SimpleNamespace
+
+        from noesis_ebook_translator.progress_model import DeltaBatch
+
+        batch = DeltaBatch()
+        failed = SimpleNamespace(page="a.xhtml", ignored=False, error="boom",
+                                 is_cache=False, translation="")
+        batch.add_paragraph(failed)
+        payload = batch.payload()
+        self.assertEqual(payload["counts"], {})
+        self.assertEqual(payload["errors"], {"a.xhtml": 1})
+
+        batch.reset()
+        ok = SimpleNamespace(page="a.xhtml", ignored=False, error=None,
+                             is_cache=False, translation="ciao")
+        batch.add_paragraph(ok)
+        payload = batch.payload()
+        self.assertEqual(payload["counts"], {"a.xhtml": 1})
+        self.assertEqual(payload["errors"], {})
+        self.assertEqual(payload["last"], ("a.xhtml", "ciao"))
+
+    def test_cancel_stops_the_activity_signal(self):
+        from noesis_ebook_translator.progress_model import (
+            STATE_RUNNING, ProgressModel)
+
+        model = self._model()
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 2})
+        model.apply({"counts": {"a.xhtml": 1}, "errors": {}, "cached": 0,
+                     "last": None})
+        self.assertEqual(model.running_units(), ["a.xhtml"])
+        model.finish(ok=False)
+        self.assertEqual(model.running_units(), [])
+        self.assertEqual(model.stop_reason, "stopped")
+        # The row still shows the partial work; it is the *activity* that stops.
+        self.assertEqual(model.state("a.xhtml"), STATE_RUNNING)
 
 
 class TestBuildUnits(unittest.TestCase):
@@ -390,6 +454,31 @@ class TestTranslateViewWidget(unittest.TestCase):
         finally:
             view.close()
 
+    def test_all_filter_reuses_the_units_and_keys(self):
+        """A count delta must not copy/re-key the whole TOC under ``all``."""
+        from noesis_ebook_translator.progress_model import (
+            ChapterUnit, ProgressModel)
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        units = [ChapterUnit(f"c{i}.xhtml", f"Chapter {i}")
+                 for i in range(2000)]
+        model = ProgressModel(units)
+        model.set_plan({unit.file: 2 for unit in units})
+        track = ChapterTrackWidget(reduce_motion=True)
+        try:
+            track.set_model(model)
+            track.set_filter("all")
+            self.assertIs(track._filtered_cache, model.units)
+            keys = track._filtered_keys
+            model.apply({"counts": {units[0].file: 1}, "errors": {},
+                         "cached": 0, "last": None})
+            track.refresh()
+            self.assertIs(track._filtered_cache, model.units)
+            self.assertIs(track._filtered_keys, keys)
+            self.assertEqual(track._list.count(), len(units))
+        finally:
+            track.close()
+
     def test_liquid_glides_and_reaches_the_target(self):
         from noesis_ebook_translator.ui.translate_view import TranslateView
 
@@ -444,6 +533,30 @@ class TestTranslateViewWidget(unittest.TestCase):
             view.refresh()
             self.assertEqual(model.running_units(), [])
             self.assertFalse(view.track.is_animating())
+        finally:
+            view.hide()
+            view.close()
+
+    def test_cancel_stops_the_pulse_and_the_header(self):
+        from noesis_ebook_translator.ui.translate_view import TranslateView
+
+        view = TranslateView(reduce_motion=False)
+        try:
+            view.resize(900, 600)
+            view.set_model(self._model(["a.xhtml", "b.xhtml"]))
+            model = view.model()
+            model.set_plan({"a.xhtml": 4, "b.xhtml": 4})
+            model.apply({"counts": {"a.xhtml": 2}, "errors": {},
+                         "cached": 0, "last": None})
+            view.refresh()
+            view.show()
+            self.app.processEvents()
+            self.assertTrue(view.track.is_animating())
+            self.assertTrue(view.track.bar_current.is_animating())
+            view.set_finished(ok=False)
+            self.app.processEvents()
+            self.assertFalse(view.track.is_animating())
+            self.assertFalse(view.track.bar_current.is_animating())
         finally:
             view.hide()
             view.close()

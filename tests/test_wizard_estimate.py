@@ -74,6 +74,53 @@ class WizardPagesTest(unittest.TestCase):
         return window
 
     # -----------------------------------------------------------------
+    def test_chapters_mode_with_no_selection_asks_before_whole_book(self):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from noesis_ebook_translator.ui import TranslateWizard
+
+        wizard = TranslateWizard(None, mode="chapters", input_path=self.src,
+                                 engine="Fake", synchronous_tests=True,
+                                 analysis_runner=_runner_factory)
+        try:
+            self.assertEqual(wizard.selected_chapters(), [])
+            self.assertTrue(wizard.config()["chapter_mode"])
+            self.assertFalse(wizard.config()["whole_book"])
+            original = QMessageBox.question
+            QMessageBox.question = staticmethod(
+                lambda *a, **k: QMessageBox.StandardButton.No)
+            try:
+                wizard.accept()
+            finally:
+                QMessageBox.question = original
+            # Declining the question leaves the wizard open and does not turn
+            # the empty selection into "the whole book".
+            self.assertNotEqual(wizard.result(),
+                                wizard.DialogCode.Accepted)
+            self.assertFalse(wizard.config()["whole_book"])
+        finally:
+            wizard.close()
+
+    def test_chapters_mode_can_confirm_the_whole_book(self):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from noesis_ebook_translator.ui import TranslateWizard
+
+        wizard = TranslateWizard(None, mode="chapters", input_path=self.src,
+                                 engine="Fake", synchronous_tests=True,
+                                 analysis_runner=_runner_factory)
+        try:
+            original = QMessageBox.question
+            QMessageBox.question = staticmethod(
+                lambda *a, **k: QMessageBox.StandardButton.Yes)
+            try:
+                wizard.accept()
+            finally:
+                QMessageBox.question = original
+            self.assertTrue(wizard.config()["whole_book"])
+        finally:
+            wizard.close()
+
     def test_pages_order_and_analysis_result(self):
         wizard = self._wizard()
         try:

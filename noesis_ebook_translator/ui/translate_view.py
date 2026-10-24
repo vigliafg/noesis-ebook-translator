@@ -183,19 +183,20 @@ class TranslateView(QWidget):
         self.status.set_reduce_motion(self._reduce_motion)
 
     # -- state ------------------------------------------------------------
-    def refresh(self) -> None:
-        """Repaint every band from the current model."""
+    def refresh(self) -> float:
+        """Repaint every band from the current model; return the percentage."""
         model = self._model
         self.track.refresh()
         if model is None:
-            return
-        percent = model.overall_percent()
-        self.glass.set_level(percent)
+            return 0.0
         done, total = model.overall()
+        percent = (done / total * 100.0) if total else 0.0
+        self.glass.set_level(percent)
         parts = [f"{done}/{total} {T('label.segments').lower()}"] if total else []
         if model.cached:
             parts.append(f"{T('translate.cached')}: {model.cached}")
         self.glass.set_caption("\n".join(parts))
+        return percent
 
     def set_finished(self, ok: bool = True, exported: bool = False) -> None:
         if self._model is None:
@@ -204,7 +205,6 @@ class TranslateView(QWidget):
         if exported:
             self._model.mark_exported()
         self.refresh()
-        self.glass.set_level(self._model.overall_percent())
 
     def state(self) -> dict:
         return {"sizes": list(self.splitter.sizes()),

@@ -436,8 +436,11 @@ class MainWindow(QMainWindow):
 
         Called as soon as a book is opened, so the trail is already there (in
         reading order, hierarchy visible, no numbers yet) instead of being filled
-        in later -- or worse, left over from the previous book. When the TOC
-        cannot be read at all, the reason is shown in the band.
+        in later -- or worse, left over from the previous book. When a cache for
+        this book exists, the rows are seeded with the last run's plan and
+        coverage, so "translated / still to translate" is meaningful before the
+        user starts anything. When the TOC cannot be read at all, the reason is
+        shown in the band.
         """
         model = None
         error = None
@@ -448,6 +451,38 @@ class MainWindow(QMainWindow):
                 error = str(exc)
             except Exception:  # noqa: BLE001 - a broken TOC must not break the UI
                 model = None
+            if model is not None:
+                try:
+                    target = (self.cmb_target.currentText().strip()
+                              if getattr(self, "cmb_target", None) else "")
+                    source = (self.cmb_source.currentText().strip()
+                              if getattr(self, "cmb_source", None) else "")
+                    if source == "Auto detect":
+                        source = ""
+                    status = book.chapter_cache_status(
+                        path, source_lang=source or None,
+                        target_lang=target or None)
+                except Exception:  # noqa: BLE001 - cache read is best effort
+                    status = {}
+                if status:
+                    plan = status.get("plan") or {}
+                    if plan:
+                        model.set_plan(plan)
+                    chapters = status.get("chapters")
+                    if chapters:
+                        model.set_selection(chapters)
+                    cached = dict(status.get("cached") or {})
+                    if cached:
+                        model.apply({
+                            "counts": cached,
+                            "errors": {},
+                            "cached": sum(cached.values()),
+                            "cached_pages": cached,
+                            "last": None,
+                        })
+                    # No run is active: stop the pulse/header before the first
+                    # delta, but keep the partial rows visible.
+                    model.finish(ok=True)
         self.translate_view.set_model(model, toc_error=error)
         if error:
             self.log.appendPlainText(error)
@@ -1424,6 +1459,12 @@ class MainWindow(QMainWindow):
         # A chapter spec always becomes TOC-entry identities (href + anchor): the
         # wizard and the chapter panel may hand over indices, file names or hrefs.
         chapters = self._normalize_chapter_spec(cfg.get("chapters"))
+        # Safety net for callers that did not go through TranslateWizard.accept:
+        # an empty list in chapters mode must not silently mean the whole book.
+        if (cfg.get("chapter_mode") and not chapters
+                and not cfg.get("whole_book")):
+            self._status_message(T("msg.no_chapters_selected"))
+            return
         folder = cfg.get("folder") or os.path.dirname(self._input_path)
         name = cfg.get("name") or os.path.splitext(
             os.path.basename(self._input_path))[0]
@@ -1541,8 +1582,7 @@ class MainWindow(QMainWindow):
         model.apply(payload)
         if payload.get("log"):
             self.log.appendPlainText("\n".join(payload["log"]))
-        self.translate_view.refresh()
-        percent = model.overall_percent()
+        percent = self.translate_view.refresh()
         self.workflow.set_book_percent(int(percent))
         self._on_progress(percent / 100.0, "")
         if self.worker is not None:
@@ -1569,9 +1609,13 @@ class MainWindow(QMainWindow):
     def _on_finished(self, path: str) -> None:
         self.progress.set_busy(False)
         self.chapter_bar.set_busy(False)
-        self.progress.setValue(100)
-        self.chapter_bar.setValue(100)
-        self.book_label.setText("100%")
+        model = self.translate_view.model()
+        # A successful process is not necessarily a complete translation: a
+        # failed segment leaves the chapter red and the percentage below 100.
+        percent = int(round(model.overall_percent())) if model is not None else 100
+        self.progress.setValue(percent)
+        self.chapter_bar.setValue(percent)
+        self.book_label.setText(f"{percent}%")
         self.status.stop_busy()
         self.status.set_base_text(T("status.done"))
         try:
@@ -1589,13 +1633,18 @@ class MainWindow(QMainWindow):
             except Exception:  # noqa: BLE001
                 pass
         self.translate_view.set_finished(ok=True, exported=False)
-        self.workflow.set_book(self._book_label(self._input_path), percent=100,
+        self.workflow.set_book(self._book_label(self._input_path), percent=percent,
                                working=False)
         summary = self.translate_view.model().summary() if (
             self.translate_view.model() is not None) else {}
         self._summary_message = self._chapters_message(summary)
         if self._summary_message:
             self.log.appendPlainText(self._summary_message)
+        if model is not None and model.incomplete:
+            self.log.appendPlainText(
+                T("msg.chapters_incomplete").format(
+                    incomplete=len(model.incomplete),
+                    total=model.selection_size()))
         if self._pending_split:
             # One EPUB per chapter: keep the message for when the split is done.
             self._split_ok = False

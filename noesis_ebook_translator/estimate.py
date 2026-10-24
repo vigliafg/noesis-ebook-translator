@@ -126,7 +126,13 @@ def format_usd(value: float | None) -> str:
 
 @dataclass
 class ChapterEstimate:
-    """One row of the per-chapter table."""
+    """One row of the per-chapter table.
+
+    ``cached_segments`` is only a **proportional** estimate (the token counter
+    knows the cached content hashes, not which page each segment belongs to).
+    It is fine for a cost preview; it is not a per-document status. The chapter
+    panel uses :func:`book.chapter_cache_status` for that.
+    """
 
     key: str
     title: str

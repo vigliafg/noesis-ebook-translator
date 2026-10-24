@@ -130,7 +130,10 @@ class _UnitDelegate(QStyledItemDelegate):
             # normal colour; only the excluded ones stay grey.
             name_color = colors["text"]
         painter.setPen(name_color)
-        name = metrics.elidedText(str(data.get("name") or ""),
+        name = str(data.get("name") or "")
+        if data.get("extra"):
+            name = f"{name} ({T('track.extra')})"
+        name = metrics.elidedText(name,
                                   Qt.TextElideMode.ElideRight, text_width)
         painter.drawText(QRect(text_left, rect.top(), text_width, NAME_HEIGHT),
                          int(Qt.AlignmentFlag.AlignVCenter), name)
@@ -183,6 +186,16 @@ class ChapterTrackWidget(QWidget):
         self._files: list[str] = []
         #: The rows currently shown, in order: the delegate reads them by index.
         self._units: list = []
+        #: Filtered view cached per ``(filter, model.revision)``: a delta that
+        #: changes counts but not the visible set must not re-scan the TOC.
+        self._filtered_cache: list | None = None
+        self._filtered_keys: list[str] | None = None
+        self._filtered_key: tuple | None = None
+        self._last_filtered_units: list | None = None
+        self._last_filtered_keys: list[str] | None = None
+        #: First visible unit and row for each document (header/scroll lookups).
+        self._unit_by_file: dict[str, object] = {}
+        self._row_by_file: dict[str, int] = {}
         #: Set when the visible set must be rebuilt even if it looks unchanged
         #: (an empty result must not be mistaken for "nothing changed").
         self._rebuild_pending = True
@@ -258,6 +271,13 @@ class ChapterTrackWidget(QWidget):
         self._model = model
         self._files = []
         self._units = []
+        self._filtered_cache = None
+        self._filtered_keys = None
+        self._filtered_key = None
+        self._last_filtered_units = None
+        self._last_filtered_keys = None
+        self._unit_by_file = {}
+        self._row_by_file = {}
         self._rebuild_pending = True
         self._revision = -1
         self._last_running = []
@@ -282,6 +302,7 @@ class ChapterTrackWidget(QWidget):
         state = model.unit_state(unit)
         return {"name": unit.label(), "depth": unit.depth, "done": done,
                 "total": total, "state": state,
+                "extra": bool(getattr(unit, "extra", False)),
                 "exported": model.exported and state == STATE_DONE}
 
     def set_filter(self, name: str) -> None:
@@ -293,6 +314,11 @@ class ChapterTrackWidget(QWidget):
         if button is not None and not button.isChecked():
             button.setChecked(True)
         self._files = []
+        self._filtered_cache = None
+        self._filtered_keys = None
+        self._filtered_key = None
+        self._last_filtered_units = None
+        self._last_filtered_keys = None
         self._rebuild_pending = True     # an empty result is still a change
         self.refresh()
 
@@ -303,9 +329,35 @@ class ChapterTrackWidget(QWidget):
         model = self._model
         if model is None:
             return []
-        return self._filtered(model)
+        return list(self._filtered(model))
 
     def _filtered(self, model: ProgressModel) -> list:
+        """Visible rows, cached per ``(filter, model.revision)``.
+
+        ``all`` is the common case during a run: the rows are the model's units
+        in TOC order, so repeated deltas reuse the same list and key snapshot
+        instead of copying the whole TOC at every tick.
+        """
+        key = (self._filter, model.revision)
+        if key == self._filtered_key and self._filtered_cache is not None:
+            return self._filtered_cache
+        if self._filter == "all":
+            units = model.units
+            if (self._filtered_cache is units
+                    and self._filtered_keys is not None
+                    and len(self._filtered_keys) == len(units)):
+                self._filtered_key = key
+                return units
+            self._filtered_cache = units
+            self._filtered_keys = [unit.key() for unit in units]
+        else:
+            self._filtered_cache = self._compute_filtered(model)
+            self._filtered_keys = [unit.key()
+                                   for unit in self._filtered_cache]
+        self._filtered_key = key
+        return self._filtered_cache
+
+    def _compute_filtered(self, model: ProgressModel) -> list:
         if self._filter == "all":
             return list(model.units)
         keep = ((STATE_PENDING, STATE_RUNNING, STATE_ERROR)
@@ -327,11 +379,12 @@ class ChapterTrackWidget(QWidget):
                                    keep) -> bool:
         depth = units[index].depth
         for unit in units[index + 1:]:
-            if unit.kind != "document":
-                if unit.depth <= depth:
-                    break            # a sibling heading: the subtree is over
-                continue
-            if model.unit_state(unit) in keep:
+            # A document at the same (or shallower) depth is a sibling, not a
+            # descendant: the heading's subtree ended there. Checking only the
+            # heading rows let a sibling document keep the heading alive.
+            if unit.depth <= depth:
+                break
+            if unit.kind == "document" and model.unit_state(unit) in keep:
                 return True
         return False
 
@@ -365,11 +418,18 @@ class ChapterTrackWidget(QWidget):
         if model is None:
             return
         units = self._filtered(model)
-        if self._rebuild_pending or [unit.key() for unit in units] != self._files:
-            self._rebuild(units)
+        keys = self._filtered_keys or []
+        # Rebuild only when the visible set really changed. ``keys is not
+        # self._last_filtered_keys`` means the filter recomputed the view; for
+        # ``all`` with the same units the cached list and keys are reused.
+        if self._rebuild_pending or (
+                keys is not self._last_filtered_keys and keys != self._files):
+            self._rebuild(units, keys)
             self._revision = -1
+        self._last_filtered_units = units
+        self._last_filtered_keys = keys
         # Repaint once per real change: the delegate rebuilds each *visible* row's
-        # payload while painting, so nothing here is O(entries) per frame.
+        # payload while painting; the filter is cached per model revision.
         if model.revision != self._revision:
             self._revision = model.revision
             self._list.viewport().update()
@@ -378,14 +438,13 @@ class ChapterTrackWidget(QWidget):
             self._last_running = list(running)
             self._scroll_to(running[0] if running else None)
         self._update_empty(units)
-        self._update_header(model)
+        self._update_header(model, running)
         self._update_timer()
 
     def _scroll_to(self, file_name: str | None) -> None:
         if not file_name:
             return
-        row = next((index for index, unit in enumerate(self._units)
-                    if unit.file == file_name), None)
+        row = self._row_by_file.get(file_name)
         if row is None:
             return
         item = self._list.item(row)
@@ -401,8 +460,9 @@ class ChapterTrackWidget(QWidget):
         self.lbl_empty.setVisible(empty)
         self._list.setVisible(not empty)
 
-    def _current_file(self, model: ProgressModel) -> str | None:
-        running = model.running_units()
+    def _current_file(self, model: ProgressModel,
+                      running: list[str] | None = None) -> str | None:
+        running = model.running_units() if running is None else running
         if running:
             return running[0]
         for unit in model.units:
@@ -413,28 +473,42 @@ class ChapterTrackWidget(QWidget):
                 return unit.file
         return None
 
-    def _update_header(self, model: ProgressModel) -> None:
-        current = self._current_file(model)
+    def _update_header(self, model: ProgressModel,
+                       running: list[str] | None = None) -> None:
+        current = self._current_file(model, running)
         if current is None:
             self.lbl_subtitle.setText("—")
             self.bar_current.setValue(0)
             self.bar_current.set_busy(False)
             return
-        unit = next((u for u in model.units if u.file == current), None)
+        unit = self._unit_by_file.get(current)
+        if unit is None:
+            unit = next((u for u in model.units if u.file == current), None)
         self.lbl_subtitle.setText(unit.label() if unit else current)
         done, total = model.progress(current)
         self.bar_current.setValue(int(done / total * 100) if total else 0)
-        self.bar_current.set_busy(model.file_state(current) == STATE_RUNNING)
+        # After a cancel/fail the run is closed: the partial row keeps its
+        # numbers, but the header must not keep shimmering as if it were live.
+        self.bar_current.set_busy(
+            not model.finished and model.file_state(current) == STATE_RUNNING)
 
-    def _rebuild(self, units) -> None:
+    def _rebuild(self, units, keys: list[str] | None = None) -> None:
         """Recreate the row placeholders (one per visible entry).
 
         The rows carry no data: the delegate asks :meth:`row_data` for it while
-        painting, so a rebuild is just N cheap items.
+        painting, so a rebuild is just N cheap items. The file→row maps make
+        header and auto-scroll lookups O(1) instead of a scan of the TOC.
         """
         self._list.clear()
         self._units = list(units)
-        self._files = [unit.key() for unit in units]
+        self._files = list(keys) if keys is not None else [
+            unit.key() for unit in units]
+        self._unit_by_file = {}
+        self._row_by_file = {}
+        for row, unit in enumerate(self._units):
+            if unit.file:
+                self._unit_by_file.setdefault(unit.file, unit)
+                self._row_by_file.setdefault(unit.file, row)
         self._rebuild_pending = False
         for _ in units:
             self._list.addItem(QListWidgetItem())

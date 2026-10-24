@@ -39,6 +39,7 @@ __all__ = [
     "translate_epub", "preview_translation", "list_engine_names",
     "default_output_path", "output_name", "output_base_name", "language_slug",
     "interrupted_runs", "dismiss_interrupted_run", "collect_segments",
+    "chapter_cache_status",
 ]
 
 
@@ -550,6 +551,157 @@ def interrupted_runs(input_path: str | None = None, *,
     return found
 
 
+def _read_resume_hashes(db_path: str, engine: str, model: str,
+                        source_lang: str, target_lang: str,
+                        style_hash: str) -> set[str]:
+    """Content hashes already translated for this exact run scope.
+
+    Same query as the estimator, kept here so the panel can read a cache
+    without importing the estimate module (and without writing to the DB).
+    """
+    if not os.path.isfile(db_path):
+        return set()
+    try:
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error:  # pragma: no cover - unreadable file
+        return set()
+    try:
+        rows = connection.execute(
+            "SELECT content_hash FROM noesis_resume WHERE engine_name=? AND "
+            "model=? AND source_lang=? AND target_lang=? AND style_hash=? "
+            "AND translation IS NOT NULL AND translation<>''",
+            (engine, model, source_lang, target_lang, style_hash)).fetchall()
+    except sqlite3.OperationalError:
+        # A cache written before the style column existed can only serve
+        # un-styled runs.
+        if style_hash:
+            return set()
+        try:
+            rows = connection.execute(
+                "SELECT content_hash FROM noesis_resume WHERE engine_name=? "
+                "AND model=? AND source_lang=? AND target_lang=? AND "
+                "translation IS NOT NULL AND translation<>''",
+                (engine, model, source_lang, target_lang)).fetchall()
+        except sqlite3.Error:
+            return set()
+    except sqlite3.Error:
+        return set()
+    finally:
+        connection.close()
+    return {str(row[0]) for row in rows}
+
+
+def chapter_cache_status(input_path: str,
+                         *, directory: str | None = None,
+                         source_lang: str | None = None,
+                         target_lang: str | None = None) -> dict[str, Any]:
+    """Per-document translation coverage of the newest cache for a book.
+
+    The panel used to know progress only from the live worker, so reopening a
+    book showed every chapter as pending even after a complete run. This reads
+    the newest cache whose ``info.input_path`` matches ``input_path`` (and, when
+    given, whose source/target language matches the UI) and returns the plan
+    persisted by the run plus, for every page, how many segments are already
+    translated.
+
+    Coverage is the **effective** one: a row counts if the positional cache has
+    a translation for the current engine/language, or if its content hash is in
+    ``noesis_resume`` for the same engine/model/source/target/style scope. The
+    second half is what makes the status survive a model switch and come back
+    when the user switches back.
+
+    Returns ``{}`` when the book has never been run (or only in another
+    language). The result is a read-only snapshot; the caller decides whether to
+    show it.
+    """
+    if not input_path:
+        return {}
+    store = directory if directory is not None else TranslationCache.cache_path
+    if not store or not os.path.isdir(store):
+        return {}
+    wanted = os.path.abspath(input_path)
+    best: tuple[int, str, dict[str, str]] | None = None
+    for db_path in glob(os.path.join(store, "*.db")):
+        info, _done, _total = _read_cache_state(db_path)
+        stored = info.get("input_path") or ""
+        if not stored or os.path.abspath(stored) != wanted:
+            continue
+        if target_lang and info.get("target_lang") != target_lang:
+            continue
+        if source_lang and info.get("source_lang") != source_lang:
+            continue
+        try:
+            rank = int(info.get("run_finished_at")
+                       or info.get("run_updated_at")
+                       or info.get("run_started_at") or 0)
+        except (TypeError, ValueError):
+            rank = 0
+        if not rank:
+            try:
+                rank = int(os.path.getmtime(db_path))
+            except OSError:  # pragma: no cover - vanished in the meantime
+                rank = 0
+        if best is None or rank > best[0]:
+            best = (rank, db_path, info)
+    if best is None:
+        return {}
+
+    _rank, db_path, info = best
+    plan: dict[str, int] = {}
+    raw_plan = _json_or_none(info.get("plan")) or {}
+    if isinstance(raw_plan, dict):
+        for page, total in raw_plan.items():
+            if page and str(page) != "toc.ncx":
+                try:
+                    plan[str(page)] = max(0, int(total))
+                except (TypeError, ValueError):
+                    continue
+    chapters = _json_or_none(info.get("chapters")) or None
+    engine = info.get("engine_name") or ""
+    model = info.get("model") or ""
+    source = info.get("source_lang") or ""
+    target = info.get("target_lang") or ""
+    style_hash = info.get("run_style_hash") or ""
+    hashes = _read_resume_hashes(db_path, engine, model, source, target,
+                                 style_hash) if engine else set()
+
+    totals = dict(plan)
+    cached: dict[str, int] = {}
+    try:
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except sqlite3.Error:  # pragma: no cover - unreadable file
+        connection = None
+    if connection is not None:
+        try:
+            rows = connection.execute(
+                "SELECT page, original, translation FROM cache "
+                "WHERE NOT ignored").fetchall()
+        except sqlite3.Error:
+            rows = []
+        finally:
+            connection.close()
+        for page, original, translation in rows:
+            if not page or str(page) == "toc.ncx":
+                continue
+            page = str(page)
+            if not plan:
+                # No persisted plan (a cache from an older version): the rows
+                # are the only source for the totals.
+                totals[page] = totals.get(page, 0) + 1
+            hit = bool(translation and str(translation).strip())
+            if not hit and hashes and original:
+                hit = uid(str(original)) in hashes
+            if hit:
+                cached[page] = cached.get(page, 0) + 1
+
+    return {
+        "plan": plan or totals,
+        "cached": cached,
+        "chapters": chapters,
+        "info": dict(info),
+    }
+
+
 def dismiss_interrupted_run(run: dict[str, Any] | str) -> None:
     """Stop offering ``run`` again (the user answered "No").
 
@@ -743,6 +895,7 @@ def translate_epub(
     # them to show real per-chapter progress (and chapter completion) instead of
     # a linear estimate. ``originals`` entries are
     # ``(id, md5, raw, content, ignored, attributes, page_id)``.
+    plan_counts: dict[str, int] = {}
     if on_plan is not None:
         counts: dict[str, int] = {}
         for entry in originals:
@@ -751,6 +904,7 @@ def translate_epub(
             page = entry[6]   # page_id = XHTML file name (or "toc.ncx")
             if page and page != "toc.ncx":
                 counts[page] = counts.get(page, 0) + 1
+        plan_counts = dict(counts)
         on_plan(counts)
 
     # Cache persists translations across runs (deduplicated by content).
@@ -764,6 +918,10 @@ def translate_epub(
     cache.set_info("engine_name", translator.name)
     cache.set_info("target_lang", target_lang)
     cache.set_info("plugin_version", EbookTranslator.__version__)
+    if plan_counts:
+        # The panel can show "already translated / still to translate" the next
+        # time the book is opened, without waiting for a new run to emit it.
+        cache.set_info("plan", json.dumps(plan_counts))
 
     # Keep the run selection so "resume" can offer the same chapters again.
     cache.set_info("chapters",

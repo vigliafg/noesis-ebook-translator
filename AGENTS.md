@@ -199,27 +199,46 @@ TOC**, in ordine di lettura, indentata per profondità — **mai** una riga per 
 V del corpus). Le intestazioni senza documento restano come righe
 (`STATE_HEADER`, nessuna barra/conteggio).
 
-- **Stato A** (libro aperto, nessuna traduzione): l'intera gerarchia è già lì,
-  tutte le voci in font normale, senza numeri (`_apply_source` chiama
-  `_show_toc`). Nessuna marcatura dedotta dalla cache.
+- **Stato A** (libro aperto, nessun run attivo): l'intera gerarchia è già lì,
+  tutte le voci in font normale. Se esiste una cache per il libro, le righe sono
+  seminate con il piano e la copertura dell'ultimo run
+  (`book.chapter_cache_status`): «Tradotti» / «Da tradurre» sono significativi
+  **prima** di avviare qualcosa, e le righe parziali restano visibili senza
+  animazioni. Se non c'è cache, restano senza numeri.
 - **Stato B** (dopo il wizard / durante): selezionati normali, gli altri
   **grigi** (`STATE_EXCLUDED`); i capitoli in lavorazione con **barra +
   `done/total`**. Filtri «Tutti» / «Da tradurre» / «Tradotti»: con «Da tradurre»
   restano solo le sezioni che hanno ancora un figlio visibile.
 - **Stato C** (fine corsa, vista «Tutti»): i tradotti restano nella gerarchia in
   **neretto + check + barra piena**.
-- La selezione viaggia come **href con ancora** (`main._normalize_chapter_spec`,
-  `TranslateWizard._chapter_choices`): passare nomi di file fondeva le voci che
-  condividono un documento (selezionare CHAPTER V ne traduceva 87 segmenti
-  invece di 8).
+- **`done` = tradotto con successo**, non «processato». Un segmento fallito va
+  in `errors`: la riga è rossa, la barra si ferma sotto il totale e
+  `overall_percent()` **non** arriva a 100. La percentuale globale e quella del
+  capitolo descrivono traduzioni, non tentativi.
+- **Cancel/fail chiudono il run**: `ProgressModel.finish(ok=False)` alza
+  `finished`, `running_units()` torna vuoto e timer/header smettono di pulsare.
+  Le righe parziali restano visibili (non fingono il completamento).
+- **`finish(ok=True)` non promuove** un capitolo a `total`: contano solo i
+  callback. I documenti con `done < total` finiscono in `incomplete` e vengono
+  loggati a fine run.
+- **Filtri e heading**: una heading resta solo se un suo discendente è visibile;
+  un documento alla stessa profondità è un sibling e interrompe il sottoalbero
+  (bug del vecchio scan, che guardava solo le heading).
+- **Selezione vuota**: nel wizard capitoli `[]` non è «tutto il libro»; l'utente
+  deve confermarlo (`whole_book`). La selezione viaggia come **href con ancora**
+  (`main._normalize_chapter_spec`, `TranslateWizard._chapter_choices`): passare
+  nomi di file fondeva le voci che condividono un documento (selezionare
+  CHAPTER V ne traduceva 87 segmenti invece di 8).
 - I totali (`overall/summary/done_chapters`) si contano sui **documenti unici**,
-  così due voci sullo stesso file non contano due volte.
+  così due voci sullo stesso file non contano due volte. I documenti che il
+  motore traduce ma il TOC non menziona (cover, nav) vengono aggiunti in coda
+  con `extra=True` ed etichettati «fuori indice».
 - La barra è disegnata **dentro** la riga (`BAR_TOP`, non sugli ultimi 2 px):
   una riga tagliata dal viewport non perde più la barra.
 - **Scala**: il delegate costruisce il payload **su richiesta** (`row_data`), solo
-  per le righe che dipinge, e `ProgressModel.revision` evita i refresh inutili. Il
-  corpus locale dell'utente arriva a **7541 voci** (Ferri's): refresh ~4 ms e
-  cambio filtro ~20 ms, contro 2,4 s e 1,7 s della versione "tutte le righe".
+  per le righe che dipinge; la vista filtrata è **cache per
+  `(filtro, model.revision)`** e le mappe file→riga rendono header e scroll O(1).
+  Il corpus locale dell'utente arriva a **7541 voci** (Ferri's).
 
 ### Ripresa dopo un'interruzione (cache a prova di blackout)
 
