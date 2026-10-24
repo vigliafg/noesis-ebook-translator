@@ -148,6 +148,11 @@ class ReaderWidget(QWidget):
         root.addWidget(splitter, 1)
 
     # --------------------------------------------------------------- open
+    def show_chapter(self, href: str, fraction: float = 0.0) -> None:
+        """Public navigation hook for other panels (chapter list, search)."""
+        if href:
+            self._navigate(href, fraction)
+
     def open_path(self, path: str) -> None:
         if not path.lower().endswith(".epub") and hasattr(self.backend, "open_file") \
                 and self.backend.supports(path):

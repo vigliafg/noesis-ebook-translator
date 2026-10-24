@@ -237,8 +237,21 @@ V del corpus). Le intestazioni senza documento restano come righe
   una riga tagliata dal viewport non perde più la barra.
 - **Scala**: il delegate costruisce il payload **su richiesta** (`row_data`), solo
   per le righe che dipinge; la vista filtrata è **cache per
-  `(filtro, model.revision)`** e le mappe file→riga rendono header e scroll O(1).
-  Il corpus locale dell'utente arriva a **7541 voci** (Ferri's).
+  `(filtro, model.revision, ricerca)`** e le mappe file→riga rendono header e
+  scroll O(1). Il corpus locale dell'utente arriva a **7541 voci** (Ferri's).
+- **Orientamento**: la testata mostra `done/total capitoli · errori · in corso`,
+  i filtri portano il conteggio (`Tutti (n)`, `Da tradurre (n)`, `Tradotti (n)`),
+  c'è una ricerca libera e due salti («Primo da tradurre», «Prossimo errore»).
+  La legenda spiega punto/check/cancel/`—`; il pulsante **Segui** accende o
+  spegne l'auto-scroll.
+- **Righe**: tooltip dinamico con nome completo, file/ancora, stato, `done/total`,
+  cache ed errore (testo compreso); `AccessibleTextRole` e testo dell'item per i
+  lettori di schermo; focus da tastiera e **Invio/double-click** aprono il
+  capitolo nel lettore. Le heading hanno chevron e peso maggiore; le righe
+  parziali dopo un cancel o all'apertura della cache restano ferme e smorzate
+  («interrotto»).
+- **Parallelo**: con più capitoli in lavorazione la testata non finge un
+  «capitolo corrente»: mostra `N capitoli in corso` e la percentuale complessiva.
 
 ### Ripresa dopo un'interruzione (cache a prova di blackout)
 

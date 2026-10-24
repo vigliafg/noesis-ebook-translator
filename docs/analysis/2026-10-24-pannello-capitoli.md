@@ -188,7 +188,26 @@ gemello.
 | 7. prestazioni | fatto: vista filtrata cache per `(filter, revision)`, mappe file→riga; test strutturale | `chapter_track.py`, `test_translate_view.py` |
 | 8. debito e documentazione | fatto: `set_units` completo, `state()` selection-aware, extra TOC etichettati, estimate documentato, AGENTS aggiornato | `progress_model.py`, `estimate.py`, `AGENTS.md` |
 
-**Verifica**: 403 test desktop OK (1 skip), scenario harness 11/11, console-clean
+### Interventi UI (2026-10-24)
+
+- **Testata di sintesi**: `done/total capitoli · errori · in corso`, con singolari
+  corretti; i filtri portano il conteggio (`Tutti (n)`, `Da tradurre (n)`,
+  `Tradotti (n)`) e la legenda spiega punto/check/cancel/`—`.
+- **Ricerca e salti**: campo di ricerca libero (nome, file, href) con conservazione
+  delle heading antenate; «Primo da tradurre» e «Prossimo errore» spostano la riga
+  corrente.
+- **Righe accessibili e navigabili**: testo e `AccessibleTextRole` sugli item,
+  focus da tastiera, selezione singola, **Invio/double-click** che emette
+  `entryActivated` e apre il capitolo nel lettore (`ReaderWidget.show_chapter`).
+- **Tooltip dinamici**: nome completo, file/ancora, stato, `done/total`, cache,
+  numero di errori e **testo dell'errore** (nuovo `error_text` in `DeltaBatch`/
+  `ProgressModel`).
+- **Gerarchia e stato**: chevron + peso maggiore per le heading, contrasto
+  dell'escluso alzato, conteggio rosso sugli errori, righe parziali «interrotte»
+  ferme e smorzate, header aggregato (`N capitoli in corso`) in parallelo,
+  pulsante **Segui** per l'auto-scroll.
+
+**Verifica**: 405 test desktop OK (1 skip), scenario harness 11/11, console-clean
 7/7, gemello 23 OK. Commit desktop `a2e3f1e`, gemello `46f1daa`.
 
 **Limiti dichiarati**:

@@ -479,6 +479,86 @@ class TestTranslateViewWidget(unittest.TestCase):
         finally:
             track.close()
 
+    def test_search_summary_tooltip_and_activation(self):
+        from PyQt6.QtCore import Qt
+
+        from noesis_ebook_translator.i18n import T
+        from noesis_ebook_translator.progress_model import (
+            ChapterUnit, ProgressModel)
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        units = [
+            ChapterUnit(None, "Part One", 0, None, "section", 0),
+            ChapterUnit("a.xhtml", "Alpha", 1, None, "document", 1),
+            ChapterUnit("b.xhtml", "Beta", 1, None, "document", 2),
+        ]
+        model = ProgressModel(units)
+        model.set_plan({"a.xhtml": 2, "b.xhtml": 2})
+        model.apply({"counts": {"a.xhtml": 2}, "errors": {"b.xhtml": 1},
+                     "error_text": {"b.xhtml": "HTTP 500"},
+                     "cached": 0, "last": None})
+        track = ChapterTrackWidget(reduce_motion=True)
+        try:
+            track.set_model(model)
+            track.edt_search.setText("alph")
+            labels = [unit.label() for unit in track.visible_units()]
+            self.assertIn("Alpha", labels)
+            self.assertNotIn("Beta", labels)
+            self.assertIn("Part One", labels)       # ancestor heading kept
+            summary = track.lbl_summary.text()
+            self.assertIn(T("track.summary").format(done=1, total=2), summary)
+            self.assertIn(T("track.error_one"), summary)
+            self.assertIn(T("track.search_results").format(count=1), summary)
+            self.assertIn("(1)", track._filter_buttons["done"].text())
+
+            # The error text reaches the tooltip, and the row is accessible.
+            track.edt_search.clear()
+            row = next(index for index, unit in enumerate(track.visible_units())
+                       if unit.label() == "Beta")
+            data = track.row_data(row)
+            tooltip = track.tooltip_for(data)
+            self.assertIn("HTTP 500", tooltip)
+            self.assertIn(T("track.state.error"), tooltip)
+            item = track._list.item(row)
+            self.assertEqual(item.text(), "Beta")
+            self.assertIn("Beta", item.data(
+                Qt.ItemDataRole.AccessibleTextRole))
+
+            # Enter on a chapter emits its href/file; a heading emits nothing.
+            captured: list[str] = []
+            track.entryActivated.connect(captured.append)
+            track._list.setCurrentRow(0)
+            track._activate_current()
+            self.assertEqual(captured, [])
+            track._list.setCurrentRow(1)
+            track._activate_current()
+            self.assertEqual(captured, ["a.xhtml"])
+        finally:
+            track.close()
+
+    def test_header_is_idle_after_finish(self):
+        from noesis_ebook_translator.progress_model import (
+            ChapterUnit, ProgressModel)
+        from noesis_ebook_translator.ui.chapter_track import ChapterTrackWidget
+
+        model = ProgressModel([ChapterUnit("a.xhtml", "Ch 0")])
+        model.set_plan({"a.xhtml": 2})
+        model.apply({"counts": {"a.xhtml": 1}, "errors": {},
+                     "cached": 0, "last": None})
+        track = ChapterTrackWidget(reduce_motion=False)
+        try:
+            track.set_model(model)
+            track.refresh()
+            self.assertEqual(track.lbl_subtitle.text(), "Ch 0")
+            model.finish(ok=False)
+            track.refresh()
+            self.assertEqual(track.lbl_subtitle.text(), "—")
+            self.assertFalse(track.bar_current.is_animating())
+            self.assertFalse(track.is_animating())
+            self.assertTrue(track.row_data(0).get("interrupted"))
+        finally:
+            track.close()
+
     def test_liquid_glides_and_reaches_the_target(self):
         from noesis_ebook_translator.ui.translate_view import TranslateView
 
@@ -624,7 +704,10 @@ class TestTranslateViewWidget(unittest.TestCase):
             self.assertEqual(model.running_units(), ["a.xhtml", "b.xhtml"])
             self.assertTrue(view.track.is_animating())
             self.assertFalse(view.grab().isNull())
-            self.assertIn(view.track.lbl_subtitle.text(), ("Ch 0", "Ch 1"))
+            from noesis_ebook_translator.i18n import T
+
+            self.assertEqual(view.track.lbl_subtitle.text(),
+                             T("track.running_many").format(count=2))
         finally:
             view.hide()
             view.close()

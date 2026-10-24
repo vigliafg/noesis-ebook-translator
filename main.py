@@ -299,6 +299,7 @@ class MainWindow(QMainWindow):
 
         central = TranslateView(reduce_motion=self._reduce_motion)
         self.translate_view = central
+        central.track.entryActivated.connect(self._open_chapter_in_reader)
         self._translate_tab = central
         # The four bands own these widgets; the window keeps referring to them.
         self.progress = central.progress
@@ -486,6 +487,19 @@ class MainWindow(QMainWindow):
         self.translate_view.set_model(model, toc_error=error)
         if error:
             self.log.appendPlainText(error)
+
+    def _open_chapter_in_reader(self, href: str) -> None:
+        """A row activated in the chapter list opens the reader on that href."""
+        if not href:
+            return
+        reader = getattr(self, "reader", None)
+        if reader is None:  # pragma: no cover - only during early construction
+            return
+        try:
+            reader.show_chapter(href)
+            self.tabs.setCurrentWidget(reader)
+        except Exception as exc:  # noqa: BLE001 - navigation is best effort
+            self._status_message(str(exc))
 
     @staticmethod
     def _book_label(path: str) -> str:

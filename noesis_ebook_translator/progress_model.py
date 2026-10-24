@@ -157,6 +157,7 @@ class DeltaBatch:
     def reset(self) -> None:
         self.counts: dict[str, int] = {}
         self.errors: dict[str, int] = {}
+        self.error_text: dict[str, str] = {}
         self.cached = 0
         self.cached_pages: dict[str, int] = {}
         self.last: tuple[str, str] | None = None
@@ -181,6 +182,7 @@ class DeltaBatch:
         if page and page != TOC_PAGE:
             if failed:
                 self.errors[page] = self.errors.get(page, 0) + 1
+                self.error_text[page] = str(getattr(paragraph, "error", "") or "")
             else:
                 self.counts[page] = self.counts.get(page, 0) + 1
         if (not failed and getattr(paragraph, "is_cache", False)
@@ -199,8 +201,8 @@ class DeltaBatch:
             self.log.append(text)
 
     def empty(self) -> bool:
-        return not (self.counts or self.errors or self.cached
-                    or self.cached_pages or self.last or self.log)
+        return not (self.counts or self.errors or self.error_text
+                    or self.cached or self.cached_pages or self.last or self.log)
 
     def payload(self) -> dict | None:
         if self.empty():
@@ -208,6 +210,7 @@ class DeltaBatch:
         return {
             "counts": dict(self.counts),
             "errors": dict(self.errors),
+            "error_text": dict(self.error_text),
             "cached": self.cached,
             "cached_pages": dict(self.cached_pages),
             "last": self.last,
@@ -228,6 +231,7 @@ class ProgressModel:
         self.plan: dict[str, int] = {}
         self.done: dict[str, int] = {}
         self.errors: dict[str, int] = {}
+        self.error_text: dict[str, str] = {}
         self.cached = 0
         self.cached_pages: dict[str, int] = {}
         self.last: tuple[str, str] | None = None
@@ -285,6 +289,7 @@ class ProgressModel:
         self.plan = {}
         self.done.clear()
         self.errors.clear()
+        self.error_text.clear()
         self.cached = 0
         self.cached_pages.clear()
         self.last = None
@@ -422,6 +427,10 @@ class ProgressModel:
         for file_name, count in (delta.get("errors") or {}).items():
             self.errors[file_name] = self.errors.get(file_name, 0) + int(count)
             changed = True
+        for file_name, text in (delta.get("error_text") or {}).items():
+            if text:
+                self.error_text[file_name] = str(text)
+                changed = True
         cached = int(delta.get("cached") or 0)
         if cached:
             self.cached += cached
