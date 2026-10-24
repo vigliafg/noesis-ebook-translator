@@ -204,7 +204,8 @@ V del corpus). Le intestazioni senza documento restano come righe
   seminate con il piano e la copertura dell'ultimo run
   (`book.chapter_cache_status`): «Tradotti» / «Da tradurre» sono significativi
   **prima** di avviare qualcosa, e le righe parziali restano visibili senza
-  animazioni. Se non c'è cache, restano senza numeri.
+  animazioni. Se non c'è cache, restano senza numeri. In entrambi i casi la
+  testata è `Capitoli · —`: nessun capitolo è «corrente» finché non parte un run.
 - **Stato B** (dopo il wizard / durante): selezionati normali, gli altri
   **grigi** (`STATE_EXCLUDED`); i capitoli in lavorazione con **barra +
   `done/total`**. Filtri «Tutti» / «Da tradurre» / «Tradotti»: con «Da tradurre»

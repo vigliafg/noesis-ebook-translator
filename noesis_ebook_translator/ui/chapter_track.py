@@ -67,7 +67,8 @@ class _UnitDelegate(QStyledItemDelegate):
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if option.state & QStyle.StateFlag.State_Selected:
+        if (option.state & QStyle.StateFlag.State_Selected
+                and self._track._list.hasFocus()):
             selected = QColor(colors["accent"])
             selected.setAlpha(40)
             painter.fillRect(rect, selected)
@@ -373,6 +374,12 @@ class ChapterTrackWidget(QWidget):
         self._last_running = []
         self._active_running = []
         self._list.clear()
+        if model is None:
+            self.lbl_summary.setText("—")
+            for key, label in self._filter_labels.items():
+                button = self._filter_buttons.get(key)
+                if button is not None:
+                    button.setText(label)
         self.refresh()
 
     def set_error(self, text: str | None) -> None:

@@ -87,6 +87,32 @@ class ChapterCacheStatusTest(unittest.TestCase):
         self.assertEqual(book.chapter_cache_status(src), {})
 
     @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
+    def test_opening_without_cache_says_nothing_is_current(self):
+        import main
+        from noesis_ebook_translator.i18n import T
+
+        src = build_rich_epub(os.path.join(self.tmp, "fresh.epub"))
+        self.app = QApplication.instance() or QApplication(["noesis-status"])
+        with cache_at(self.tmp):
+            window = main.MainWindow()
+            try:
+                window._input_path = src
+                window._show_toc(src)
+                model = window.translate_view.model()
+                self.assertIsNotNone(model)
+                self.assertTrue(model.finished)
+                track = window.translate_view.track
+                self.assertEqual(track.lbl_subtitle.text(), "—")
+                docs = [unit for unit in model.units
+                        if unit.kind == "document" and unit.file
+                        and model.is_selected(unit)]
+                expected = T("track.summary").format(done=0, total=len(docs))
+                self.assertIn(expected, track.lbl_summary.text())
+                self.assertIn("(0)", track._filter_buttons["done"].text())
+            finally:
+                window.close()
+
+    @unittest.skipUnless(_HAS_GUI, "PyQt6 not installed")
     def test_opening_the_book_seeds_the_panel_with_the_cache(self):
         import main
 

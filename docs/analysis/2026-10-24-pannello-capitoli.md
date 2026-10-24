@@ -207,7 +207,7 @@ gemello.
   ferme e smorzate, header aggregato (`N capitoli in corso`) in parallelo,
   pulsante **Segui** per l'auto-scroll.
 
-**Verifica**: 405 test desktop OK (1 skip), scenario harness 11/11, console-clean
+**Verifica**: 406 test desktop OK (1 skip), scenario harness 11/11, console-clean
 7/7, gemello 23 OK. Commit desktop `85dd6a0` (8 passi in `a2e3f1e`), gemello
 `70f6876`.
 

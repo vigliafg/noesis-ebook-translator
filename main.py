@@ -481,9 +481,10 @@ class MainWindow(QMainWindow):
                             "cached_pages": cached,
                             "last": None,
                         })
-                    # No run is active: stop the pulse/header before the first
-                    # delta, but keep the partial rows visible.
-                    model.finish(ok=True)
+                # No run is active: stop the pulse/header before the first delta,
+                # but keep the rows (and any partial cached progress) visible.
+                # This also means the header says "—", not the first chapter.
+                model.finish(ok=True)
         self.translate_view.set_model(model, toc_error=error)
         if error:
             self.log.appendPlainText(error)
