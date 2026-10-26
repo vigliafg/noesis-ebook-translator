@@ -461,17 +461,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#verifica-del-download" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Verifica del download
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#versioni" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -604,17 +593,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#verifica-del-download" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Verifica del download
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#versioni" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -658,37 +636,41 @@ piattaforma da <a href="https://github.com/vigliafg/noesis-ebook-translator/rele
 <tbody>
 <tr>
 <td>Windows 10/11 x64</td>
-<td><code>NoesisEbookTranslator-0.10.0-windows-x64-setup.exe</code></td>
+<td><code>NoesisEbookTranslator-windows-x64-setup.exe</code></td>
+</tr>
+<tr>
+<td>Windows 10/11 x64 (portatile)</td>
+<td><code>NoesisEbookTranslator-windows-x64.zip</code></td>
 </tr>
 <tr>
 <td>macOS Apple Silicon</td>
-<td><code>NoesisEbookTranslator-0.10.0-macos-arm64.dmg</code></td>
+<td><code>NoesisEbookTranslator-macos-arm64.dmg</code></td>
 </tr>
 <tr>
 <td>macOS Intel</td>
-<td><code>NoesisEbookTranslator-0.10.0-macos-x64.dmg</code></td>
+<td><code>NoesisEbookTranslator-macos-x64.dmg</code></td>
 </tr>
 <tr>
 <td>Linux x86_64 (Debian/Ubuntu)</td>
-<td><code>NoesisEbookTranslator-0.10.0-linux-amd64.deb</code></td>
+<td><code>NoesisEbookTranslator-amd64.deb</code></td>
 </tr>
 <tr>
 <td>Linux x86_64 (Fedora)</td>
-<td><code>NoesisEbookTranslator-0.10.0-linux-x86_64.rpm</code></td>
+<td><code>NoesisEbookTranslator-x86_64.rpm</code></td>
 </tr>
 <tr>
 <td>Linux x86_64 (portable)</td>
-<td><code>NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage</code></td>
+<td><code>NoesisEbookTranslator-x86_64.AppImage</code></td>
 </tr>
 </tbody>
 </table>
 <p>I pacchetti includono QtWebEngine (lettore full, PDF/MOBI/AZW3/FB2/CBZ ed
 export PDF) e python-docx (export DOCX). <strong>Non serve Python.</strong></p>
 <h2 id="linux">Linux<a class="headerlink" href="#linux" title="Permanent link">&para;</a></h2>
-<pre><code class="language-bash">sudo apt install ./NoesisEbookTranslator-0.10.0-linux-amd64.deb
-sudo dnf install --nogpgcheck ./NoesisEbookTranslator-0.10.0-linux-x86_64.rpm
-chmod +x NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage
-./NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage
+<pre><code class="language-bash">sudo apt install ./NoesisEbookTranslator-amd64.deb
+sudo dnf install --nogpgcheck ./NoesisEbookTranslator-x86_64.rpm
+chmod +x NoesisEbookTranslator-x86_64.AppImage
+./NoesisEbookTranslator-x86_64.AppImage
 </code></pre>
 <p>Serve glibc ≥ 2.35 (Ubuntu 22.04, Debian 12, Fedora 36 o successivi). Se
 Chromium non parte su un host senza user namespace, avvia con
@@ -708,10 +690,6 @@ disinstallazione non cancella le impostazioni
 (<code>%APPDATA%\noesis-ebook-translator</code>) né libreria e cache
 (<code>%LOCALAPPDATA%\noesis-ebook-translator</code>); elimina quelle cartelle a mano se
 vuoi ripartire da zero.</p>
-<h2 id="verifica-del-download">Verifica del download<a class="headerlink" href="#verifica-del-download" title="Permanent link">&para;</a></h2>
-<p>Ogni release allega <code>SHA256SUMS</code>:</p>
-<pre><code class="language-bash">sha256sum -c SHA256SUMS
-</code></pre>
 <h2 id="versioni">Versioni<a class="headerlink" href="#versioni" title="Permanent link">&para;</a></h2>
 <p>La versione dell'<strong>app</strong> (0.10.0) è separata da quella del <strong>motore</strong> verbatim
 (v2.4.2). Le vedi entrambe in <strong>Info → About</strong>. La versione del motore guida le
