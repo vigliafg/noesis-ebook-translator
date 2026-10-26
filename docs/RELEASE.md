@@ -1,18 +1,19 @@
 # Release checklist — 0.10.0
 
 La release è **non firmata**: macOS richiede click destro → Apri e Windows può
-mostrare SmartScreen. Le note di release devono dirlo.
+mostrare SmartScreen. Le note di release sono quelle generate da GitHub.
 
-**0.10.0 non usa release candidate.** Il flusso è: dry-run → matrice manuale
-sugli artefatti prodotti → tag `v0.10.0` → draft → pubblicazione.
+**Convenzione**: come le release di `noesis-pdf-cloner`, il tag è `v0.10.0`, il
+nome della release è il tag, gli asset non hanno la versione nel nome e la
+release viene **pubblicata automaticamente** alla fine della build. Non ci sono
+release candidate per la 0.10.0.
 
 ## 0. Prima di taggare
 
 - [ ] `APP_VERSION` in `noesis_ebook_translator/__init__.py` = `0.10.0`.
 - [ ] `pyproject.toml` e il default di `installer.nsi` = `0.10.0`.
 - [ ] `CHANGELOG.md` ha una sezione `## [0.10.0] - AAAA-MM-GG`.
-- [ ] `README.md` e `docs/site/docs/{en,it}/install.md` hanno i nomi dei file
-      della release e i limiti noti.
+- [ ] `README.md` e `docs/site/docs/{en,it}/install.md` hanno i nomi degli asset.
 - [ ] `THIRD_PARTY_NOTICES.md` e `LICENSES/` aggiornati.
 - [ ] `ENGINE_SOURCE.json` invariato (nessuna modifica al motore).
 - [ ] `python -m unittest discover -s tests -v` verde.
@@ -29,9 +30,8 @@ pubblica**: produce solo gli artefatti e li collauda con `--self-test`,
 `--self-test-reader`, installazione Windows, mount DMG e container deb/rpm.
 
 - [ ] Tutti e quattro i job `build` verdi.
-- [ ] `checksums` verde.
 - [ ] Il job `release` non è partito (dispatch non pubblica mai).
-- [ ] Scaricare gli artefatti del dry-run e verificare `SHA256SUMS`.
+- [ ] Scaricare gli artefatti del dry-run.
 
 ## 2. Matrice manuale (artefatti del dry-run)
 
@@ -39,7 +39,7 @@ Installare da zero, con profilo/config assente, su:
 
 | Sistema | Cosa provare |
 | --- | --- |
-| Windows 10 22H2 e 11 | setup, prima apertura, SmartScreen, disinstallazione |
+| Windows 10 22H2 e 11 | setup, versione portatile, SmartScreen, disinstallazione |
 | macOS 13/14 (se disponibile) e 15 arm64/x64 | DMG, Gatekeeper (`Apri`), lettore full |
 | Ubuntu 22.04 e 24.04 | deb, AppImage |
 | Debian 12 | deb |
@@ -66,9 +66,9 @@ git push origin v0.10.0
 ```
 
 - [ ] La guardia accetta il tag solo con `APP_VERSION == 0.10.0`.
-- [ ] La draft contiene i 6 artefatti + `SHA256SUMS`.
-- [ ] `sha256sum -c SHA256SUMS` sui file scaricati.
-- [ ] Pubblicare la draft (non pre-release) dopo il go/no-go.
+- [ ] Il job `release` pubblica automaticamente la release `v0.10.0`.
+- [ ] Gli asset sono: setup Windows, ZIP portatile Windows, DMG arm64/x64,
+      deb, rpm, AppImage.
 - [ ] Controllare che i link download del README risolvano.
 
 ## 4. Dopo la release

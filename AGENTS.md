@@ -390,9 +390,11 @@ GitHub Pages da `.github/workflows/docs.yml`.
   (`.app` + symlink Applications + firma ad-hoc), `nfpm` deb/rpm, desktop entry,
   metainfo AppStream e AppRun/build AppImage.
 - `.github/workflows/release.yml` costruisce i 4 runner, esegue
-  `--self-test`/`--self-test-reader` sugli artefatti, genera `SHA256SUMS` e crea
-  una **draft release**. Per la 0.10.0 l'unico tag ammesso è `v$APP_VERSION`
-  (nessuna release candidate); `workflow_dispatch` non pubblica mai.
+  `--self-test`/`--self-test-reader` sugli artefatti e **pubblica
+  automaticamente** la release (convenzione di `noesis-pdf-cloner`: nome = tag,
+  asset senza versione nel nome, note generate da GitHub, niente draft). Per la
+  0.10.0 l'unico tag ammesso è `v$APP_VERSION` (nessuna release candidate);
+  `workflow_dispatch` non pubblica mai.
 - `docs/RELEASE.md` è la checklist di go/no-go (matrice manuale Windows/macOS/
   Linux, limiti della build non firmata). `THIRD_PARTY_NOTICES.md` e `LICENSES/`
   sono inclusi nei pacchetti.

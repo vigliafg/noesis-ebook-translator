@@ -221,12 +221,13 @@ La 0.10.0 è la prima release pubblica:
 
 | Piattaforma | File | Note |
 | --- | --- | --- |
-| Windows 10/11 x64 | `NoesisEbookTranslator-0.10.0-windows-x64-setup.exe` | installa per tutti gli utenti (richiede admin) |
-| macOS Apple Silicon | `NoesisEbookTranslator-0.10.0-macos-arm64.dmg` | macOS 13+ |
-| macOS Intel | `NoesisEbookTranslator-0.10.0-macos-x64.dmg` | macOS 13+ |
-| Linux x86_64 | `NoesisEbookTranslator-0.10.0-linux-amd64.deb` | Ubuntu 22.04+/Debian 12+ |
-| Linux x86_64 | `NoesisEbookTranslator-0.10.0-linux-x86_64.rpm` | Fedora 40+ |
-| Linux x86_64 | `NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage` | glibc ≥ 2.35 |
+| Windows 10/11 x64 | `NoesisEbookTranslator-windows-x64-setup.exe` | installa per tutti gli utenti (richiede admin) |
+| Windows 10/11 x64 | `NoesisEbookTranslator-windows-x64.zip` | portatile (cartella onedir) |
+| macOS Apple Silicon | `NoesisEbookTranslator-macos-arm64.dmg` | macOS 13+ |
+| macOS Intel | `NoesisEbookTranslator-macos-x64.dmg` | macOS 13+ |
+| Linux x86_64 | `NoesisEbookTranslator-amd64.deb` | Ubuntu 22.04+/Debian 12+ |
+| Linux x86_64 | `NoesisEbookTranslator-x86_64.rpm` | Fedora 40+ |
+| Linux x86_64 | `NoesisEbookTranslator-x86_64.AppImage` | glibc ≥ 2.35 |
 
 I pacchetti includono **QtWebEngine** (lettore full, PDF/MOBI/AZW3/FB2/CBZ ed
 export PDF) e **python-docx** (export DOCX): non serve installare Python.
@@ -234,14 +235,10 @@ export PDF) e **python-docx** (export DOCX): non serve installare Python.
 **Le build non sono firmate.** Su macOS, al primo avvio: click destro sull'app
 → **Apri** (oppure `xattr -dr com.apple.quarantine
 "/Applications/NoesisEbookTranslator.app"`). Su Windows SmartScreen può chiedere **Ulteriori informazioni
-→ Esegui comunque**. Ogni release allega `SHA256SUMS`:
-
-```bash
-sha256sum -c SHA256SUMS
-```
+→ Esegui comunque**.
 
 Su Linux l'AppImage può aver bisogno di FUSE; in alternativa
-`./NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage --appimage-extract-and-run`.
+`./NoesisEbookTranslator-x86_64.AppImage --appimage-extract-and-run`.
 Se Chromium non parte su un host senza user namespace, avviare con
 `QTWEBENGINE_DISABLE_SANDBOX=1` (solo rimedio diagnostico: riduce l'isolamento
 del browser).
@@ -371,11 +368,11 @@ runner nativi (PyInstaller non fa cross-compile). La spec è
 Il workflow `.github/workflows/release.yml` parte manualmente da
 **Actions → release → Run workflow** (solo build, nessuna pubblicazione) oppure
 al push del tag `v<APP_VERSION>` (per la 0.10.0: `v0.10.0`). La release viene
-creata come **draft** e pubblicata a mano dopo il go/no-go di
-`docs/RELEASE.md`. Ogni artefatto viene collaudato con `--self-test` e
-`--self-test-reader` prima di essere caricato; `SHA256SUMS` è allegato. Per la
-0.10.0 non si usano release candidate: il dry-run produce gli artefatti da
-provare, poi si tagga direttamente `v0.10.0`.
+**pubblicata automaticamente** (stessa convenzione delle release di
+`noesis-pdf-cloner`): nome = tag, note generate da GitHub, nessuna draft. Ogni
+artefatto viene collaudato con `--self-test` e `--self-test-reader` prima di
+essere caricato. Per la 0.10.0 non si usano release candidate: il dry-run
+produce gli artefatti da provare, poi si tagga direttamente `v0.10.0`.
 
 ### Build locale (opzionale)
 
@@ -389,7 +386,7 @@ provare, poi si tagga direttamente `v0.10.0`.
 Su Linux:
 
 ```bash
-packaging/linux/build-appimage.sh 0.10.0 NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage
+packaging/linux/build-appimage.sh 0.10.0 NoesisEbookTranslator-x86_64.AppImage
 VERSION=0.10.0 nfpm package -f packaging/linux/nfpm-deb.yaml -p deb -t dist/
 ```
 

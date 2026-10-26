@@ -26,7 +26,7 @@ jobs:
     outputs:
       value: ${{ steps.read.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - id: read
         run: |
           V=$(grep -oP 'APP_VERSION = "\K[^"]+' noesis_ebook_translator/__init__.py)
@@ -79,9 +79,9 @@ jobs:
             arch: x86_64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
           cache: pip
@@ -170,10 +170,15 @@ jobs:
           MSYS_NO_PATHCONV=1 makensis "/DVERSION=$VERSION" installer.nsi
           SRC="NoesisEbookTranslator-$VERSION-setup.exe"
           test -f "$SRC"
-          mv "$SRC" "NoesisEbookTranslator-$VERSION-windows-${{ matrix.arch }}-setup.exe"
+          mv "$SRC" "NoesisEbookTranslator-windows-${{ matrix.arch }}-setup.exe"
+
+          # Portable copy (onedir ZIP; the cloner convention also ships a
+          # portable download next to the installer).
+          SETUP="NoesisEbookTranslator-windows-${{ matrix.arch }}-setup.exe"
+          powershell -NoProfile -Command \
+            "Compress-Archive -Path 'dist/NoesisEbookTranslator' -DestinationPath 'NoesisEbookTranslator-windows-${{ matrix.arch }}.zip' -Force"
 
           # Install silently, self-test the installed copy, then uninstall.
-          SETUP="NoesisEbookTranslator-$VERSION-windows-${{ matrix.arch }}-setup.exe"
           export SETUP_WIN
           SETUP_WIN="$(cygpath -w "$PWD/$SETUP")"
           powershell -NoProfile -Command \
@@ -232,13 +237,13 @@ jobs:
           set -e
           packaging/macos/dmg.sh \
             "dist/NoesisEbookTranslator.app" \
-            "NoesisEbookTranslator-$VERSION-macos-${{ matrix.arch }}.dmg" \
+            "NoesisEbookTranslator-macos-${{ matrix.arch }}.dmg" \
             "$VERSION"
 
           # Mount the DMG and self-test the copy users actually get.
           MOUNT="$RUNNER_TEMP/noesis-dmg"
           mkdir -p "$MOUNT"
-          hdiutil attach "NoesisEbookTranslator-$VERSION-macos-${{ matrix.arch }}.dmg" \
+          hdiutil attach "NoesisEbookTranslator-macos-${{ matrix.arch }}.dmg" \
             -mountpoint "$MOUNT" -nobrowse -quiet
           "$MOUNT/NoesisEbookTranslator.app/Contents/MacOS/NoesisEbookTranslator" \
             --self-test --require-full --report "$RUNNER_TEMP/dmg-self.json"
@@ -265,11 +270,11 @@ jobs:
           VERSION="$VERSION" /tmp/nfpm package \
             -f packaging/linux/nfpm-rpm.yaml -p rpm -t dist/
           mv "dist/noesis-ebook-translator_${VERSION}_amd64.deb" \
-             "NoesisEbookTranslator-${VERSION}-linux-amd64.deb"
+             "NoesisEbookTranslator-amd64.deb"
           mv "dist/noesis-ebook-translator-${VERSION}-1.x86_64.rpm" \
-             "NoesisEbookTranslator-${VERSION}-linux-x86_64.rpm"
+             "NoesisEbookTranslator-x86_64.rpm"
 
-          APPIMAGE="NoesisEbookTranslator-${VERSION}-linux-x86_64.AppImage"
+          APPIMAGE="NoesisEbookTranslator-x86_64.AppImage"
           packaging/linux/build-appimage.sh "$VERSION" "$APPIMAGE" /tmp/appimagetool
 
           # Run the artifact the user downloads (extract-and-run avoids FUSE).
@@ -283,7 +288,7 @@ jobs:
           DEBROOT="$RUNNER_TEMP/debroot"
           rm -rf "$DEBROOT"
           mkdir -p "$DEBROOT"
-          dpkg-deb -x "NoesisEbookTranslator-${VERSION}-linux-amd64.deb" "$DEBROOT"
+          dpkg-deb -x "NoesisEbookTranslator-amd64.deb" "$DEBROOT"
           "$DEBROOT/usr/lib/noesis-ebook-translator/NoesisEbookTranslator" \
             --self-test-reader --report "$RUNNER_TEMP/deb-reader.json"
 
@@ -303,7 +308,7 @@ jobs:
               libdbus-1-3 libfontconfig1 libxcb-cursor0 libnss3 libnspr4 \
               libasound2 libcups2 libdrm2 libgbm1 libpango-1.0-0 libcairo2 \
               libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxi6 libsm6 libice6
-            apt-get install -y -qq "./NoesisEbookTranslator-'"$VERSION"'-linux-amd64.deb"
+            apt-get install -y -qq "./NoesisEbookTranslator-amd64.deb"
             command -v noesis-ebook-translator
             useradd -m tester
             su tester -c "QT_QPA_PLATFORM=offscreen NOESIS_CONFIG_DIR=/tmp/cfg noesis-ebook-translator --self-test --require-full"
@@ -316,75 +321,45 @@ jobs:
               xcb-util-renderutil util-linux dbus-libs fontconfig freetype nss nspr \
               alsa-lib cups-libs libdrm mesa-libgbm pango cairo libXcomposite \
               libXdamage libXrandr libXtst libXi libSM libICE libX11
-            dnf install -y -q --nogpgcheck "NoesisEbookTranslator-'"$VERSION"'-linux-x86_64.rpm"
+            dnf install -y -q --nogpgcheck "NoesisEbookTranslator-x86_64.rpm"
             command -v noesis-ebook-translator
             useradd -m tester
             su tester -c "QT_QPA_PLATFORM=offscreen NOESIS_CONFIG_DIR=/tmp/cfg noesis-ebook-translator --self-test --require-full"
           ' 2>&1 | tail -30
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: NoesisEbookTranslator-${{ needs.version.outputs.value }}-${{ matrix.name }}
+          name: NoesisEbookTranslator-${{ matrix.name }}
           path: |
-            NoesisEbookTranslator-${{ needs.version.outputs.value }}-${{ matrix.name }}*
-            NoesisEbookTranslator-${{ needs.version.outputs.value }}-linux-*
-          if-no-files-found: error
-
-  checksums:
-    name: checksums
-    needs: [version, build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-      - name: Generate SHA256SUMS
-        run: |
-          set -e
-          cd artifacts
-          ls -la
-          sha256sum * > SHA256SUMS
-          cat SHA256SUMS
-      - uses: actions/upload-artifact@v4
-        with:
-          name: NoesisEbookTranslator-${{ needs.version.outputs.value }}-checksums
-          path: artifacts/SHA256SUMS
+            NoesisEbookTranslator-*
           if-no-files-found: error
 
   release:
-    name: create draft release
+    name: publish release
     if: github.event_name == 'push' && needs.guard.result == 'success'
-    needs: [version, guard, build, checksums]
+    needs: [version, guard, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: artifacts
           merge-multiple: true
-      - name: Create draft release
-        uses: softprops/action-gh-release@v2
+      - name: Remove a stale draft for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || true)" = "true" ]; then
+            gh release delete "$TAG" --yes
+          fi
+      - name: Publish release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           tag_name: ${{ github.ref_name }}
-          name: Noesis Ebook Translator ${{ github.ref_name }}
-          draft: true
+          name: ${{ github.ref_name }}
+          draft: false
           prerelease: false
           generate_release_notes: true
-          body: |
-            ## Noesis Ebook Translator ${{ needs.version.outputs.value }}
-
-            Prima release pubblica multipiattaforma.
-
-            **Windows**: eseguire l'installer x64.
-            **macOS**: aprire il DMG e trascinare l'app in Applicazioni. La build non è firmata:
-            al primo avvio usare click destro → Apri (o `xattr -dr com.apple.quarantine /Applications/NoesisEbookTranslator.app`).
-            **Linux**: `deb`, `rpm` o AppImage (x86_64, glibc ≥ 2.35).
-
-            Verificare i file con `sha256sum -c SHA256SUMS`.
-
-            Il lettore completo (QtWebEngine) è incluso in tutti i pacchetti. Se Chromium non
-            parte su un host senza user namespace, avviare con `QTWEBENGINE_DISABLE_SANDBOX=1`
-            (solo diagnostica: riduce l'isolamento del browser).
           files: artifacts/*
           fail_on_unmatched_files: true

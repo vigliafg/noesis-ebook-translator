@@ -5,12 +5,13 @@ piattaforma da [GitHub Releases](https://github.com/vigliafg/noesis-ebook-transl
 
 | Piattaforma | File |
 | --- | --- |
-| Windows 10/11 x64 | `NoesisEbookTranslator-0.10.0-windows-x64-setup.exe` |
-| macOS Apple Silicon | `NoesisEbookTranslator-0.10.0-macos-arm64.dmg` |
-| macOS Intel | `NoesisEbookTranslator-0.10.0-macos-x64.dmg` |
-| Linux x86_64 (Debian/Ubuntu) | `NoesisEbookTranslator-0.10.0-linux-amd64.deb` |
-| Linux x86_64 (Fedora) | `NoesisEbookTranslator-0.10.0-linux-x86_64.rpm` |
-| Linux x86_64 (portable) | `NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage` |
+| Windows 10/11 x64 | `NoesisEbookTranslator-windows-x64-setup.exe` |
+| Windows 10/11 x64 (portatile) | `NoesisEbookTranslator-windows-x64.zip` |
+| macOS Apple Silicon | `NoesisEbookTranslator-macos-arm64.dmg` |
+| macOS Intel | `NoesisEbookTranslator-macos-x64.dmg` |
+| Linux x86_64 (Debian/Ubuntu) | `NoesisEbookTranslator-amd64.deb` |
+| Linux x86_64 (Fedora) | `NoesisEbookTranslator-x86_64.rpm` |
+| Linux x86_64 (portable) | `NoesisEbookTranslator-x86_64.AppImage` |
 
 I pacchetti includono QtWebEngine (lettore full, PDF/MOBI/AZW3/FB2/CBZ ed
 export PDF) e python-docx (export DOCX). **Non serve Python.**
@@ -18,10 +19,10 @@ export PDF) e python-docx (export DOCX). **Non serve Python.**
 ## Linux
 
 ```bash
-sudo apt install ./NoesisEbookTranslator-0.10.0-linux-amd64.deb
-sudo dnf install --nogpgcheck ./NoesisEbookTranslator-0.10.0-linux-x86_64.rpm
-chmod +x NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage
-./NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage
+sudo apt install ./NoesisEbookTranslator-amd64.deb
+sudo dnf install --nogpgcheck ./NoesisEbookTranslator-x86_64.rpm
+chmod +x NoesisEbookTranslator-x86_64.AppImage
+./NoesisEbookTranslator-x86_64.AppImage
 ```
 
 Serve glibc ≥ 2.35 (Ubuntu 22.04, Debian 12, Fedora 36 o successivi). Se
@@ -49,14 +50,6 @@ disinstallazione non cancella le impostazioni
 (`%APPDATA%\noesis-ebook-translator`) né libreria e cache
 (`%LOCALAPPDATA%\noesis-ebook-translator`); elimina quelle cartelle a mano se
 vuoi ripartire da zero.
-
-## Verifica del download
-
-Ogni release allega `SHA256SUMS`:
-
-```bash
-sha256sum -c SHA256SUMS
-```
 
 ## Versioni
 
