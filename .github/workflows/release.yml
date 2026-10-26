@@ -303,7 +303,8 @@ jobs:
               libdbus-1-3 libfontconfig1 libxcb-cursor0 libnss3 libnspr4 \
               libasound2 libcups2 libdrm2 libgbm1 libpango-1.0-0 libcairo2 \
               libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxi6 libsm6 libice6
-            dpkg -i "NoesisEbookTranslator-'"$VERSION"'-linux-amd64.deb" || apt-get install -f -y -qq
+            apt-get install -y -qq "./NoesisEbookTranslator-'"$VERSION"'-linux-amd64.deb"
+            command -v noesis-ebook-translator
             useradd -m tester
             su tester -c "QT_QPA_PLATFORM=offscreen NOESIS_CONFIG_DIR=/tmp/cfg noesis-ebook-translator --self-test --require-full"
           ' 2>&1 | tail -30
@@ -312,10 +313,11 @@ jobs:
             set -e
             dnf install -y -q mesa-libGL mesa-libEGL libxkbcommon libxkbcommon-x11 \
               xcb-util-cursor xcb-util-wm xcb-util-image xcb-util-keysyms \
-              xcb-util-renderutil dbus-libs fontconfig freetype nss nspr alsa-lib \
-              cups-libs libdrm mesa-libgbm pango cairo libXcomposite libXdamage \
-              libXrandr libXtst libXi libSM libICE libX11
+              xcb-util-renderutil util-linux dbus-libs fontconfig freetype nss nspr \
+              alsa-lib cups-libs libdrm mesa-libgbm pango cairo libXcomposite \
+              libXdamage libXrandr libXtst libXi libSM libICE libX11
             dnf install -y -q --nogpgcheck "NoesisEbookTranslator-'"$VERSION"'-linux-x86_64.rpm"
+            command -v noesis-ebook-translator
             useradd -m tester
             su tester -c "QT_QPA_PLATFORM=offscreen NOESIS_CONFIG_DIR=/tmp/cfg noesis-ebook-translator --self-test --require-full"
           ' 2>&1 | tail -30
