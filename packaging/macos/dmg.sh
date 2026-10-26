@@ -29,8 +29,19 @@ ditto "$APP" "$STAGE/$(basename "$APP")"
 ln -s /Applications "$STAGE/Applications"
 
 rm -f "$OUT"
-hdiutil create \
+# ``hdiutil create`` occasionally fails with "Resource busy" (exit 16) on
+# macOS CI runners; retry a few times with a fresh output file.
+attempt=1
+until hdiutil create \
   -volname "Noesis Ebook Translator $VERSION" \
   -srcfolder "$STAGE" \
-  -ov -format UDZO "$OUT"
+  -ov -format UDZO "$OUT"; do
+  if [ "$attempt" -ge 3 ]; then
+    echo "hdiutil create failed after $attempt attempts" >&2
+    exit 1
+  fi
+  attempt=$((attempt + 1))
+  rm -f "$OUT"
+  sleep 5
+done
 echo "wrote $OUT"
