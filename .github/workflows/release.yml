@@ -345,18 +345,27 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-      - name: Remove an existing release for this tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          # Re-tagging must not leave assets from an older naming convention.
-          # The tag itself is kept; only the release and its assets are removed.
-          gh release delete "$TAG" --yes || true
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::error::release $TAG still exists after delete"
-            exit 1
-          fi
+      - name: Delete an existing release for this tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            try {
+              const { data } = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag,
+              });
+              await github.rest.repos.deleteRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: data.id,
+              });
+              core.info(`Deleted release ${tag} (${data.id})`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              core.info(`No existing release for ${tag}`);
+            }
       - name: Publish release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
