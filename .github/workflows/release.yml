@@ -1,17 +1,61 @@
-name: build-releases
+name: release
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # QtWebEngine in CI is offscreen; the real reader check still runs.
+  QT_QPA_PLATFORM: offscreen
+  QTWEBENGINE_CHROMIUM_FLAGS: "--disable-gpu"
+  PYTHONUNBUFFERED: "1"
+
 jobs:
+  version:
+    name: read app version
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.read.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: |
+          V=$(grep -oP 'APP_VERSION = "\K[^"]+' noesis_ebook_translator/__init__.py)
+          test -n "$V"
+          echo "value=$V" >> "$GITHUB_OUTPUT"
+          echo "APP_VERSION=$V"
+
+  guard:
+    name: validate tag
+    if: github.event_name == 'push'
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - id: check
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$TAG" = "v$VERSION" ]; then
+            echo "final release tag: $TAG"
+          else
+            echo "::error::tag '$TAG' does not match APP_VERSION '$VERSION' (expected v$VERSION)"
+            exit 1
+          fi
+
   build:
     name: ${{ matrix.name }}
+    needs: [version, guard]
+    if: always() && needs.version.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.guard.result == 'success')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,209 +63,326 @@ jobs:
         include:
           - os: windows-latest
             name: windows-x64
+            platform: windows
+            arch: x64
           - os: macos-15-intel
             name: macos-x64
+            platform: macos
+            arch: x64
           - os: macos-15
             name: macos-arm64
+            platform: macos
+            arch: arm64
+          - os: ubuntu-22.04
+            name: linux-x86_64
+            platform: linux
+            arch: x86_64
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-release.txt
 
-      - name: Install dependencies
+      - name: Install system Qt/WebEngine libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 \
+            libdbus-1-3 libfontconfig1 libfreetype6 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libnss3 libnspr4 libasound2 libcups2 libdrm2 libgbm1 \
+            libpango-1.0-0 libcairo2 libxcomposite1 libxdamage1 libxrandr2 \
+            libxtst6 libxi6 libsm6 libice6 libx11-6
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements-release.txt
 
-      - name: Build with PyInstaller
+      - name: Build (PyInstaller onedir)
         shell: bash
         run: |
           set -e
-          # Icon is optional so a build without the real asset still works;
-          # assets/noesis-ebook-translator.{ico,icns} are added before release.
-          ICON=()
-          if [ "$RUNNER_OS" = "Windows" ] && [ -f assets/noesis-ebook-translator.ico ]; then
-            ICON=(--icon assets/noesis-ebook-translator.ico)
-          elif [ "$RUNNER_OS" = "macOS" ] && [ -f assets/noesis-ebook-translator.icns ]; then
-            ICON=(--icon assets/noesis-ebook-translator.icns)
-          fi
-          # PyInstaller uses ';' as the source:dest separator on Windows and
-          # ':' on Linux/macOS.
-          case "$RUNNER_OS" in
-            Windows) SEP=';' ;;
-            *)       SEP=':' ;;
-          esac
-          # `main.py` imports both the app package `noesis_ebook_translator` and
-          # the `calibre` compatibility shim: collect them explicitly (their
-          # submodules are not always discovered automatically).
-          pyinstaller \
-            --onefile \
-            --windowed \
-            --clean \
-            --noconfirm \
-            --name NoesisEbookTranslator \
-            --paths . \
-            "${ICON[@]}" \
-            --collect-all noesis_ebook_translator \
-            --collect-submodules calibre \
-            --collect-submodules tiktoken_ext \
-            --hidden-import calibre \
-            --hidden-import tiktoken_ext.openai_public \
-            --add-data "assets/noesis-ebook-translator.png${SEP}assets" \
-            --add-data "assets/icons${SEP}assets/icons" \
-            --add-data "reader_web${SEP}reader_web" \
-            main.py
+          pyinstaller packaging/app.spec --noconfirm --clean \
+            --distpath dist --workpath build
 
-      - name: Build NSIS installer (Windows)
-        if: runner.os == 'Windows'
+      - name: Locate the built executable
+        id: exe
         shell: bash
+        run: |
+          case "${{ matrix.platform }}" in
+            windows) EXE="dist/NoesisEbookTranslator/NoesisEbookTranslator.exe" ;;
+            macos)   EXE="dist/NoesisEbookTranslator.app/Contents/MacOS/NoesisEbookTranslator" ;;
+            linux)   EXE="dist/NoesisEbookTranslator/NoesisEbookTranslator" ;;
+          esac
+          test -x "$EXE" || test -f "$EXE"
+          echo "path=$EXE" >> "$GITHUB_OUTPUT"
+
+      - name: Self-test the bundle
+        shell: bash
+        env:
+          EXE: ${{ steps.exe.outputs.path }}
+          REPORT: ${{ runner.temp }}/self-test.json
+        run: |
+          set -e
+          mkdir -p "${{ runner.temp }}/noesis-config"
+          export NOESIS_CONFIG_DIR="${{ runner.temp }}/noesis-config"
+          "$EXE" --self-test --require-full --report "$REPORT"
+          python - "$REPORT" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          print(json.dumps({c["name"]: c["ok"] for c in data["checks"]}, indent=2))
+          assert data["ok"], data
+          print("self-test app_version:", data["app_version"])
+          PY
+
+      - name: Reader self-test (full QtWebEngine backend)
+        shell: bash
+        env:
+          EXE: ${{ steps.exe.outputs.path }}
+          REPORT: ${{ runner.temp }}/self-test-reader.json
+        run: |
+          set -e
+          export NOESIS_CONFIG_DIR="${{ runner.temp }}/noesis-config"
+          "$EXE" --self-test-reader --report "$REPORT"
+          python - "$REPORT" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          print(json.dumps(data, indent=2))
+          assert data["ok"] and data["opened"], data
+          PY
+
+      - name: Package Windows installer (NSIS)
+        if: matrix.platform == 'windows'
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
         run: |
           set -e
           choco install nsis -y --no-progress
-          # Extract version from the git tag (strip leading 'v')
-          V="${GITHUB_REF#refs/tags/v}"
-          # Fallback for manual runs / non-tag pushes
-          [[ "$V" == "$GITHUB_REF" ]] && V="0.0.0-dev"
-          echo "NSIS VERSION=$V"
           export PATH="/c/Program Files (x86)/NSIS:$PATH"
-          MSYS_NO_PATHCONV=1 makensis "/DVERSION=$V" installer.nsi
-          ls -la NoesisEbookTranslator-*-setup.exe
+          MSYS_NO_PATHCONV=1 makensis "/DVERSION=$VERSION" installer.nsi
+          SRC="NoesisEbookTranslator-$VERSION-setup.exe"
+          test -f "$SRC"
+          mv "$SRC" "NoesisEbookTranslator-$VERSION-windows-${{ matrix.arch }}-setup.exe"
 
-      - name: Package artifact
+          # Install silently, self-test the installed copy, then uninstall.
+          SETUP="NoesisEbookTranslator-$VERSION-windows-${{ matrix.arch }}-setup.exe"
+          export SETUP_WIN
+          SETUP_WIN="$(cygpath -w "$PWD/$SETUP")"
+          powershell -NoProfile -Command \
+            "Start-Process -FilePath \$env:SETUP_WIN -ArgumentList '/S' -Wait"
+          INST="$PROGRAMFILES/Noesis Ebook Translator"
+          test -f "$INST/NoesisEbookTranslator.exe"
+          "$INST/NoesisEbookTranslator.exe" --self-test --require-full \
+            --report "$RUNNER_TEMP/installed-self.json"
+          export INST_WIN
+          INST_WIN="$(cygpath -w "$INST/uninst.exe")"
+          powershell -NoProfile -Command \
+            "Start-Process -FilePath \$env:INST_WIN -ArgumentList '/S' -Wait"
+          for _ in $(seq 1 10); do
+            [ ! -d "$INST" ] && break
+            sleep 2
+          done
+          test ! -d "$INST"
+
+      - name: Verify macOS minimum version
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -e
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          app = Path("dist/NoesisEbookTranslator.app")
+          mins = set()
+          for path in app.rglob("*"):
+              if not path.is_file():
+                  continue
+              if path.suffix not in (".so", ".dylib") and not os.access(path, os.X_OK):
+                  continue
+              out = subprocess.run(["otool", "-l", str(path)],
+                                   capture_output=True, text=True).stdout
+              for line in out.splitlines():
+                  if "minos" in line:
+                      mins.add(line.split()[1])
+          print("Mach-O minimum versions:", sorted(mins))
+          if mins:
+              highest = max(tuple(int(x) for x in value.split(".")) for value in mins)
+              if highest > (13, 0, 0):
+                  sys.exit(f"bundled binary requires macOS {highest}, "
+                           "but Info.plist says 13.0")
+          PY
+
+      - name: Package macOS DMG
+        if: matrix.platform == 'macos'
         shell: bash
         env:
-          BASE: NoesisEbookTranslator-${{ matrix.name }}
+          VERSION: ${{ needs.version.outputs.value }}
         run: |
           set -e
-          case "$RUNNER_OS" in
-            Windows)
-              mv "dist/NoesisEbookTranslator.exe" "$BASE.exe"
-              # Rename the NSIS installer to include the platform in the name.
-              SETUP=$(echo NoesisEbookTranslator-*-setup.exe)
-              if [ -f "$SETUP" ]; then
-                mv "$SETUP" "$BASE-setup.exe"
-              fi
-              ;;
-            macOS)
-              # .app is a directory bundle → wrap it in a .dmg
-              hdiutil create -volname "NoesisEbookTranslator" \
-                -srcfolder "dist/NoesisEbookTranslator.app" \
-                -ov -format UDZO "$BASE.dmg"
-              ;;
-          esac
-          ls -la
+          packaging/macos/dmg.sh \
+            "dist/NoesisEbookTranslator.app" \
+            "NoesisEbookTranslator-$VERSION-macos-${{ matrix.arch }}.dmg" \
+            "$VERSION"
 
-      - name: Upload artifact
+          # Mount the DMG and self-test the copy users actually get.
+          MOUNT="$RUNNER_TEMP/noesis-dmg"
+          mkdir -p "$MOUNT"
+          hdiutil attach "NoesisEbookTranslator-$VERSION-macos-${{ matrix.arch }}.dmg" \
+            -mountpoint "$MOUNT" -nobrowse -quiet
+          "$MOUNT/NoesisEbookTranslator.app/Contents/MacOS/NoesisEbookTranslator" \
+            --self-test --require-full --report "$RUNNER_TEMP/dmg-self.json"
+          hdiutil detach "$MOUNT" -quiet
+
+      - name: Package Linux AppImage, deb and rpm
+        if: matrix.platform == 'linux'
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
+          NFPM_VERSION: "2.48.0"
+          APPIMAGETOOL_VERSION: "1.9.1"
+        run: |
+          set -e
+          curl -fsSL -o /tmp/nfpm.tar.gz \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/nfpm.tar.gz -C /tmp nfpm
+          curl -fsSL -o /tmp/appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage"
+          chmod +x /tmp/appimagetool
+
+          VERSION="$VERSION" /tmp/nfpm package \
+            -f packaging/linux/nfpm-deb.yaml -p deb -t dist/
+          VERSION="$VERSION" /tmp/nfpm package \
+            -f packaging/linux/nfpm-rpm.yaml -p rpm -t dist/
+          mv "dist/noesis-ebook-translator_${VERSION}_amd64.deb" \
+             "NoesisEbookTranslator-${VERSION}-linux-amd64.deb"
+          mv "dist/noesis-ebook-translator-${VERSION}-1.x86_64.rpm" \
+             "NoesisEbookTranslator-${VERSION}-linux-x86_64.rpm"
+
+          APPIMAGE="NoesisEbookTranslator-${VERSION}-linux-x86_64.AppImage"
+          packaging/linux/build-appimage.sh "$VERSION" "$APPIMAGE" /tmp/appimagetool
+
+          # Run the artifact the user downloads (extract-and-run avoids FUSE).
+          APPIMAGE_EXTRACT_AND_RUN=1 "$PWD/$APPIMAGE" \
+            --self-test --require-full --report "$RUNNER_TEMP/appimage-self.json"
+          APPIMAGE_EXTRACT_AND_RUN=1 "$PWD/$APPIMAGE" \
+            --self-test-reader --report "$RUNNER_TEMP/appimage-reader.json"
+
+          # The deb payload is the same onedir tree; run the full reader from
+          # it on the host (not in the container, where user namespaces vary).
+          DEBROOT="$RUNNER_TEMP/debroot"
+          rm -rf "$DEBROOT"
+          mkdir -p "$DEBROOT"
+          dpkg-deb -x "NoesisEbookTranslator-${VERSION}-linux-amd64.deb" "$DEBROOT"
+          "$DEBROOT/usr/lib/noesis-ebook-translator/NoesisEbookTranslator" \
+            --self-test-reader --report "$RUNNER_TEMP/deb-reader.json"
+
+      - name: Smoke the Linux packages in clean containers
+        if: matrix.platform == 'linux'
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          # deb on Ubuntu 22.04 and rpm on Fedora 40: install, then run the
+          # bundle self-test as a non-root user.
+          docker run --rm -v "$PWD:/w" -w /w ubuntu:22.04 bash -c '
+            set -e
+            apt-get update -qq
+            apt-get install -y -qq libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 \
+              libdbus-1-3 libfontconfig1 libxcb-cursor0 libnss3 libnspr4 \
+              libasound2 libcups2 libdrm2 libgbm1 libpango-1.0-0 libcairo2 \
+              libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxi6 libsm6 libice6
+            dpkg -i "NoesisEbookTranslator-'"$VERSION"'-linux-amd64.deb" || apt-get install -f -y -qq
+            useradd -m tester
+            su tester -c "QT_QPA_PLATFORM=offscreen NOESIS_CONFIG_DIR=/tmp/cfg noesis-ebook-translator --self-test --require-full"
+          ' 2>&1 | tail -30
+
+          docker run --rm -v "$PWD:/w" -w /w fedora:40 bash -c '
+            set -e
+            dnf install -y -q mesa-libGL mesa-libEGL libxkbcommon libxkbcommon-x11 \
+              xcb-util-cursor xcb-util-wm xcb-util-image xcb-util-keysyms \
+              xcb-util-renderutil dbus-libs fontconfig freetype nss nspr alsa-lib \
+              cups-libs libdrm mesa-libgbm pango cairo libXcomposite libXdamage \
+              libXrandr libXtst libXi libSM libICE libX11
+            dnf install -y -q --nogpgcheck "NoesisEbookTranslator-'"$VERSION"'-linux-x86_64.rpm"
+            useradd -m tester
+            su tester -c "QT_QPA_PLATFORM=offscreen NOESIS_CONFIG_DIR=/tmp/cfg noesis-ebook-translator --self-test --require-full"
+          ' 2>&1 | tail -30
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: NoesisEbookTranslator-${{ matrix.name }}
-          path: NoesisEbookTranslator-${{ matrix.name }}*
+          name: NoesisEbookTranslator-${{ needs.version.outputs.value }}-${{ matrix.name }}
+          path: |
+            NoesisEbookTranslator-${{ needs.version.outputs.value }}-${{ matrix.name }}*
+            NoesisEbookTranslator-${{ needs.version.outputs.value }}-linux-*
           if-no-files-found: error
 
-  linux-appimage:
-    name: linux-x86_64-appimage
+  checksums:
+    name: checksums
+    needs: [version, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
-
-      - name: Build with PyInstaller
-        shell: bash
-        run: |
-          set -e
-          pyinstaller \
-            --onefile \
-            --windowed \
-            --clean \
-            --noconfirm \
-            --name NoesisEbookTranslator \
-            --paths . \
-            --collect-all noesis_ebook_translator \
-            --collect-submodules calibre \
-            --collect-submodules tiktoken_ext \
-            --hidden-import calibre \
-            --hidden-import tiktoken_ext.openai_public \
-            --add-data "assets/noesis-ebook-translator.png:assets" \
-            --add-data "assets/icons:assets/icons" \
-            --add-data "reader_web:reader_web" \
-            main.py
-
-      - name: Package AppImage
-        shell: bash
-        run: |
-          set -e
-          APPDIR=AppDir
-          mkdir -p "$APPDIR/usr/bin"
-
-          # self-contained binary
-          cp "dist/NoesisEbookTranslator" "$APPDIR/usr/bin/NoesisEbookTranslator"
-          chmod +x "$APPDIR/usr/bin/NoesisEbookTranslator"
-
-          # icon (256x256 PNG)
-          cp assets/noesis-ebook-translator.png "$APPDIR/NoesisEbookTranslator.png"
-
-          # desktop entry
-          cat > "$APPDIR/NoesisEbookTranslator.desktop" <<'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=Noesis Ebook Translator
-          Exec=NoesisEbookTranslator
-          Icon=NoesisEbookTranslator
-          Categories=Office;Utility;
-          Comment=Translate EPUB ebooks with the Ebook Translator engine
-          Terminal=false
-          EOF
-
-          # AppRun launcher
-          cat > "$APPDIR/AppRun" <<'EOF'
-          #!/bin/sh
-          HERE="$(dirname "$(readlink -f "${0}")")"
-          exec "${HERE}/usr/bin/NoesisEbookTranslator" "$@"
-          EOF
-          chmod +x "$APPDIR/AppRun"
-
-          # appimagetool (run without FUSE via --appimage-extract-and-run)
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool.AppImage
-          chmod +x appimagetool.AppImage
-          ./appimagetool.AppImage --appimage-extract-and-run \
-            "$APPDIR" "NoesisEbookTranslator-x86_64.AppImage"
-          ls -la
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: NoesisEbookTranslator-linux-x86_64-appimage
-          path: NoesisEbookTranslator-x86_64.AppImage
-          if-no-files-found: error
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: [build, linux-appimage]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
+      - name: Generate SHA256SUMS
+        run: |
+          set -e
+          cd artifacts
+          ls -la
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NoesisEbookTranslator-${{ needs.version.outputs.value }}-checksums
+          path: artifacts/SHA256SUMS
+          if-no-files-found: error
 
-      - name: Create GitHub Release
+  release:
+    name: create draft release
+    if: github.event_name == 'push' && needs.guard.result == 'success'
+    needs: [version, guard, build, checksums]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          tag_name: ${{ github.ref_name }}
+          name: Noesis Ebook Translator ${{ github.ref_name }}
+          draft: true
+          prerelease: false
           generate_release_notes: true
+          body: |
+            ## Noesis Ebook Translator ${{ needs.version.outputs.value }}
+
+            Prima release pubblica multipiattaforma.
+
+            **Windows**: eseguire l'installer x64.
+            **macOS**: aprire il DMG e trascinare l'app in Applicazioni. La build non è firmata:
+            al primo avvio usare click destro → Apri (o `xattr -dr com.apple.quarantine /Applications/NoesisEbookTranslator.app`).
+            **Linux**: `deb`, `rpm` o AppImage (x86_64, glibc ≥ 2.35).
+
+            Verificare i file con `sha256sum -c SHA256SUMS`.
+
+            Il lettore completo (QtWebEngine) è incluso in tutti i pacchetti. Se Chromium non
+            parte su un host senza user namespace, avviare con `QTWEBENGINE_DISABLE_SANDBOX=1`
+            (solo diagnostica: riduce l'isolamento del browser).
+          files: artifacts/*
+          fail_on_unmatched_files: true

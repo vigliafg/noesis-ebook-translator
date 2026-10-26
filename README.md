@@ -27,7 +27,7 @@ lingue, traduci.
 - **Testo bilingue** opzionale (traduzione sotto l'originale) oltre alla modalità
   *solo traduzione*.
 - L'output è scritto accanto al file di origine con il suffisso della lingua di
-  destinazione in maiuscolo: `libro_ITALIAN.epub` (cioè `*_<LINGUA>.epub`).
+  destinazione in minuscolo: `libro-italian.epub` (cioè `*-<lingua>.epub`).
 
 ## Motore verbatim dal plugin Ebook Translator
 
@@ -213,11 +213,50 @@ e, se le dipendenze sono presenti, **DOCX** (`python-docx`) e **PDF**
 - **Editor** di testi, immagini e tavole con **scrittura nell'EPUB**
   (tab *Testi*, *Figure*, *Tabelle*).
 
-## Requisiti
+## Download e installazione
+
+Le release sono pubblicate su
+[GitHub Releases](https://github.com/vigliafg/noesis-ebook-translator/releases).
+La 0.10.0 è la prima release pubblica:
+
+| Piattaforma | File | Note |
+| --- | --- | --- |
+| Windows 10/11 x64 | `NoesisEbookTranslator-0.10.0-windows-x64-setup.exe` | installa per tutti gli utenti (richiede admin) |
+| macOS Apple Silicon | `NoesisEbookTranslator-0.10.0-macos-arm64.dmg` | macOS 13+ |
+| macOS Intel | `NoesisEbookTranslator-0.10.0-macos-x64.dmg` | macOS 13+ |
+| Linux x86_64 | `NoesisEbookTranslator-0.10.0-linux-amd64.deb` | Ubuntu 22.04+/Debian 12+ |
+| Linux x86_64 | `NoesisEbookTranslator-0.10.0-linux-x86_64.rpm` | Fedora 40+ |
+| Linux x86_64 | `NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage` | glibc ≥ 2.35 |
+
+I pacchetti includono **QtWebEngine** (lettore full, PDF/MOBI/AZW3/FB2/CBZ ed
+export PDF) e **python-docx** (export DOCX): non serve installare Python.
+
+**Le build non sono firmate.** Su macOS, al primo avvio: click destro sull'app
+→ **Apri** (oppure `xattr -dr com.apple.quarantine
+"/Applications/NoesisEbookTranslator.app"`). Su Windows SmartScreen può chiedere **Ulteriori informazioni
+→ Esegui comunque**. Ogni release allega `SHA256SUMS`:
+
+```bash
+sha256sum -c SHA256SUMS
+```
+
+Su Linux l'AppImage può aver bisogno di FUSE; in alternativa
+`./NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage --appimage-extract-and-run`.
+Se Chromium non parte su un host senza user namespace, avviare con
+`QTWEBENGINE_DISABLE_SANDBOX=1` (solo rimedio diagnostico: riduce l'isolamento
+del browser).
+
+La versione dell'**app** (0.10.0) è separata da quella del **motore** verbatim
+(v2.4.2), visibile in *Info → Versione motore*: le migrazioni della
+configurazione continuano a usare la versione del motore.
+
+## Requisiti (esecuzione dal sorgente)
 
 - **Python ≥ 3.10**
 - PyQt6 ≥ 6.6, ebooklib, lxml, mechanize
   (vedi `requirements.txt`).
+- Per il lettore full e l'export PDF/DOCX: `requirements-full.txt`
+  (`PyQt6-WebEngine`, `python-docx`).
 - Connessione a Internet per i motori online.
 
 ## Installazione (venv dedicato)
@@ -225,6 +264,8 @@ e, se le dipendenze sono presenti, **DOCX** (`python-docx`) e **PDF**
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+# lettore full, PDF e DOCX (opzionale ma consigliato)
+.venv/bin/pip install -r requirements-full.txt
 ```
 
 Su Windows:
@@ -232,6 +273,7 @@ Su Windows:
 ```bat
 py -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip install -r requirements-full.txt
 ```
 
 ## Uso
@@ -252,11 +294,12 @@ py -m venv .venv
 Il file tradotto viene salvato accanto all'originale:
 
 ```text
-Il_mio_libro.epub  ->  Il_mio_libro_ITALIAN.epub
+Il_mio_libro.epub  ->  Il_mio_libro-italian.epub
 ```
 
-Il suffisso è la lingua di destinazione (`default_output_path`) convertita in
-maiuscolo: `*_<LINGUA>.epub`.
+Il suffisso è la lingua di destinazione in minuscolo, separata da un trattino
+(`book.output_name()`): `*-<lingua>.epub`. L'estensione è sempre `.epub` e il
+nome scelto nel wizard è solo la base (il suffisso viene aggiunto dall'app).
 
 ## Test
 
@@ -267,6 +310,17 @@ python -m unittest discover -s tests -v
 I test girano **headless** (`QT_QPA_PLATFORM=offscreen`) e usano un motore di
 traduzione fittizio offline: non serve la rete. In CI sono eseguiti su
 `ubuntu-latest` (Python 3.12) da `.github/workflows/tests.yml`.
+
+L'app espone anche un autotest per i bundle:
+
+```bash
+python main.py --self-test --require-full --report /tmp/self.json
+python main.py --self-test-reader --report /tmp/reader.json
+```
+
+Il primo verifica risorse/import/EPUB e l'export PDF/DOCX; il secondo apre
+davvero un EPUB col backend full (QtWebEngine). Il report è JSON perché un
+bundle `--windowed` non ha stdout garantito su Windows/macOS.
 
 ### Corpus Project Gutenberg (fixture reali)
 
@@ -303,30 +357,44 @@ headless il report riporta `ready=False` (warning, non errore).
 
 ## Build delle release (GitHub Actions)
 
-Le release standalone sono compilate con **PyInstaller** su quattro runner nativi
-(PyInstaller non fa cross-compile):
+Le release standalone sono compilate con **PyInstaller `--onedir`** su quattro
+runner nativi (PyInstaller non fa cross-compile). La spec è
+`packaging/app.spec`; i pacchetti nativi sono in `packaging/`.
 
-| Target | Runner |
-| --- | --- |
-| Windows x64 | `windows-latest` |
-| Linux x64 | `ubuntu-latest` |
-| macOS x86_64 | `macos-15-intel` |
-| macOS Apple Silicon (arm64) | `macos-15` |
+| Target | Runner | Artefatto |
+| --- | --- | --- |
+| Windows x64 | `windows-latest` | installer NSIS `.exe` |
+| Linux x86_64 | `ubuntu-22.04` | `.deb`, `.rpm`, `.AppImage` |
+| macOS x86_64 | `macos-15-intel` | `.dmg` |
+| macOS Apple Silicon (arm64) | `macos-15` | `.dmg` |
 
 Il workflow `.github/workflows/release.yml` parte manualmente da
-**Actions → build-releases → Run workflow** oppure al push di un tag `v*`
-(es. `git tag v1.0.0 && git push --tags`), creando una **GitHub Release** con gli
-artefatti: `.exe` (installer NSIS) su Windows, **AppImage** su Linux, `.dmg` su
-macOS. Gli eseguibili macOS non sono firmati: al primo avvio usare click destro →
-**Apri** per aggirare Gatekeeper.
+**Actions → release → Run workflow** (solo build, nessuna pubblicazione) oppure
+al push del tag `v<APP_VERSION>` (per la 0.10.0: `v0.10.0`). La release viene
+creata come **draft** e pubblicata a mano dopo il go/no-go di
+`docs/RELEASE.md`. Ogni artefatto viene collaudato con `--self-test` e
+`--self-test-reader` prima di essere caricato; `SHA256SUMS` è allegato. Per la
+0.10.0 non si usano release candidate: il dry-run produce gli artefatti da
+provare, poi si tagga direttamente `v0.10.0`.
 
 ### Build locale (opzionale)
 
 ```bash
-.venv/bin/pip install pyinstaller
-.venv/bin/pyinstaller --onefile --windowed --name NoesisEbookTranslator \
-  main.py
+.venv/bin/pip install -r requirements-release.txt
+.venv/bin/pyinstaller packaging/app.spec --noconfirm --clean
+# output: dist/NoesisEbookTranslator/ (Linux/Windows) o
+#         dist/NoesisEbookTranslator.app (macOS)
 ```
+
+Su Linux:
+
+```bash
+packaging/linux/build-appimage.sh 0.10.0 NoesisEbookTranslator-0.10.0-linux-x86_64.AppImage
+VERSION=0.10.0 nfpm package -f packaging/linux/nfpm-deb.yaml -p deb -t dist/
+```
+
+La build locale usa le Qt del sistema se non sono installate da pip; per
+riprodurre la release usare le versioni pinnate in `requirements-release.txt`.
 
 ## Edizione CLI/engine
 
@@ -348,3 +416,8 @@ Quest'opera deriva dal plugin **Ebook Translator** di **bookfere**, distribuito
 sotto la stessa licenza GPLv3; gli engine e la gestione degli elementi sono copie
 verbatim dell'upstream. Se ridistribuisci o modifichi l'app, mantieni
 l'attribuzione a bookfere e la licenza GPLv3.
+
+Le licenze dei componenti inclusi (Qt/PyQt6, Chromium, EbookLib AGPL, foliate-js,
+Fluent Emoji, tiktoken, python-docx, …) sono elencate in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) e i testi completi in
+[`LICENSES/`](LICENSES/).

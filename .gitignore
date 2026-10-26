@@ -12,8 +12,9 @@ develop-eggs/
 sdist/
 wheels/
 
-# PyInstaller
+# PyInstaller (the release spec is versioned)
 *.spec
+!packaging/*.spec
 
 # Virtual environments
 .venv/

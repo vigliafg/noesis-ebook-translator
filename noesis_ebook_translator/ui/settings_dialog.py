@@ -295,7 +295,8 @@ class SettingsDialog(QDialog):
             self.edt_glossary.setText(path)
 
     def _build_about(self) -> None:
-        from noesis_ebook_translator import EbookTranslator, __version__
+        from noesis_ebook_translator import (
+            APP_VERSION, EbookTranslator, __version__)
         _page, form = self._page("about")
         self.btn_help = QPushButton(T("action.open_online_help"))
         self.btn_help.clicked.connect(self._open_help)
@@ -307,7 +308,7 @@ class SettingsDialog(QDialog):
         form.addRow("", self.chk_reset_onboarding)
         from ..help import help_url
         form.addRow(QUrl(help_url(get_language())).toString() and T("action.help"),
-                    QLabel(f"{T('app.title')} {__version__} · "
+                    QLabel(f"{T('app.title')} {APP_VERSION} · "
                            f"Engine {EbookTranslator.__version__}"))
         form.addRow(T("about.text").splitlines()[0] if T("about.text") else "",
                     QLabel("GNU GPL v3.0 · bookfere Ebook Translator"))

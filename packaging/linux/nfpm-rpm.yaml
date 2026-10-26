@@ -1,0 +1,69 @@
+# RPM package. Build from the repository root:
+#   VERSION=0.10.0 nfpm package -f packaging/linux/nfpm-rpm.yaml -p rpm -t dist/
+name: noesis-ebook-translator
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: "1"
+section: utils
+priority: optional
+maintainer: vigliafg <vigliafg@users.noreply.github.com>
+description: |
+  Desktop GUI to translate EPUB ebooks with the Ebook Translator engine.
+vendor: Noesis
+homepage: https://github.com/vigliafg/noesis-ebook-translator
+license: GPL-3.0-or-later
+depends:
+  - glibc >= 2.35
+  - libstdc++
+  - libgcc
+  - mesa-libGL
+  - mesa-libEGL
+  - libxkbcommon
+  - libxkbcommon-x11
+  - xcb-util-cursor
+  - xcb-util-wm
+  - xcb-util-image
+  - xcb-util-keysyms
+  - xcb-util-renderutil
+  - libX11
+  - dbus-libs
+  - fontconfig
+  - freetype
+  - nss
+  - nspr
+  - alsa-lib
+  - cups-libs
+  - libdrm
+  - mesa-libgbm
+  - pango
+  - cairo
+  - libXcomposite
+  - libXdamage
+  - libXrandr
+  - libXtst
+  - libXi
+  - libSM
+  - libICE
+contents:
+  - src: dist/NoesisEbookTranslator
+    dst: /usr/lib/noesis-ebook-translator
+  - src: /usr/lib/noesis-ebook-translator/NoesisEbookTranslator
+    dst: /usr/bin/noesis-ebook-translator
+    type: symlink
+  - src: packaging/linux/noesis-ebook-translator.desktop
+    dst: /usr/share/applications/noesis-ebook-translator.desktop
+  - src: assets/linux/hicolor/256x256/apps/noesis-ebook-translator.png
+    dst: /usr/share/icons/hicolor/256x256/apps/noesis-ebook-translator.png
+  - src: packaging/linux/noesis-ebook-translator.metainfo.xml
+    dst: /usr/share/metainfo/com.vigliafg.noesis-ebook-translator.metainfo.xml
+  - src: LICENSE
+    dst: /usr/share/licenses/noesis-ebook-translator/LICENSE
+  - src: THIRD_PARTY_NOTICES.md
+    dst: /usr/share/licenses/noesis-ebook-translator/THIRD_PARTY_NOTICES.md
+  - src: LICENSES
+    dst: /usr/share/licenses/noesis-ebook-translator/LICENSES
+rpm:
+  group: Applications/Productivity
+  summary: EPUB translator desktop application
+  compression: xz

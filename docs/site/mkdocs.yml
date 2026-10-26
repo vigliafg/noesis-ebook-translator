@@ -14,7 +14,6 @@ theme:
   name: material
   language: en
   features:
-    - navigation.instant
     - navigation.top
     - content.code.copy
   palette:
@@ -50,6 +49,7 @@ plugins:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - Install: install.md
   - Providers: providers.md
   - FAQ: faq.md
 

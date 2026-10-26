@@ -167,7 +167,16 @@ di `tests/fixtures.py` (knob nel dict `REALISTIC`): tutto **offline, nessuna chi
 
 Questi moduli sono **desktop-only** (non inlineati nel repo gemello):
 
-- `noesis_ebook_translator/paths.py` — directory dati dell'app.
+- `noesis_ebook_translator/paths.py` — directory dati dell'app: **config** nel
+  percorso di configurazione (JSON del motore), **dati** in
+  `Application Support`/`%LOCALAPPDATA%`/`$XDG_DATA_HOME`; migrazione
+  una-tantum copia-e-verifica dal vecchio percorso, con originali intatti.
+- `noesis_ebook_translator/selfcheck.py` — `--self-test` e
+  `--self-test-reader`: verificano le risorse del bundle congelato e aprono un
+  EPUB col backend full, scrivendo un report JSON (i bundle `--windowed` non
+  hanno stdout).
+- `noesis_ebook_translator/logging_setup.py` — log rotante in
+  `data_dir()/logs/app.log` ed `excepthook` (handler Qt solo nei bundle).
 - `noesis_ebook_translator/library.py` — libreria SQLite (libri, posizioni,
   annotazioni; migra `reader.json`). `reader/session.py` è un adapter su di essa.
 - `noesis_ebook_translator/chapter_store.py` — libreria capitoli estratti/tradotti.
@@ -186,10 +195,11 @@ Questi moduli sono **desktop-only** (non inlineati nel repo gemello):
   animazioni, dialog qualità, **barra di workflow** (`workflow_bar.py`) e **icone**
   (`icons.py`).
 - `assets/icons/` — icone colorate da **Microsoft Fluent Emoji** (MIT),
-  generate da `tools/build_icons.py`; incluse nel bundle (`--add-data`).
+  generate da `tools/build_icons.py`; incluse nel bundle dai `datas` di
+  `packaging/app.spec`.
 - `noesis_ebook_translator/locales/*.json` — cataloghi interfaccia (5 lingue) e
   `main.py` (ribbon/tab). **Inclusi nel bundle** via `package-data` e
-  `--collect-all noesis_ebook_translator` in `release.yml`.
+  `collect_all("noesis_ebook_translator")` in `packaging/app.spec`.
 
 ### Banda 2 «Capitoli» (contratto)
 
@@ -365,6 +375,29 @@ GitHub Pages da `.github/workflows/docs.yml`.
 > gemello). Le funzioni aggiunte (export JSON/CSV/DOCX/PDF, write-back
 > testi/tabelle/immagini) vanno rispecchiate con
 > `tools/sync_from_desktop.py` nel repo engine.
+
+## Release e packaging (0.10.0)
+
+- **Versione app ≠ versione motore**: `APP_VERSION` in
+  `noesis_ebook_translator/__init__.py` è la versione della release (tag
+  `v0.10.0`); la tupla `version = (2, 4, 2)` resta quella del motore verbatim e
+  guida migrazioni/cache/User-Agent. Non allineare l'una all'altra.
+- **PyInstaller `--onedir`** con `packaging/app.spec` (committato; `.gitignore`
+  ha la negazione `!packaging/*.spec`). Non tornare a `--onefile`: QtWebEngine
+  ha bisogno di `_internal/` accanto all'eseguibile e la firma macOS futura non
+  sopravvive al onefile.
+- `packaging/` contiene installer NSIS adattato a onedir, DMG macOS
+  (`.app` + symlink Applications + firma ad-hoc), `nfpm` deb/rpm, desktop entry,
+  metainfo AppStream e AppRun/build AppImage.
+- `.github/workflows/release.yml` costruisce i 4 runner, esegue
+  `--self-test`/`--self-test-reader` sugli artefatti, genera `SHA256SUMS` e crea
+  una **draft release**. Per la 0.10.0 l'unico tag ammesso è `v$APP_VERSION`
+  (nessuna release candidate); `workflow_dispatch` non pubblica mai.
+- `docs/RELEASE.md` è la checklist di go/no-go (matrice manuale Windows/macOS/
+  Linux, limiti della build non firmata). `THIRD_PARTY_NOTICES.md` e `LICENSES/`
+  sono inclusi nei pacchetti.
+- `requirements-release.txt` pinna le versioni usate dalla release; gli asset
+  icona sono generati una tantum e committati (`assets/noesis-ebook-translator.*`).
 
 ## File da NON toccare senza motivo
 

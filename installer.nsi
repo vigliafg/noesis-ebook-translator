@@ -3,7 +3,7 @@
 ;
 ; Usage:
 ;   makensis installer.nsi
-;   makensis /DVERSION=2.4.2 installer.nsi
+;   makensis /DVERSION=0.10.0 installer.nsi
 ;
 ; Produces: NoesisEbookTranslator-${VERSION}-setup.exe
 ; -------------------------------------------------------------------
@@ -15,7 +15,7 @@
 ; Configurable defines (override with /D on the command line)
 ; -------------------------------------------------------------------
 !ifndef VERSION
-  !define VERSION "2.4.2"
+  !define VERSION "0.10.0"
 !endif
 
 !define PRODUCT_NAME      "Noesis Ebook Translator"
@@ -44,9 +44,11 @@ BrandingText      " "
 
 ; -- Pages ----------------------------------------------------------
 !insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_LICENSE "LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -82,6 +84,7 @@ LangString DESC_App         ${LANG_ENGLISH} "Core application files."
 ; .onInit — language selection
 ; -------------------------------------------------------------------
 Function .onInit
+  SetShellVarContext all
   !insertmacro MUI_LANGDLL_DISPLAY
 FunctionEnd
 
@@ -93,8 +96,11 @@ Section "$(NAME_App)" SectionApp
   SetOutPath "$INSTDIR"
   SetOverwrite on
 
-  ; Copy the PyInstaller-built executable from dist/
-  File "dist\${APP_EXE}"
+  ; Copy the PyInstaller onedir payload (the exe plus _internal/).
+  File /r "dist\NoesisEbookTranslator\*.*"
+  ; Keep the license/notices visible at the install root too.
+  File "LICENSE"
+  File "THIRD_PARTY_NOTICES.md"
 
   ; Store install directory in registry for upgrade detection
   WriteRegStr HKLM "Software\${PRODUCT_NAME}" "InstallDir" "$INSTDIR"
@@ -110,7 +116,7 @@ Section "$(NAME_App)" SectionApp
   WriteRegStr   HKLM "${PRODUCT_REGKEY}" "DisplayVersion"  "${VERSION}"
   WriteRegStr   HKLM "${PRODUCT_REGKEY}" "Publisher"       "${PRODUCT_PUBLISHER}"
   WriteRegStr   HKLM "${PRODUCT_REGKEY}" "URLInfoAbout"    "${PRODUCT_WEB_SITE}"
-  WriteRegDWORD HKLM "${PRODUCT_REGKEY}" "EstimatedSize"   120000 ; ~120 MB
+  WriteRegDWORD HKLM "${PRODUCT_REGKEY}" "EstimatedSize"   350000 ; ~350 MB with QtWebEngine
   WriteRegDWORD HKLM "${PRODUCT_REGKEY}" "NoModify"        1
   WriteRegDWORD HKLM "${PRODUCT_REGKEY}" "NoRepair"        1
 SectionEnd
@@ -138,10 +144,10 @@ SectionEnd
 ; Uninstaller
 ; -------------------------------------------------------------------
 Section "Uninstall"
-  ; Remove application files
-  Delete "$INSTDIR\${APP_EXE}"
-  Delete "$INSTDIR\uninst.exe"
-  RMDir  "$INSTDIR"
+  SetShellVarContext all
+
+  ; Remove the whole onedir payload (the uninstaller runs from a temp copy).
+  RMDir /r "$INSTDIR"
 
   ; Remove shortcuts
   Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
@@ -152,4 +158,7 @@ Section "Uninstall"
   ; Remove registry entries
   DeleteRegKey HKLM "${PRODUCT_REGKEY}"
   DeleteRegKey HKLM "Software\${PRODUCT_NAME}"
+
+  ; User data is deliberately left behind: settings in %APPDATA%, library/cache
+  ; in %LOCALAPPDATA%.
 SectionEnd

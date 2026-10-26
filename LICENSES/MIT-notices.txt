@@ -1,0 +1,41 @@
+MIT-licensed components and their copyright notices
+====================================================
+
+The full MIT text is in MIT.txt. The following notices apply to the bundled
+components:
+
+foliate-js (reader_web/foliate-js)
+  Copyright (c) 2021 John Factotum
+  https://github.com/johnfactotum/foliate-js
+
+Microsoft Fluent Emoji (assets/icons)
+  Copyright (c) Microsoft Corporation
+  https://github.com/microsoft/fluentui-emoji
+
+tiktoken
+  Copyright (c) 2022 OpenAI
+  https://github.com/openai/tiktoken
+
+python-docx
+  Copyright (c) 2013 Steve Canny
+  https://github.com/python-openxml/python-docx
+
+html5lib
+  Copyright (c) 2006-2013 James Graham and other contributors
+  https://github.com/html5lib/html5lib-python
+
+six
+  Copyright (c) 2010-2024 Benjamin Peterson
+  https://github.com/benjaminp/six
+
+altgraph
+  Copyright (c) 2004-2024 Ronald Oussoren
+  https://github.com/ronaldoussoren/altgraph
+
+macholib
+  Copyright (c) 2006-2024 Ronald Oussoren
+  https://github.com/ronaldoussoren/macholib
+
+pefile
+  Copyright (c) 2004-2024 Ero Carrera
+  https://github.com/erocarrera/pefile

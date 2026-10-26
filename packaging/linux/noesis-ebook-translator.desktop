@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Noesis Ebook Translator
+GenericName=EPUB Translator
+Comment=Translate EPUB ebooks while keeping formatting, index and illustrations
+Exec=noesis-ebook-translator
+Icon=noesis-ebook-translator
+Terminal=false
+Categories=Office;
+Keywords=epub;ebook;translation;translate;calibre;
+StartupWMClass=NoesisEbookTranslator

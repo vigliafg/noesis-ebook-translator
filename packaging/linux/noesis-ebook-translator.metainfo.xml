@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.vigliafg.noesis-ebook-translator</id>
+  <name>Noesis Ebook Translator</name>
+  <summary>Translate EPUB ebooks while keeping formatting, index and illustrations</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      Noesis Ebook Translator is a desktop application that translates EPUB
+      books with the Ebook Translator engine, preserving inline markup, links,
+      anchors, the table of contents and illustrations.
+    </p>
+    <p>
+      It includes a reader, chapter selection, translation cache with resume,
+      cost estimation, and export to EPUB, HTML, Markdown, text, JSON, CSV,
+      DOCX and PDF.
+    </p>
+  </description>
+  <launchable type="desktop-id">noesis-ebook-translator.desktop</launchable>
+  <url type="homepage">https://github.com/vigliafg/noesis-ebook-translator</url>
+  <url type="help">https://github.com/vigliafg/noesis-ebook-translator#readme</url>
+  <developer id="com.vigliafg"><name>vigliafg</name></developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.10.0" date="2026-10-26">
+      <description>
+        <p>First public release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

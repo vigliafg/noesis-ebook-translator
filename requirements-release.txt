@@ -1,0 +1,16 @@
+# Exact versions used by .github/workflows/release.yml.
+# Transitive dependencies are resolved by pip; the top-level packages are
+# pinned so a release build is reproducible. Regenerate after a dependency
+# upgrade and re-run the artifact self-tests before tagging.
+PyQt6==6.10.2
+PyQt6-Qt6==6.10.2
+PyQt6-sip==13.11.0
+PyQt6-WebEngine==6.10.0
+PyQt6-WebEngine-Qt6==6.10.2
+EbookLib==0.20
+lxml==6.0.2
+mechanize==0.4.10
+tiktoken==0.14.0
+python-docx==1.2.0
+PyInstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9

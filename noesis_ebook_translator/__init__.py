@@ -11,12 +11,22 @@ from __future__ import annotations
 
 import builtins
 
-__all__ = ["EbookTranslator", "_z", "__version__", "identifier", "author", "APP_NAME"]
+__all__ = [
+    "EbookTranslator", "_z", "__version__", "identifier", "author",
+    "APP_NAME", "APP_VERSION",
+]
 
 #: Human-readable application name.
 APP_NAME = "Noesis Ebook Translator"
 
-#: Application / engine version. Kept in sync with the plugin's tuple shape.
+#: Version of the **desktop application** (the GitHub release tag is ``v`` +
+#: this value). It is intentionally separate from :data:`version` below: the
+#: tuple is the verbatim engine's version, used by ``lib/config.py`` migrations,
+#: the cache metadata and the engine User-Agent. Never change it to match the
+#: app release.
+APP_VERSION = "0.10.0"
+
+#: Verbatim engine version. Kept in sync with the plugin's tuple shape.
 version = (2, 4, 2)
 __version__ = "v" + ".".join(str(part) for part in version)
 

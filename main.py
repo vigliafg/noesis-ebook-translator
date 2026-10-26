@@ -26,7 +26,9 @@ def _use_persistent_translation_cache() -> None:
     The verbatim engine defaults to ``/tmp`` (or the OS temp dir), which a reboot
     can wipe — exactly when the crash-safe resume (hours of work) is needed.
     Point it at the app's data directory, carrying over any caches an older
-    version left behind.
+    version left behind. The cache path is written to the configuration **only
+    after** every database was copied and verified; a failed copy leaves the
+    previous path in place so the next start can retry.
 
     Must run **before** ``noesis_ebook_translator.book`` is imported: the cache
     path is resolved once, when ``lib.cache`` is imported.
@@ -35,7 +37,9 @@ def _use_persistent_translation_cache() -> None:
         import shutil as _shutil
 
         from noesis_ebook_translator.lib.config import get_config
-        from noesis_ebook_translator.paths import data_dir
+        from noesis_ebook_translator.paths import data_dir, migrate_legacy_data
+
+        migrate_legacy_data()
 
         base = os.path.join(str(data_dir()), "translator-cache")
         os.makedirs(base, exist_ok=True)
@@ -46,24 +50,40 @@ def _use_persistent_translation_cache() -> None:
         new_db = os.path.join(base, "cache")
         os.makedirs(new_db, exist_ok=True)
         old_db = os.path.join(previous, "cache") if previous else ""
+        copied_all = True
         if old_db and os.path.isdir(old_db):
+            # A live WAL/journal means another process has the database open:
+            # copying it now could capture a torn transaction. Retry next start.
+            if any(name.endswith((".db-wal", ".db-shm", ".db-journal"))
+                   for name in os.listdir(old_db)):
+                copied_all = False
+        if old_db and copied_all and os.path.isdir(old_db):
             for name in os.listdir(old_db):
                 if not name.endswith(".db"):
                     continue
                 target = os.path.join(new_db, name)
-                if not os.path.exists(target):
-                    try:  # best effort: /tmp and the data dir may differ
-                        _shutil.move(os.path.join(old_db, name), target)
+                if os.path.exists(target):
+                    continue
+                part = target + ".incoming"
+                try:
+                    _shutil.copy2(os.path.join(old_db, name), part)
+                    os.replace(part, target)
+                except OSError:
+                    copied_all = False
+                    try:
+                        os.unlink(part)
                     except OSError:
                         pass
-        config.save(cache_path=base)
+        if copied_all:
+            config.save(cache_path=base)
     except Exception:  # pragma: no cover - never block startup for a cache path
         pass
 
 
 _use_persistent_translation_cache()
 
-from noesis_ebook_translator import APP_NAME, __version__, appconfig, book, theme
+from noesis_ebook_translator import (
+    APP_NAME, APP_VERSION, __version__, appconfig, book, theme)
 from noesis_ebook_translator import exporter as exporter_mod
 from noesis_ebook_translator.i18n import T, get_language, set_language
 from noesis_ebook_translator.progress_model import (
@@ -81,6 +101,18 @@ from noesis_ebook_translator.lib.exception import TranslationCanceled
 def _resource(*parts: str) -> str:
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, *parts)
+
+
+def _print_stdout(text: str) -> None:
+    """Best-effort stdout write (a ``--windowed`` bundle may have no stdout)."""
+    stream = sys.stdout
+    if stream is None:
+        return
+    try:
+        stream.write(text.rstrip("\n") + "\n")
+        stream.flush()
+    except Exception:  # noqa: BLE001 - diagnostics must never crash
+        pass
 
 
 class TranslationWorker(QThread):
@@ -1058,11 +1090,14 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl(help_url(get_language())))
 
     def on_about(self) -> None:
-        self._status_message(f"{T('about.text')}\n\n{__version__}")
+        self._status_message(
+            f"{T('about.text')}\n\nApp {APP_VERSION} · Engine {__version__}\n"
+            "https://github.com/vigliafg/noesis-ebook-translator")
 
     def on_license(self) -> None:
-        self._status_message("GNU GPL v3.0 — derived from bookfere's Ebook "
-                             "Translator (GPLv3).")
+        self._status_message(
+            "GNU GPL v3.0 — derived from bookfere's Ebook Translator (GPLv3).\n"
+            "Source: https://github.com/vigliafg/noesis-ebook-translator")
 
     def on_upstream(self) -> None:
         QDesktopServices.openUrl(
@@ -1073,8 +1108,8 @@ class MainWindow(QMainWindow):
         self._status_message(f"Engine {EbookTranslator.__version__}")
 
     def on_config_dir(self) -> None:
-        from noesis_ebook_translator.paths import data_dir
-        self._status_message(str(data_dir()))
+        from calibre.constants import config_dir
+        self._status_message(str(config_dir))
 
     def on_data_dir(self) -> None:
         from noesis_ebook_translator.lib.utils import open_path
@@ -1757,6 +1792,24 @@ class MainWindow(QMainWindow):
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = list(sys.argv if argv is None else argv)
+    # Accept both ``main()`` (Qt argv includes the program name) and
+    # ``main(["--version"])`` (bare flags, useful in tests/launchers).
+    args = raw[1:] if raw and not str(raw[0]).startswith("-") else raw
+    if "--version" in args:
+        _print_stdout(f"{APP_NAME} {APP_VERSION} (engine {__version__})")
+        return 0
+    if "--self-test" in args or "--self-test-reader" in args:
+        from noesis_ebook_translator import selfcheck
+        report = selfcheck.report_path_from_args(args)
+        if "--self-test-reader" in args:
+            return selfcheck.run_reader_test(report)
+        return selfcheck.run_self_test(
+            report, require_full="--require-full" in args)
+
+    from noesis_ebook_translator.logging_setup import install as _install_logging
+    _install_logging()
+
     appconfig.ensure_defaults()
     settings = appconfig.load_settings()
     set_language(settings.get("ui_language", "it"))
@@ -1765,9 +1818,9 @@ def main(argv: list[str] | None = None) -> int:
         prepare_full()
     except Exception:  # noqa: BLE001
         pass
-    app = QApplication(argv if argv is not None else sys.argv)
+    app = QApplication(raw)
     app.setApplicationName(APP_NAME)
-    app.setApplicationVersion(__version__)
+    app.setApplicationVersion(APP_VERSION)
     from noesis_ebook_translator.ui import apply_theme
     apply_theme(app, settings.get("ui_theme", "system"))
 

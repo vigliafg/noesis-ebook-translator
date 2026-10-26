@@ -16,8 +16,7 @@ __all__ = ["HELP_BASE_URL", "help_url", "local_help_dir", "fallback_html"]
 HELP_BASE_URL = "https://vigliafg.github.io/noesis-ebook-translator"
 
 #: Sections documented on the site (also used as page anchors/names).
-SECTIONS = ("index", "getting-started", "translation", "reader",
-            "export", "library", "faq")
+SECTIONS = ("index", "getting-started", "install", "providers", "faq")
 
 
 def help_url(lang: str | None = None, section: str = "index") -> str:

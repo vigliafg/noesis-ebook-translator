@@ -1,3 +1,6 @@
-# Extra dependency for the FULL reader flavour (foliate-js in QtWebEngine).
-# The lite reader (QTextBrowser) does not need this.
+# Extra dependencies for the FULL build flavour:
+# - QtWebEngine powers the foliate-js reader (PDF/MOBI/AZW3/FB2/CBZ) and PDF export.
+# - python-docx powers DOCX export.
+# The lite reader (QTextBrowser) and the other exporters do not need these.
 PyQt6-WebEngine>=6.6
+python-docx>=1.0

@@ -9,6 +9,29 @@ la storia completa è nei commit (`git log`).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-26
+
+**Prima release pubblica.** Installabili per Windows x64 (installer), macOS
+Apple Silicon e Intel (DMG) e Linux x86_64 (deb, rpm, AppImage). Il pacchetto
+include il lettore completo (QtWebEngine) e l'export PDF/DOCX.
+
+- La versione dell'**app** (`0.10.0`) è ora separata da quella del motore
+  verbatim (`v2.4.2`): il motore resta invariato e le migrazioni della
+  configurazione continuano a usare la sua versione.
+- Dati utente (libreria, capitoli, cache, log) spostati nella directory dati
+  del sistema (macOS `Application Support`, Windows `%LOCALAPPDATA%`, Linux
+  `$XDG_DATA_HOME`), con migrazione una-tantum e non distruttiva dal vecchio
+  percorso di configurazione.
+- Build PyInstaller `--onedir` con spec versionato; installer Windows NSIS,
+  DMG macOS, deb/rpm via nfpm e AppImage.
+- `--self-test` e `--self-test-reader`: verificano le risorse incluse e aprono
+  davvero un EPUB col backend full, con report JSON (i bundle `--windowed` non
+  hanno stdout garantito).
+- Log diagnostico in `logs/app.log` e `THIRD_PARTY_NOTICES` inclusi nei
+  pacchetti.
+- Le release sono **non firmate**: macOS richiede click destro → Apri al primo
+  avvio; Windows può mostrare SmartScreen.
+
 ### Changed
 
 - **Traduzione in parallelo di default (8 richieste)**: nel test di velocità lo

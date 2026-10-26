@@ -2,37 +2,20 @@
 
 Risorse grafiche dell'app **Noesis Ebook Translator**.
 
-## File attesi
+## File
 
 | File | Formato | Piattaforma | Note |
 | --- | --- | --- | --- |
-| `noesis-ebook-translator.png` | PNG 256×256 | Linux / AppImage, icona finestra | **presente** (placeholder) |
-| `noesis-ebook-translator.ico` | ICO multi-risoluzione | Windows (PyInstaller + NSIS) | da aggiungere prima della release |
-| `noesis-ebook-translator.icns` | ICNS | macOS (PyInstaller) | da aggiungere prima della release |
-| `noesis-ebook-translator.svg` | SVG | sorgente vettoriale (opzionale) | facoltativo |
+| `noesis-ebook-translator-source.jpg` | JPEG 189×176 | sorgente | artwork fornito dall'autore |
+| `noesis-ebook-translator.png` | PNG 1024×1024 | Linux / icona finestra | master generato dal sorgente |
+| `noesis-ebook-translator.ico` | ICO multi-risoluzione (16–256) | Windows (PyInstaller + NSIS) | generato dal master |
+| `noesis-ebook-translator.icns` | ICNS (16–1024) | macOS (PyInstaller) | generato dal master |
+| `linux/hicolor/256x256/apps/noesis-ebook-translator.png` | PNG 256×256 | deb/rpm/AppImage | icona hicolor |
 
-Le **icone reali** (`.ico` e `.icns`) verranno inserite **prima della release**:
-i workflow di build le referenziano, ma se assenti il build ripiega senza icona
-(vedi `.github/workflows/release.yml`).
+Le icone sono generate una tantum dal sorgente con Pillow (upscale Lanczos +
+leggero unsharp mask) e **committate**: la build non dipende da Pillow. Per
+rigenerarle basta un PNG quadrato ≥ 512 px con lo stesso nome del master; poi
+`packaging/` e `installer.nsi` le usano senza altre modifiche.
 
-Il `noesis-ebook-translator.png` attualmente presente è un **placeholder**
-generato automaticamente (256×256, sfondo blu scuro con un glifo "libro"):
-serve a far girare build e AppImage finché non arriva l'icona definitiva.
-Per rigenerarlo basta un PNG valido 256×256 con lo stesso nome.
-
-## Uso nell'app
-
-`main.py` carica `assets/noesis-ebook-translator.png` come icona della finestra:
-
-```python
-icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         "assets", "noesis-ebook-translator.png")
-```
-
-## Uso nelle build
-
-- **Windows** — `--icon assets/noesis-ebook-translator.ico` (PyInstaller) e
-  `!define MUI_ICON "assets\noesis-ebook-translator.ico"` (`installer.nsi`).
-- **macOS** — `--icon assets/noesis-ebook-translator.icns` (PyInstaller).
-- **Linux / AppImage** — `assets/noesis-ebook-translator.png` copiato
-  nell'AppDir come `NoesisEbookTranslator.png`.
+`icons/` contiene le icone semantiche dell'interfaccia (Fluent Emoji, MIT; vedi
+`icons/LICENSE`).
